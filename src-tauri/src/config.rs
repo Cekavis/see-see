@@ -93,11 +93,13 @@ pub fn check_service_available() -> Result<(), Error> {
     ];
     let builtin_tts_list: Vec<&str> = vec!["lingva_tts"];
     let builtin_collection_list: Vec<&str> = vec!["anki", "eudic"];
+    let builtin_vision_list: Vec<&str> = vec!["openai_compatible"];
 
     let plugin_recognize_list: Vec<String> = get_plugin_list("recognize").unwrap_or_default();
     let plugin_translate_list: Vec<String> = get_plugin_list("translate").unwrap_or_default();
     let plugin_tts_list: Vec<String> = get_plugin_list("tts").unwrap_or_default();
     let plugin_collection_list: Vec<String> = get_plugin_list("collection").unwrap_or_default();
+    let plugin_vision_list: Vec<String> = vec![];
     if let Some(recognize_service_list) = get("recognize_service_list") {
         let recognize_service_list: Vec<String> = serde_json::from_value(recognize_service_list)?;
         check_available(
@@ -132,6 +134,15 @@ pub fn check_service_available() -> Result<(), Error> {
             builtin_collection_list,
             plugin_collection_list,
             "collection_service_list",
+        );
+    }
+    if let Some(vision_service_list) = get("vision_service_list") {
+        let vision_service_list: Vec<String> = serde_json::from_value(vision_service_list)?;
+        check_available(
+            vision_service_list,
+            builtin_vision_list,
+            plugin_vision_list,
+            "vision_service_list",
         );
     }
     Ok(())

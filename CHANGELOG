@@ -1,3 +1,17 @@
+## 4.0.0 (2026-06-19)
+
+### New feature:
+
+-   rename the fork to See See with an independent app identity
+-   add OCR-free screenshot vision providers in the screenshot translation window
+-   add OpenAI-compatible vision service configuration with endpoint presets and custom prompts
+-   refresh See See icon assets
+
+### Changed:
+
+-   disable the upstream Pot updater for the fork until See See release signing is configured
+-   skip the upstream single-instance plugin in Windows debug builds to avoid the known development startup panic
+
 ## 3.0.7 (2025-5-10)
 
 ### New feature:

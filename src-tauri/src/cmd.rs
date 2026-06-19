@@ -27,7 +27,7 @@ pub fn cut_image(left: u32, top: u32, width: u32, height: u32, app_handle: tauri
     info!("Cut image: {}x{}+{}+{}", width, height, left, top);
     let mut app_cache_dir_path = cache_dir().expect("Get Cache Dir Failed");
     app_cache_dir_path.push(&app_handle.config().tauri.bundle.identifier);
-    app_cache_dir_path.push("pot_screenshot.png");
+    app_cache_dir_path.push("see_see_screenshot.png");
     if !app_cache_dir_path.exists() {
         return;
     }
@@ -40,7 +40,7 @@ pub fn cut_image(left: u32, top: u32, width: u32, height: u32, app_handle: tauri
     };
     let img2 = img.sub_image(left, top, width, height);
     app_cache_dir_path.pop();
-    app_cache_dir_path.push("pot_screenshot_cut.png");
+    app_cache_dir_path.push("see_see_screenshot_cut.png");
     match img2.to_image().save(&app_cache_dir_path) {
         Ok(_) => {}
         Err(e) => {
@@ -57,7 +57,7 @@ pub fn get_base64(app_handle: tauri::AppHandle) -> String {
     use std::io::Read;
     let mut app_cache_dir_path = cache_dir().expect("Get Cache Dir Failed");
     app_cache_dir_path.push(&app_handle.config().tauri.bundle.identifier);
-    app_cache_dir_path.push("pot_screenshot_cut.png");
+    app_cache_dir_path.push("see_see_screenshot_cut.png");
     if !app_cache_dir_path.exists() {
         return "".to_string();
     }
@@ -83,7 +83,7 @@ pub fn copy_img(app_handle: tauri::AppHandle, width: usize, height: usize) -> Re
 
     let mut app_cache_dir_path = cache_dir().expect("Get Cache Dir Failed");
     app_cache_dir_path.push(&app_handle.config().tauri.bundle.identifier);
-    app_cache_dir_path.push("pot_screenshot_cut.png");
+    app_cache_dir_path.push("see_see_screenshot_cut.png");
     let data = ImageReader::open(app_cache_dir_path)?.decode()?;
 
     let img = ImageData {

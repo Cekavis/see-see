@@ -7,6 +7,7 @@ import { convertFileSrc } from '@tauri-apps/api/tauri';
 import React, { useEffect, useState } from 'react';
 import Translate from './Translate';
 import Recognize from './Recognize';
+import Vision from './Vision';
 import Collection from './Collection';
 import Tts from './Tts';
 import { ServiceType } from '../../../../utils/service_instance';
@@ -18,7 +19,7 @@ export default function Service() {
     const { t } = useTranslation();
 
     const loadPluginList = async () => {
-        const serviceTypeList = ['translate', 'tts', 'recognize', 'collection'];
+        const serviceTypeList = ['translate', 'tts', 'recognize', 'vision', 'collection'];
         let temp = {};
         for (const serviceType of serviceTypeList) {
             temp[serviceType] = {};
@@ -74,6 +75,12 @@ export default function Service() {
                     title={t(`config.service.recognize`)}
                 >
                     <Recognize pluginList={pluginList[ServiceType.RECOGNIZE]} />
+                </Tab>
+                <Tab
+                    key='vision'
+                    title={t(`config.service.vision`)}
+                >
+                    <Vision pluginList={pluginList[ServiceType.VISION]} />
                 </Tab>
                 <Tab
                     key='tts'

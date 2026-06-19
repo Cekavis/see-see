@@ -161,6 +161,7 @@
                 "translate": "Translate",
                 "tts": "TTS",
                 "recognize": "Recognize",
+                "vision": "Vision",
                 "collection": "Collection",
                 "least": "Please keep at least one",
                 "add_builtin_service": "Add Builtin Service",
@@ -432,6 +433,37 @@
                     "title": "QR Code"
                 }
             },
+            "vision": {
+                "openai_compatible": {
+                    "title": "OpenAI Compatible Vision",
+                    "provider": "Preset Endpoint",
+                    "request_path": "Request Path",
+                    "model": "Model",
+                    "api_key": "API Key",
+                    "auth_type": "Auth Type",
+                    "image_detail": "Image Detail",
+                    "stream": "Stream Mode",
+                    "prompt": "Prompt",
+                    "request_arguments": "Request Arguments",
+                    "extra_headers": "Extra Headers",
+                    "providers": {
+                        "openai": "OpenAI",
+                        "openrouter": "OpenRouter",
+                        "siliconflow": "SiliconFlow",
+                        "dashscope_cn": "DashScope China",
+                        "custom": "Custom"
+                    },
+                    "auth": {
+                        "bearer": "Bearer Token",
+                        "api_key": "api-key Header"
+                    },
+                    "detail": {
+                        "auto": "Auto",
+                        "low": "Low",
+                        "high": "High"
+                    }
+                }
+            },
             "tts": {
                 "lingva_tts": {
                     "title": "Lingva",
@@ -467,6 +499,9 @@
             "copy_text": "Copy",
             "delete_newline": "Delete Newline",
             "delete_space": "Delete Space"
+        },
+        "vision": {
+            "analyze": "Vision"
         }
     }
 }

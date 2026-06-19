@@ -1,15 +1,15 @@
 {
-    "name": "pot",
+    "name": "see-see",
     "private": true,
-    "version": "3.0.7",
+    "version": "4.0.0",
     "type": "module",
     "scripts": {
         "dev": "vite",
         "build": "vite build",
         "preview": "vite preview",
         "tauri": "tauri",
-        "updater": "node updater/updater.mjs",
-        "updater:fixRuntime": "node updater/updater-for-fix-runtime.mjs"
+        "updater": "node -e \"throw new Error('See See updater is disabled until release signing is configured')\"",
+        "updater:fixRuntime": "node -e \"throw new Error('See See updater is disabled until release signing is configured')\""
     },
     "dependencies": {
         "@nextui-org/react": "^2.4.8",

@@ -4,7 +4,6 @@ use crate::window::config_window;
 use crate::window::input_translate;
 use crate::window::ocr_recognize;
 use crate::window::ocr_translate;
-use crate::window::updater_window;
 use log::info;
 use tauri::CustomMenuItem;
 use tauri::GlobalShortcutManager;
@@ -59,7 +58,7 @@ pub fn update_tray(app_handle: tauri::AppHandle, mut language: String, mut copy_
         .unwrap();
     #[cfg(not(target_os = "linux"))]
     tray_handle
-        .set_tooltip(&format!("pot {}", app_handle.package_info().version))
+        .set_tooltip(&format!("See See {}", app_handle.package_info().version))
         .unwrap();
 
     let enable_clipboard_monitor = match get("clipboard_monitor") {
@@ -186,7 +185,7 @@ fn on_config_click() {
 }
 
 fn on_check_update_click() {
-    updater_window();
+    info!("See See updater is disabled until release signing is configured");
 }
 fn on_view_log_click(app: &AppHandle) {
     use tauri::api::path::app_log_dir;

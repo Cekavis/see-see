@@ -15,7 +15,7 @@ export async function recognize(base64, language, options = {}) {
         throw 'Please configure appid and secret';
     }
 
-    let file = await readBinaryFile('pot_screenshot_cut.png', { dir: BaseDirectory.AppCache });
+    let file = await readBinaryFile('see_see_screenshot_cut.png', { dir: BaseDirectory.AppCache });
     const str = appid + md5(file) + salt + 'APICUIDmac' + secret;
     const sign = md5(str);
 
@@ -28,7 +28,7 @@ export async function recognize(base64, language, options = {}) {
             image: {
                 file: file,
                 mime: 'image/png',
-                fileName: 'pot_screenshot_cut.png',
+                fileName: 'see_see_screenshot_cut.png',
             },
             from: 'auto',
             to: language === 'auto' ? 'zh' : language,

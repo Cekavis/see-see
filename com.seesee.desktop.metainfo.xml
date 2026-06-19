@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+    <id>com.seesee.desktop</id>
+    <name>See See</name>
+    <summary>Screenshot translation and vision assistant</summary>
+    <developer id="com.seesee">
+        <name>See See</name>
+    </developer>
+    <metadata_license>CC0-1.0</metadata_license>
+    <project_license>GPL-3.0-only</project_license>
+    <url type="homepage">https://github.com/Cekavis/see-see</url>
+    <url type="bugtracker">https://github.com/Cekavis/see-see/issues</url>
+    <description>
+        <p>
+            See See is a cross-platform desktop assistant for text translation,
+            screenshot translation, OCR, and direct vision-model analysis.
+        </p>
+    </description>
+    <launchable type="desktop-id">com.seesee.desktop.desktop</launchable>
+    <screenshots>
+        <screenshot type="default">
+            <image>https://github.com/Cekavis/see-see/raw/main/asset/1.png</image>
+        </screenshot>
+    </screenshots>
+    <releases>
+        <release version="4.0.0" date="2026-06-19">
+            <url type="details">https://github.com/Cekavis/see-see/releases/tag/4.0.0</url>
+        </release>
+    </releases>
+    <content_rating type="oars-1.1" />
+</component>

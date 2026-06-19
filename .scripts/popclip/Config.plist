@@ -10,26 +10,26 @@
                 <key>Image File</key>
                 <string>Pot.png</string>
                 <key>Title</key>
-                <string>Pot Translate</string>
+                <string>See See Translate</string>
             </dict>
         </array>
         <key>Credits</key>
         <array>
             <dict>
                 <key>Link</key>
-                <string>https://pot-app.com/</string>
+                <string>https://github.com/Cekavis/see-see</string>
                 <key>Name</key>
-                <string>pot-app</string>
+                <string>See See</string>
             </dict>
         </array>
         <key>Extension Description</key>
-        <string>Translate text with Pot.</string>
+        <string>Translate text with See See.</string>
         <key>Extension Identifier</key>
-        <string>com.pot-app.popclip.extension.desktop</string>
+        <string>com.seesee.popclip.extension.desktop</string>
         <key>Extension Image File</key>
         <string>Pot.png</string>
         <key>Extension Name</key>
-        <string>Pot</string>
+        <string>See See</string>
         <key>Required OS Version</key>
         <string>10.13</string>
     </dict>

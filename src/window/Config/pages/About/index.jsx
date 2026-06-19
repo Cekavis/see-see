@@ -5,7 +5,6 @@ import { open } from '@tauri-apps/api/shell';
 import { BsTencentQq } from 'react-icons/bs';
 import { BsTelegram } from 'react-icons/bs';
 import { BsGithub } from 'react-icons/bs';
-import { invoke } from '@tauri-apps/api';
 import React from 'react';
 
 import { appVersion } from '../../../../utils/env';
@@ -21,7 +20,7 @@ export default function About() {
                 draggable={false}
             />
             <div className='content-center'>
-                <h1 className='font-bold text-2xl text-center'>Pot</h1>
+                <h1 className='font-bold text-2xl text-center'>See See</h1>
                 <p className='text-center text-sm text-gray-500 mb-[5px]'>{appVersion}</p>
                 <Divider />
                 <div className='flex justify-between'>
@@ -30,7 +29,7 @@ export default function About() {
                         className='my-[5px]'
                         size='sm'
                         onPress={() => {
-                            open('https://pot-app.com');
+                            open('https://github.com/Cekavis/see-see');
                         }}
                     >
                         {t('config.about.website')}
@@ -40,7 +39,7 @@ export default function About() {
                         className='my-[5px]'
                         size='sm'
                         onPress={() => {
-                            open('https://github.com/pot-app/pot-desktop');
+                            open('https://github.com/Cekavis/see-see');
                         }}
                     >
                         {t('config.about.github')}
@@ -65,7 +64,7 @@ export default function About() {
                                     className='my-[5px]'
                                     size='sm'
                                     onPress={() => {
-                                        open('https://github.com/pot-app/pot-desktop/issues');
+                                        open('https://github.com/Cekavis/see-see/issues');
                                     }}
                                 >
                                     {t('config.about.issue')}
@@ -75,7 +74,7 @@ export default function About() {
                                     className='my-[5px]'
                                     size='sm'
                                     onPress={() => {
-                                        open('mailto:support@pot-app.com');
+                                        open('https://github.com/Cekavis/see-see/issues');
                                     }}
                                 >
                                     {t('config.about.email')}
@@ -106,7 +105,7 @@ export default function About() {
                                         className='my-[5px]'
                                         size='lg'
                                         onPress={() => {
-                                            open('https://pd.qq.com/s/akns94e1r');
+                                            open('https://github.com/Cekavis/see-see/discussions');
                                         }}
                                     >
                                         <BsTencentQq />
@@ -119,7 +118,7 @@ export default function About() {
                                         className='my-[5px]'
                                         size='lg'
                                         onPress={() => {
-                                            open('https://pot-app.com/img/qq_group.png');
+                                            open('https://github.com/Cekavis/see-see/discussions');
                                         }}
                                     >
                                         <BsTencentQq />
@@ -132,7 +131,7 @@ export default function About() {
                                         className='my-[5px]'
                                         size='lg'
                                         onPress={() => {
-                                            open('https://t.me/pot_app');
+                                            open('https://github.com/Cekavis/see-see/discussions');
                                         }}
                                     >
                                         <BsTelegram />
@@ -145,7 +144,7 @@ export default function About() {
                                         className='my-[5px]'
                                         size='lg'
                                         onPress={() => {
-                                            open('https://github.com/pot-app/pot-desktop/discussions');
+                                            open('https://github.com/Cekavis/see-see/discussions');
                                         }}
                                     >
                                         <BsGithub />
@@ -163,9 +162,7 @@ export default function About() {
                         variant='light'
                         className='my-[5px]'
                         size='sm'
-                        onPress={() => {
-                            invoke('updater_window');
-                        }}
+                        isDisabled
                     >
                         {t('config.about.check_update')}
                     </Button>

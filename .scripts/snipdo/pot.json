@@ -1,10 +1,10 @@
 {
-    "name": "Pot Translation",
-    "identifier": "com.pot-app.snipdoext.desktop",
+    "name": "See See Translation",
+    "identifier": "com.seesee.snipdoext.desktop",
     "icon": "pot.png",
     "actions": [
         {
-            "title": "Pot Translation",
+            "title": "See See Translation",
             "icon": "pot.png",
             "powershellFile": "pot.ps1"
         }

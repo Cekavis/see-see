@@ -12,7 +12,7 @@ import { useTranslation } from 'react-i18next';
 import { HiTranslate } from 'react-icons/hi';
 import { LuDelete } from 'react-icons/lu';
 import { invoke } from '@tauri-apps/api';
-import { atom, useAtom } from 'jotai';
+import { atom, useAtom, useSetAtom } from 'jotai';
 import { getServiceName, getServiceSouceType, ServiceSourceType } from '../../../../utils/service_instance';
 import { useConfig, useSyncAtom, useVoice, useToastStyle } from '../../../../hooks';
 import { invoke_plugin } from '../../../../utils/invoke_plugin';
@@ -25,6 +25,8 @@ import { debug } from 'tauri-plugin-log-api';
 
 export const sourceTextAtom = atom('');
 export const detectLanguageAtom = atom('');
+export const translateModeAtom = atom('[SELECTION_TRANSLATE]');
+export const imageTranslateBase64Atom = atom('');
 
 let unlisten = null;
 let timer = null;
@@ -34,6 +36,8 @@ export default function SourceArea(props) {
     const [appFontSize] = useConfig('app_font_size', 16);
     const [sourceText, setSourceText, syncSourceText] = useSyncAtom(sourceTextAtom);
     const [detectLanguage, setDetectLanguage] = useAtom(detectLanguageAtom);
+    const [windowType, setWindowType] = useAtom(translateModeAtom);
+    const setImageTranslateBase64 = useSetAtom(imageTranslateBase64Atom);
     const [incrementalTranslate] = useConfig('incremental_translate', false);
     const [dynamicTranslate] = useConfig('dynamic_translate', false);
     const [deleteNewline] = useConfig('translate_delete_newline', false);
@@ -43,7 +47,6 @@ export default function SourceArea(props) {
     const [hideWindow] = useConfig('translate_hide_window', false);
     const [hideSource] = useConfig('hide_source', false);
     const [ttsPluginInfo, setTtsPluginInfo] = useState();
-    const [windowType, setWindowType] = useState('[SELECTION_TRANSLATE]');
     const toastStyle = useToastStyle();
     const { t } = useTranslation();
     const textAreaRef = useRef();
@@ -61,12 +64,14 @@ export default function SourceArea(props) {
         setDetectLanguage('');
         if (text === '[INPUT_TRANSLATE]') {
             setWindowType('[INPUT_TRANSLATE]');
+            setImageTranslateBase64('');
             appWindow.show();
             appWindow.setFocus();
             setSourceText('', true);
         } else if (text === '[IMAGE_TRANSLATE]') {
             setWindowType('[IMAGE_TRANSLATE]');
             const base64 = await invoke('get_base64');
+            setImageTranslateBase64(base64);
             const serviceInstanceKey = recognizeServiceList[0];
             if (getServiceSouceType(serviceInstanceKey) === ServiceSourceType.PLUGIN) {
                 if (recognizeLanguage in pluginList['recognize'][getServiceName(serviceInstanceKey)].language) {
@@ -146,6 +151,7 @@ export default function SourceArea(props) {
             }
         } else {
             setWindowType('[SELECTION_TRANSLATE]');
+            setImageTranslateBase64('');
             let newText = text.trim();
             if (deleteNewline) {
                 newText = text.replace(/\-\s+/g, '').replace(/\s+/g, ' ');

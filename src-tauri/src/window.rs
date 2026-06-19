@@ -1,9 +1,11 @@
+#[cfg(target_os = "macos")]
 use std::fs;
 
 use crate::config::get;
 use crate::config::set;
 use crate::StringWrapper;
 use crate::APP;
+#[cfg(target_os = "macos")]
 use dirs::cache_dir;
 use log::{info, warn};
 use tauri::Manager;
@@ -342,7 +344,7 @@ pub fn ocr_recognize() {
             // 创建目录
             fs::create_dir_all(&app_cache_dir_path).expect("Create Cache Dir Failed");
         }
-        app_cache_dir_path.push("pot_screenshot_cut.png");
+        app_cache_dir_path.push("see_see_screenshot_cut.png");
 
         let path = app_cache_dir_path.to_string_lossy().replace("\\\\?\\", "");
         println!("Screenshot path: {}", path);
@@ -375,7 +377,7 @@ pub fn ocr_translate() {
             // 创建目录
             fs::create_dir_all(&app_cache_dir_path).expect("Create Cache Dir Failed");
         }
-        app_cache_dir_path.push("pot_screenshot_cut.png");
+        app_cache_dir_path.push("see_see_screenshot_cut.png");
 
         let path = app_cache_dir_path.to_string_lossy().replace("\\\\?\\", "");
         println!("Screenshot path: {}", path);

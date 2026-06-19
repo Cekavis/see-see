@@ -1,7 +1,7 @@
-rm Pot.popclipextz
-mkdir Pot.popclipext
-cp Config.plist Pot.popclipext
-cp Pot.png Pot.popclipext
-cp Pot.sh Pot.popclipext
-zip -r Pot.popclipextz Pot.popclipext
-rm -r Pot.popclipext
+rm -f "See See.popclipextz"
+mkdir "See See.popclipext"
+cp Config.plist "See See.popclipext"
+cp Pot.png "See See.popclipext"
+cp Pot.sh "See See.popclipext"
+zip -r "See See.popclipextz" "See See.popclipext"
+rm -r "See See.popclipext"

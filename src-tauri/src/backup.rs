@@ -7,6 +7,9 @@ use walkdir::WalkDir;
 use zip::read::ZipArchive;
 use zip::write::SimpleFileOptions;
 
+const APP_CONFIG_DIR: &str = "com.seesee.desktop";
+const BACKUP_DIR: &str = "see-see";
+
 #[tauri::command(async)]
 pub async fn webdav(
     operate: &str,
@@ -20,9 +23,12 @@ pub async fn webdav(
         .set_host(url.clone())
         .set_auth(Auth::Basic(username.clone(), password.clone()))
         .build()?;
-    client.mkcol("/pot-app").await.unwrap_or_default();
+    client
+        .mkcol(&format!("/{BACKUP_DIR}"))
+        .await
+        .unwrap_or_default();
     let client = ClientBuilder::new()
-        .set_host(format!("{}/pot-app", url.trim_end_matches("/")))
+        .set_host(format!("{}/{}", url.trim_end_matches("/"), BACKUP_DIR))
         .set_auth(Auth::Basic(username, password))
         .build()?;
     match operate {
@@ -35,7 +41,7 @@ pub async fn webdav(
             let res = client.get(&format!("/{}", name.unwrap())).await?;
             let data = res.bytes().await?;
             let mut config_dir_path = config_dir().unwrap();
-            config_dir_path = config_dir_path.join("com.pot-app.desktop");
+            config_dir_path = config_dir_path.join(APP_CONFIG_DIR);
             let zip_path = config_dir_path.join("archive.zip");
 
             let mut zip_file = std::fs::File::create(&zip_path)?;
@@ -52,7 +58,7 @@ pub async fn webdav(
                     return Err(Error::Error("WebDav Get Config Dir Error".into()));
                 }
             };
-            config_dir_path = config_dir_path.join("com.pot-app.desktop");
+            config_dir_path = config_dir_path.join(APP_CONFIG_DIR);
             let zip_path = config_dir_path.join("archive.zip");
             let config_path = config_dir_path.join("config.json");
             let database_path = config_dir_path.join("history.db");
@@ -122,7 +128,7 @@ pub async fn local(operate: &str, path: String) -> Result<String, Error> {
                     return Err(Error::Error("WebDav Get Config Dir Error".into()));
                 }
             };
-            config_dir_path = config_dir_path.join("com.pot-app.desktop");
+            config_dir_path = config_dir_path.join(APP_CONFIG_DIR);
             let config_path = config_dir_path.join("config.json");
             let database_path = config_dir_path.join("history.db");
             let plugin_path = config_dir_path.join("plugins");
@@ -160,7 +166,7 @@ pub async fn local(operate: &str, path: String) -> Result<String, Error> {
         }
         "get" => {
             let mut config_dir_path = config_dir().unwrap();
-            config_dir_path = config_dir_path.join("com.pot-app.desktop");
+            config_dir_path = config_dir_path.join(APP_CONFIG_DIR);
 
             let mut zip_file = std::fs::File::open(&path)?;
             let mut zip = ZipArchive::new(&mut zip_file)?;
@@ -190,7 +196,7 @@ pub async fn aliyun(operate: &str, path: String, url: String) -> Result<String, 
             let res = reqwest::Client::new().get(&url).send().await?;
             let data = res.bytes().await?;
             let mut config_dir_path = config_dir().unwrap();
-            config_dir_path = config_dir_path.join("com.pot-app.desktop");
+            config_dir_path = config_dir_path.join(APP_CONFIG_DIR);
             let zip_path = config_dir_path.join("archive.zip");
 
             let mut zip_file = std::fs::File::create(&zip_path)?;

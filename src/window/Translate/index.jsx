@@ -8,10 +8,14 @@ import { AiFillCloseCircle } from 'react-icons/ai';
 import React, { useState, useEffect } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { BsPinFill } from 'react-icons/bs';
+import { useAtomValue } from 'jotai';
 
 import LanguageArea from './components/LanguageArea';
-import SourceArea from './components/SourceArea';
+import SourceArea, { imageTranslateBase64Atom, translateModeAtom } from './components/SourceArea';
 import TargetArea from './components/TargetArea';
+import VisionTargetArea from './components/VisionTargetArea';
+import * as builtinVisionServices from '../../services/vision';
+import { getServiceName } from '../../utils/service_instance';
 import { osType } from '../../utils/env';
 import { useConfig } from '../../hooks';
 import { store } from '../../utils/store';
@@ -77,9 +81,12 @@ export default function Translate() {
         'ecdict',
     ]);
     const [recognizeServiceInstanceList] = useConfig('recognize_service_list', ['system', 'tesseract']);
+    const [visionServiceInstanceList] = useConfig('vision_service_list', ['openai_compatible']);
     const [ttsServiceInstanceList] = useConfig('tts_service_list', ['lingva_tts']);
     const [collectionServiceInstanceList] = useConfig('collection_service_list', []);
     const [hideLanguage] = useConfig('hide_language', false);
+    const translateMode = useAtomValue(translateModeAtom);
+    const imageTranslateBase64 = useAtomValue(imageTranslateBase64Atom);
     const [pined, setPined] = useState(false);
     const [pluginList, setPluginList] = useState(null);
     const [serviceInstanceConfigMap, setServiceInstanceConfigMap] = useState(null);
@@ -163,7 +170,7 @@ export default function Translate() {
     }, [rememberWindowSize]);
 
     const loadPluginList = async () => {
-        const serviceTypeList = ['translate', 'tts', 'recognize', 'collection'];
+        const serviceTypeList = ['translate', 'tts', 'recognize', 'collection', 'vision'];
         let temp = {};
         for (const serviceType of serviceTypeList) {
             temp[serviceType] = {};
@@ -204,6 +211,9 @@ export default function Translate() {
         for (const serviceInstanceKey of recognizeServiceInstanceList) {
             config[serviceInstanceKey] = (await store.get(serviceInstanceKey)) ?? {};
         }
+        for (const serviceInstanceKey of visionServiceInstanceList) {
+            config[serviceInstanceKey] = (await store.get(serviceInstanceKey)) ?? {};
+        }
         for (const serviceInstanceKey of ttsServiceInstanceList) {
             config[serviceInstanceKey] = (await store.get(serviceInstanceKey)) ?? {};
         }
@@ -216,6 +226,7 @@ export default function Translate() {
         if (
             translateServiceInstanceList !== null &&
             recognizeServiceInstanceList !== null &&
+            visionServiceInstanceList !== null &&
             ttsServiceInstanceList !== null &&
             collectionServiceInstanceList !== null
         ) {
@@ -224,6 +235,7 @@ export default function Translate() {
     }, [
         translateServiceInstanceList,
         recognizeServiceInstanceList,
+        visionServiceInstanceList,
         ttsServiceInstanceList,
         collectionServiceInstanceList,
     ]);
@@ -333,10 +345,36 @@ export default function Translate() {
                                                     <></>
                                                 );
                                             })}
+                                        {provided.placeholder}
                                     </div>
                                 )}
                             </Droppable>
                         </DragDropContext>
+                        {translateMode === '[IMAGE_TRANSLATE]' &&
+                            imageTranslateBase64 !== '' &&
+                            visionServiceInstanceList !== null &&
+                            serviceInstanceConfigMap !== null &&
+                            visionServiceInstanceList.map((serviceInstanceKey, index) => {
+                                const config = serviceInstanceConfigMap[serviceInstanceKey] ?? {};
+                                const enable = config['enable'] ?? false;
+                                const service = builtinVisionServices[getServiceName(serviceInstanceKey)];
+
+                                return enable && service ? (
+                                    <div key={serviceInstanceKey}>
+                                        <VisionTargetArea
+                                            index={index}
+                                            name={serviceInstanceKey}
+                                            base64={imageTranslateBase64}
+                                            visionServiceInstanceList={visionServiceInstanceList}
+                                            pluginList={pluginList}
+                                            serviceInstanceConfigMap={serviceInstanceConfigMap}
+                                        />
+                                        <Spacer y={2} />
+                                    </div>
+                                ) : (
+                                    <></>
+                                );
+                            })}
                     </div>
                 </div>
             </div>

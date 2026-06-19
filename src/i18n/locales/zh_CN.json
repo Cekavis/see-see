@@ -161,6 +161,7 @@
                 "translate": "翻译",
                 "tts": "语音合成",
                 "recognize": "文字识别",
+                "vision": "视觉",
                 "collection": "生词本",
                 "least": "请至少保留一个",
                 "add_builtin_service": "添加内置服务",
@@ -432,6 +433,37 @@
                     "title": "二维码识别"
                 }
             },
+            "vision": {
+                "openai_compatible": {
+                    "title": "OpenAI 兼容视觉",
+                    "provider": "预设端点",
+                    "request_path": "请求地址",
+                    "model": "模型",
+                    "api_key": "API Key",
+                    "auth_type": "鉴权方式",
+                    "image_detail": "图片细节",
+                    "stream": "流式输出",
+                    "prompt": "Prompt",
+                    "request_arguments": "请求参数",
+                    "extra_headers": "额外请求头",
+                    "providers": {
+                        "openai": "OpenAI",
+                        "openrouter": "OpenRouter",
+                        "siliconflow": "硅基流动",
+                        "dashscope_cn": "DashScope 中国站",
+                        "custom": "自定义"
+                    },
+                    "auth": {
+                        "bearer": "Bearer Token",
+                        "api_key": "api-key 请求头"
+                    },
+                    "detail": {
+                        "auto": "自动",
+                        "low": "低",
+                        "high": "高"
+                    }
+                }
+            },
             "tts": {
                 "lingva_tts": {
                     "title": "Lingva",
@@ -467,6 +499,9 @@
             "copy_text": "复制",
             "delete_newline": "删除换行",
             "delete_space": "删除空格"
+        },
+        "vision": {
+            "analyze": "视觉处理"
         }
     }
 }

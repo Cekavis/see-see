@@ -1,6 +1,7 @@
 export enum ServiceType {
     TRANSLATE = 'translate',
     RECOGNIZE = 'recognize',
+    VISION = 'vision',
     TTS = 'tts',
     COLLECTION = 'collection',
 }

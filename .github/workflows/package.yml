@@ -61,14 +61,14 @@ jobs:
             - name: Upload Artifacts
               uses: actions/upload-artifact@v4
               with:
-                  name: Pot.popclipextz
-                  path: .scripts/popclip/Pot.popclipextz
+                  name: See See.popclipextz
+                  path: .scripts/popclip/See See.popclipextz
                   if-no-files-found: error
             - name: Upload Artifacts
               uses: actions/upload-artifact@v4
               with:
-                  name: pot.pbar
-                  path: .scripts/snipdo/pot.pbar
+                  name: see-see.pbar
+                  path: .scripts/snipdo/see-see.pbar
                   if-no-files-found: error
             - name: Upload Release
               if: startsWith(github.ref, 'refs/tags')
@@ -76,14 +76,14 @@ jobs:
               with:
                   body_path: CHANGELOG
                   token: ${{ secrets.GITHUB_TOKEN }}
-                  files: .scripts/popclip/Pot.popclipextz
+                  files: .scripts/popclip/See See.popclipextz
             - name: Upload Release
               if: startsWith(github.ref, 'refs/tags')
               uses: softprops/action-gh-release@v1
               with:
                   body_path: CHANGELOG
                   token: ${{ secrets.GITHUB_TOKEN }}
-                  files: .scripts/snipdo/pot.pbar
+                  files: .scripts/snipdo/see-see.pbar
 
     build-for-macos:
         needs: change-version
@@ -133,13 +133,11 @@ jobs:
             - name: Change File Name
               if: matrix.target == 'aarch64-apple-darwin'
               run: |
-                  sudo mv src-tauri/target/aarch64-apple-darwin/release/bundle/macos/pot.app.tar.gz src-tauri/target/aarch64-apple-darwin/release/bundle/macos/pot_${{needs.change-version.outputs.version}}_aarch64.app.tar.gz
-                  sudo mv src-tauri/target/aarch64-apple-darwin/release/bundle/macos/pot.app.tar.gz.sig src-tauri/target/aarch64-apple-darwin/release/bundle/macos/pot_${{needs.change-version.outputs.version}}_aarch64.app.tar.gz.sig
+                  echo "Updater bundle is disabled for See See"
             - name: Change File Name
               if: matrix.target == 'x86_64-apple-darwin'
               run: |
-                  sudo mv src-tauri/target/x86_64-apple-darwin/release/bundle/macos/pot.app.tar.gz src-tauri/target/x86_64-apple-darwin/release/bundle/macos/pot_${{needs.change-version.outputs.version}}_x64.app.tar.gz
-                  sudo mv src-tauri/target/x86_64-apple-darwin/release/bundle/macos/pot.app.tar.gz.sig src-tauri/target/x86_64-apple-darwin/release/bundle/macos/pot_${{needs.change-version.outputs.version}}_x64.app.tar.gz.sig
+                  echo "Updater bundle is disabled for See See"
             - name: Upload Artifacts
               uses: actions/upload-artifact@v4
               with:
@@ -149,7 +147,7 @@ jobs:
             - name: Upload Artifacts
               uses: actions/upload-artifact@v4
               with:
-                  name: macos_${{ matrix.target }}_updater
+                  name: macos_${{ matrix.target }}_app
                   path: src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.app*
                   if-no-files-found: error
             - name: Upload Release
@@ -211,7 +209,7 @@ jobs:
               run: |
                   $env:TAURI_PRIVATE_KEY="${{ secrets.TAURI_PRIVATE_KEY }}"
                   $env:TAURI_KEY_PASSWORD="${{ secrets.TAURI_KEY_PASSWORD }}"
-                  pnpm tauri build -b nsis,updater --target ${{ matrix.target }}
+                  pnpm tauri build -b nsis --target ${{ matrix.target }}
             - name: Upload Artifacts
               uses: actions/upload-artifact@v4
               with:
@@ -279,10 +277,8 @@ jobs:
               run: |
                   $env:TAURI_PRIVATE_KEY="${{ secrets.TAURI_PRIVATE_KEY }}"
                   $env:TAURI_KEY_PASSWORD="${{ secrets.TAURI_KEY_PASSWORD }}"
-                  pnpm tauri build -b nsis,updater --target ${{ matrix.target }}
-                  Rename-Item .\src-tauri\target\${{ matrix.target }}\release\bundle\nsis\pot_${{needs.change-version.outputs.version}}_${{ matrix.arch }}-setup.exe pot_${{needs.change-version.outputs.version}}_${{ matrix.arch }}_fix_webview2_runtime-setup.exe
-                  Rename-Item .\src-tauri\target\${{ matrix.target }}\release\bundle\nsis\pot_${{needs.change-version.outputs.version}}_${{ matrix.arch }}-setup.nsis.zip pot_${{needs.change-version.outputs.version}}_${{ matrix.arch }}_fix_webview2_runtime-setup.nsis.zip
-                  Rename-Item .\src-tauri\target\${{ matrix.target }}\release\bundle\nsis\pot_${{needs.change-version.outputs.version}}_${{ matrix.arch }}-setup.nsis.zip.sig pot_${{needs.change-version.outputs.version}}_${{ matrix.arch }}_fix_webview2_runtime-setup.nsis.zip.sig
+                  pnpm tauri build -b nsis --target ${{ matrix.target }}
+                  Rename-Item .\src-tauri\target\${{ matrix.target }}\release\bundle\nsis\*_${{ matrix.arch }}-setup.exe see-see_${{needs.change-version.outputs.version}}_${{ matrix.arch }}_fix_webview2_runtime-setup.exe
             - name: Upload Artifacts
               uses: actions/upload-artifact@v4
               with:
@@ -380,7 +376,7 @@ jobs:
     trigger-docs-update:
         needs: [build-for-macos, build-for-windows, build-for-linux]
         runs-on: ubuntu-latest
-        if: startsWith(github.ref, 'refs/tags')
+        if: ${{ false }}
         steps:
             - name: Trigger update
               run: |
@@ -392,7 +388,7 @@ jobs:
     release-update:
         needs: [build-for-macos, build-for-windows, build-for-linux, build-for-windows-fix-runtime]
         runs-on: ubuntu-latest
-        if: startsWith(github.ref, 'refs/tags')
+        if: ${{ false }}
         steps:
             - name: Checkout repository
               uses: actions/checkout@v4
@@ -432,7 +428,7 @@ jobs:
         name: Update Homebrew cask
         needs: build-for-macos
         runs-on: macos-latest
-        if: startsWith(github.ref, 'refs/tags')
+        if: ${{ false }}
         steps:
             - name: Checkout repository
               uses: actions/checkout@v4
@@ -461,7 +457,7 @@ jobs:
         name: Update WinGet Package
         needs: build-for-windows
         runs-on: ubuntu-latest
-        if: startsWith(github.ref, 'refs/tags')
+        if: ${{ false }}
         steps:
             - name: Checkout repository
               uses: actions/checkout@v4
