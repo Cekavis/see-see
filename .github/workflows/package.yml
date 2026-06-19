@@ -8,6 +8,9 @@ on:
             - '!updater'
 permissions: write-all
 
+env:
+    CARGO_HTTP_MULTIPLEXING: false
+
 jobs:
     change-version:
         runs-on: ubuntu-latest
