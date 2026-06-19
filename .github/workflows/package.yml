@@ -119,17 +119,32 @@ jobs:
             - name: Code Format
               run: pnpm prettier --write .
             - name: Build and Package
+              env:
+                  TAURI_PRIVATE_KEY_SECRET: ${{ secrets.TAURI_PRIVATE_KEY }}
+                  TAURI_KEY_PASSWORD_SECRET: ${{ secrets.TAURI_KEY_PASSWORD }}
+                  APPLE_SIGNING_IDENTITY_SECRET: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+                  APPLE_CERTIFICATE_SECRET: ${{ secrets.APPLE_CERTIFICATE }}
+                  APPLE_CERTIFICATE_PASSWORD_SECRET: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+                  APPLE_TEAM_ID_SECRET: ${{ secrets.APPLE_TEAM_ID }}
+                  APPLE_API_ISSUER_SECRET: ${{ secrets.APPLE_API_ISSUER }}
+                  APPLE_API_KEY_SECRET: ${{ secrets.APPLE_API_KEY }}
+                  APPLE_ID_SECRET: ${{ secrets.APPLE_ID }}
+                  APPLE_PASSWORD_SECRET: ${{ secrets.APPLE_PASSWORD }}
               run: |
-                  export TAURI_PRIVATE_KEY="${{ secrets.TAURI_PRIVATE_KEY }}"
-                  export TAURI_KEY_PASSWORD="${{ secrets.TAURI_KEY_PASSWORD }}"
-                  export APPLE_SIGNING_IDENTITY="${{ secrets.APPLE_SIGNING_IDENTITY }}"
-                  export APPLE_CERTIFICATE="${{ secrets.APPLE_CERTIFICATE }}"
-                  export APPLE_CERTIFICATE_PASSWORD="${{ secrets.APPLE_CERTIFICATE_PASSWORD }}"
-                  export APPLE_TEAM_ID="${{ secrets.APPLE_TEAM_ID }}"
-                  export APPLE_API_ISSUER="${{ secrets.APPLE_API_ISSUER }}"
-                  export APPLE_API_KEY="${{ secrets.APPLE_API_KEY }}"
-                  export APPLE_ID="${{ secrets.APPLE_ID }}"
-                  export APPLE_PASSWORD="${{ secrets.APPLE_PASSWORD }}"
+                  if [ -n "$TAURI_PRIVATE_KEY_SECRET" ]; then
+                      export TAURI_PRIVATE_KEY="$TAURI_PRIVATE_KEY_SECRET"
+                      export TAURI_KEY_PASSWORD="$TAURI_KEY_PASSWORD_SECRET"
+                  fi
+                  if [ -n "$APPLE_CERTIFICATE_SECRET" ]; then
+                      export APPLE_SIGNING_IDENTITY="$APPLE_SIGNING_IDENTITY_SECRET"
+                      export APPLE_CERTIFICATE="$APPLE_CERTIFICATE_SECRET"
+                      export APPLE_CERTIFICATE_PASSWORD="$APPLE_CERTIFICATE_PASSWORD_SECRET"
+                      export APPLE_TEAM_ID="$APPLE_TEAM_ID_SECRET"
+                      export APPLE_API_ISSUER="$APPLE_API_ISSUER_SECRET"
+                      export APPLE_API_KEY="$APPLE_API_KEY_SECRET"
+                      export APPLE_ID="$APPLE_ID_SECRET"
+                      export APPLE_PASSWORD="$APPLE_PASSWORD_SECRET"
+                  fi
                   pnpm tauri build --target ${{ matrix.target }}
                   sudo chmod +x src-tauri/resources/*
                   chmod +x src-tauri/resources/*
