@@ -2,7 +2,9 @@ name: Package
 on:
     push:
         branches: [master]
-        tags-ignore: [updater]
+        tags:
+            - '**'
+            - '!updater'
 permissions: write-all
 
 jobs:
