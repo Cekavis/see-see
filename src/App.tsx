@@ -1,72 +1,13 @@
 import { Channel } from "@tauri-apps/api/core";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { useCallback, useEffect, useState } from "react";
-import { Button } from "./components/Button";
-import { ErrorNotice } from "./components/ErrorNotice";
-import { t } from "./i18n";
-import {
-  ipc,
-  type AnalysisEvent,
-  type AnalysisSnapshot,
-  type AppSnapshot,
-} from "./ipc";
+import { useEffect, useState } from "react";
+import { ipc, type AnalysisEvent, type AnalysisSnapshot } from "./ipc";
 import { CaptureOverlay } from "./views/CaptureOverlay";
 import { Result } from "./views/Result";
-import { Settings } from "./views/Settings";
-import { Prompts } from "./views/Prompts";
-import { History } from "./views/History";
-import { Onboarding } from "./views/Onboarding";
+import { SettingsShell } from "./views/SettingsShell";
 
 function MainView() {
-  const [snapshot, setSnapshot] = useState<AppSnapshot | null>(null);
-  const [error, setError] = useState<string>();
-
-  const load = useCallback(() => {
-    void ipc
-      .getAppSnapshot()
-      .then(setSnapshot)
-      .catch(() => setError(t("unknownError")));
-  }, []);
-
-  useEffect(load, [load]);
-
-  if (snapshot && !snapshot.settings.onboardingCompleted) return <Onboarding />;
-
-  return (
-    <main className="app-shell">
-      <header className="page-header">
-        <h1>{t("appName")}</h1>
-        <p>
-          {snapshot
-            ? `快捷键：${snapshot.settings.captureShortcut}`
-            : t("loading")}
-        </p>
-      </header>
-      {error && (
-        <ErrorNotice
-          message={error}
-          onRetry={() => {
-            setError(undefined);
-            load();
-          }}
-        />
-      )}
-      <nav className="button-row" aria-label="应用导航">
-        <Button variant="primary" onClick={() => void ipc.beginCapture()}>
-          开始截图
-        </Button>
-        <Button onClick={() => void ipc.openView("settings")}>
-          {t("openSettings")}
-        </Button>
-        <Button onClick={() => void ipc.openView("prompts")}>
-          {t("openPrompts")}
-        </Button>
-        <Button onClick={() => void ipc.openView("history")}>
-          {t("openHistory")}
-        </Button>
-      </nav>
-    </main>
-  );
+  return <SettingsShell />;
 }
 
 function CaptureView() {
@@ -160,8 +101,5 @@ export function App() {
   if (label === "main") return <MainView />;
   if (label.startsWith("capture-")) return <CaptureView />;
   if (label === "result") return <ResultView />;
-  if (label === "settings") return <Settings />;
-  if (label === "prompts") return <Prompts />;
-  if (label === "history") return <History />;
   return <PlaceholderView label={label} />;
 }

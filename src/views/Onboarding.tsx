@@ -6,11 +6,16 @@ import { ipc, type AppError, type AppSnapshot } from "../ipc";
 export type OnboardingApi = {
   getAppSnapshot: () => Promise<AppSnapshot>;
   completeOnboarding: () => Promise<void>;
-  openView: (view: "history" | "prompts" | "settings") => Promise<void>;
   openScreenPermissionSettings: () => Promise<void>;
 };
 
-export function Onboarding({ api = ipc }: { api?: OnboardingApi }) {
+export function Onboarding({
+  api = ipc,
+  onSelectSection,
+}: {
+  api?: OnboardingApi;
+  onSelectSection: (section: "models" | "prompts") => void;
+}) {
   const [snapshot, setSnapshot] = useState<AppSnapshot>();
   const [error, setError] = useState<string>();
   const refresh = useCallback(
@@ -26,18 +31,26 @@ export function Onboarding({ api = ipc }: { api?: OnboardingApi }) {
   }, [refresh]);
   if (!snapshot)
     return (
-      <main className="onboarding app-shell">
-        <p>正在检查桌面环境…</p>
-      </main>
+      <section className="settings-group onboarding" aria-label="首次设置">
+        {error ? (
+          <ErrorNotice message={error} onRetry={() => void refresh()} />
+        ) : (
+          <p>正在检查桌面环境…</p>
+        )}
+      </section>
     );
+  if (snapshot.settings.onboardingCompleted) return null;
   const permissionReady = snapshot.screenPermission === "granted";
   const modelReady = Boolean(snapshot.activeModelConfigId);
   const promptReady = Boolean(snapshot.activePromptId);
   const ready = permissionReady && modelReady && promptReady;
   return (
-    <main className="onboarding app-shell">
-      <header className="page-header">
-        <h1>欢迎使用 See See</h1>
+    <section
+      className="settings-group onboarding"
+      aria-labelledby="onboarding-title"
+    >
+      <header>
+        <h2 id="onboarding-title">欢迎使用 See See</h2>
         <p>完成三项本地设置后，即可用快捷键直接把截图交给多模态模型。</p>
       </header>
       {error && <ErrorNotice message={error} />}
@@ -64,16 +77,12 @@ export function Onboarding({ api = ipc }: { api?: OnboardingApi }) {
         <li>
           <h2>2. 多模态模型</h2>
           <p>{modelReady ? "已选择测试通过的模型" : "尚未配置可用模型"}</p>
-          <Button onClick={() => void api.openView("settings")}>
-            配置模型
-          </Button>
+          <Button onClick={() => onSelectSection("models")}>配置模型</Button>
         </li>
         <li>
           <h2>3. 提示词</h2>
           <p>{promptReady ? "已选择提示词" : "尚未选择提示词"}</p>
-          <Button onClick={() => void api.openView("prompts")}>
-            管理提示词
-          </Button>
+          <Button onClick={() => onSelectSection("prompts")}>管理提示词</Button>
         </li>
       </ol>
       <Button
@@ -82,12 +91,24 @@ export function Onboarding({ api = ipc }: { api?: OnboardingApi }) {
         onClick={() =>
           void api
             .completeOnboarding()
-            .then(() => window.location.reload())
+            .then(() =>
+              setSnapshot((current) =>
+                current
+                  ? {
+                      ...current,
+                      settings: {
+                        ...current.settings,
+                        onboardingCompleted: true,
+                      },
+                    }
+                  : current,
+              ),
+            )
             .catch((failure: AppError) => setError(failure.message))
         }
       >
         完成设置
       </Button>
-    </main>
+    </section>
   );
 }

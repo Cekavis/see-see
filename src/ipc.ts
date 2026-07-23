@@ -143,8 +143,6 @@ export type HistoryEntryDetail = HistoryListItem & {
 
 export const ipc = {
   getAppSnapshot: () => invoke<AppSnapshot>("get_app_snapshot"),
-  openView: (view: "history" | "prompts" | "settings") =>
-    invoke<void>("open_view", { view }),
   beginCapture: () => invoke<CaptureSessionSummary>("begin_capture"),
   getCaptureFrame: (sessionId: string, monitorId: string) =>
     invoke<ArrayBuffer>("get_capture_frame", { sessionId, monitorId }),

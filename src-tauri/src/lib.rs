@@ -14,21 +14,30 @@ use database::Database;
 use state::AppState;
 use std::sync::Arc;
 use tauri::{
-    Manager, WindowEvent,
+    AppHandle, Manager, WindowEvent,
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
 };
 use tauri_plugin_autostart::ManagerExt as AutostartExt;
 use tauri_plugin_log::{Target, TargetKind};
 
+fn should_hide_on_close(label: &str) -> bool {
+    label == "main"
+}
+
+fn show_main_window(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.show();
-                let _ = window.set_focus();
-            }
+            show_main_window(app);
         }))
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::Builder::new().build())
@@ -59,26 +68,24 @@ pub fn run() {
                         Ok::<(), ()>(())
                     });
             }
+            let capture = MenuItem::with_id(app, "capture", "开始截图", true, None::<&str>)?;
             let show = MenuItem::with_id(app, "show", "打开 See See", true, None::<&str>)?;
-            let history = MenuItem::with_id(app, "history", "历史记录", true, None::<&str>)?;
-            let settings = MenuItem::with_id(app, "settings", "设置", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show, &history, &settings, &quit])?;
+            let menu = Menu::with_items(app, &[&capture, &show, &quit])?;
             let mut tray = TrayIconBuilder::new()
                 .tooltip("See See")
                 .menu(&menu)
                 .on_menu_event(|app, event| match event.id.as_ref() {
-                    "show" => {
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        }
+                    "capture" => {
+                        let app = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            if let Err(error) = commands::begin_capture_action(app).await {
+                                log::warn!("tray capture failed: {}", error.code.as_str());
+                            }
+                        });
                     }
-                    "history" | "settings" => {
-                        tauri::async_runtime::spawn(commands::open_view(
-                            app.clone(),
-                            event.id.as_ref().to_owned(),
-                        ));
+                    "show" => {
+                        show_main_window(app);
                     }
                     "quit" => commands::quit_app(app.clone()),
                     _ => {}
@@ -91,10 +98,7 @@ pub fn run() {
         })
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
-                if matches!(
-                    window.label(),
-                    "main" | "settings" | "history" | "prompts" | "onboarding"
-                ) {
+                if should_hide_on_close(window.label()) {
                     api.prevent_close();
                     let _ = window.hide();
                 } else if window.label() == "result" {
@@ -112,7 +116,6 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_app_snapshot,
-            commands::open_view,
             commands::begin_capture,
             commands::get_capture_frame,
             commands::update_capture_selection,
@@ -151,4 +154,27 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("failed to run See See");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_hide_on_close;
+
+    #[test]
+    fn only_the_main_management_window_hides_on_close() {
+        assert!(should_hide_on_close("main"));
+        for label in [
+            "settings",
+            "prompts",
+            "history",
+            "onboarding",
+            "result",
+            "capture-1",
+        ] {
+            assert!(
+                !should_hide_on_close(label),
+                "unexpected hidden window: {label}"
+            );
+        }
+    }
 }

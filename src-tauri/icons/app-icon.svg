@@ -1,7 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="See See">
   <rect width="512" height="512" rx="112" fill="#2563eb"/>
-  <circle cx="176" cy="256" r="104" fill="#ffffff"/>
-  <circle cx="336" cy="256" r="104" fill="#ffffff"/>
-  <circle cx="200" cy="264" r="42" fill="#172554"/>
-  <circle cx="360" cy="264" r="42" fill="#172554"/>
+  <circle cx="168" cy="256" r="88" fill="#ffffff"/>
+  <circle cx="344" cy="256" r="88" fill="#ffffff"/>
+  <circle cx="184" cy="264" r="36" fill="#172554"/>
+  <circle cx="328" cy="264" r="36" fill="#172554"/>
+  <circle cx="174" cy="252" r="9" fill="#ffffff" opacity="0.9"/>
+  <circle cx="318" cy="252" r="9" fill="#ffffff" opacity="0.9"/>
 </svg>

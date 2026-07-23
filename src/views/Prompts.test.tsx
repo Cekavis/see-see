@@ -51,12 +51,15 @@ describe("Prompts", () => {
     const { rerender } = render(<Prompts api={emptyService} />);
     expect(await screen.findByText("还没有提示词")).toBeInTheDocument();
     const service = api();
-    vi.spyOn(window, "confirm").mockReturnValue(true);
     rerender(<Prompts api={service} />);
     expect(
       await screen.findByRole("heading", { name: /日语学习解析/ }),
     ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "删除" }));
+    expect(
+      screen.getByRole("dialog", { name: "删除提示词？" }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "删除提示词" }));
     await waitFor(() =>
       expect(service.deletePromptPreset).toHaveBeenCalledWith("p1"),
     );

@@ -80,4 +80,37 @@ describe("model settings", () => {
     fireEvent.click(screen.getByRole("button", { name: "测试连接" }));
     expect(await screen.findByText("API Key 无效")).toBeInTheDocument();
   });
+
+  it("deletes a saved configuration only after dialog confirmation", async () => {
+    const config = {
+      id: "model-1",
+      name: "视觉模型",
+      protocol: "openai" as const,
+      baseUrl: "https://api.openai.com/v1",
+      modelId: "vision",
+      hasApiKey: true,
+      testStatus: "passed" as const,
+      testedAt: "2026-07-23T00:00:00Z",
+      testErrorCode: null,
+      isActive: false,
+    };
+    const service = api({
+      listModelConfigs: vi.fn().mockResolvedValue([config]),
+    });
+    render(<Settings api={service} />);
+    expect(
+      await screen.findByRole("heading", { name: "视觉模型" }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "删除" }));
+    expect(
+      screen.getByRole("dialog", { name: "删除模型配置？" }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    expect(service.deleteModelConfig).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "删除" }));
+    fireEvent.click(screen.getByRole("button", { name: "删除配置" }));
+    await waitFor(() =>
+      expect(service.deleteModelConfig).toHaveBeenCalledWith("model-1"),
+    );
+  });
 });

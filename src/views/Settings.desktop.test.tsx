@@ -19,6 +19,9 @@ function api(overrides: Partial<DesktopSettingsApi> = {}): DesktopSettingsApi {
       .fn()
       .mockResolvedValue({ ...settings, captureShortcut: "Ctrl+Shift+X" }),
     setAutostart: vi.fn().mockResolvedValue({ ...settings, autostart: true }),
+    setSaveHistory: vi
+      .fn()
+      .mockResolvedValue({ ...settings, saveHistory: false }),
     exportSanitizedLogs: vi.fn().mockResolvedValue({ exported: true }),
     ...overrides,
   };
@@ -42,14 +45,16 @@ describe("DesktopSettings", () => {
     expect(screen.getByLabelText("截图快捷键")).toHaveValue("Alt+Shift+A");
   });
 
-  it("syncs autostart and exports sanitized logs", async () => {
+  it("syncs autostart, history preference, and exports sanitized logs", async () => {
     const service = api();
     render(<DesktopSettings api={service} />);
     fireEvent.click(await screen.findByLabelText("开机启动"));
+    fireEvent.click(screen.getByLabelText("保存历史记录"));
     fireEvent.click(screen.getByRole("button", { name: "导出诊断日志" }));
     await waitFor(() =>
       expect(service.setAutostart).toHaveBeenCalledWith(true),
     );
+    expect(service.setSaveHistory).toHaveBeenCalledWith(false);
     expect(service.exportSanitizedLogs).toHaveBeenCalled();
   });
 });

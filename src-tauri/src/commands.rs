@@ -55,29 +55,6 @@ pub fn get_app_snapshot(app: AppHandle) -> Result<settings::AppSnapshot, AppErro
 }
 
 #[tauri::command]
-pub async fn open_view(app: AppHandle, view: String) -> Result<(), AppError> {
-    let label = match view.as_str() {
-        "history" | "prompts" | "settings" => view,
-        _ => return Err(AppError::invalid("未知界面")),
-    };
-    if let Some(window) = app.get_webview_window(&label) {
-        window
-            .show()
-            .map_err(|_| AppError::invalid("无法显示窗口"))?;
-        window
-            .set_focus()
-            .map_err(|_| AppError::invalid("无法聚焦窗口"))?;
-        return Ok(());
-    }
-    WebviewWindowBuilder::new(&app, label.clone(), WebviewUrl::App("index.html".into()))
-        .title("See See")
-        .inner_size(1024.0, 720.0)
-        .build()
-        .map_err(|_| AppError::invalid("无法创建窗口"))?;
-    Ok(())
-}
-
-#[tauri::command]
 pub async fn begin_capture(app: AppHandle) -> Result<CaptureSessionSummary, AppError> {
     begin_capture_action(app).await
 }

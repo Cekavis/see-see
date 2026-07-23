@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "../components/Button";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorNotice } from "../components/ErrorNotice";
 import {
@@ -66,6 +67,9 @@ export function History({ api = ipc }: { api?: HistoryApi }) {
   const [status, setStatus] = useState<"" | "success" | "failed">("");
   const [detail, setDetail] = useState<HistoryEntryDetail | null>(null);
   const [error, setError] = useState<string>();
+  const [confirmation, setConfirmation] = useState<
+    { kind: "entry"; item: HistoryListItem } | { kind: "all" } | null
+  >(null);
   const imageUrl = useImage(api, detail, "original");
 
   const query = useCallback(
@@ -101,25 +105,18 @@ export function History({ api = ipc }: { api?: HistoryApi }) {
 
   const hasFilters = Boolean(text || promptName || status);
   return (
-    <main className="history-view app-shell">
-      <header className="page-header history-header">
+    <section
+      className="section-view history-view"
+      aria-labelledby="history-title"
+    >
+      <header className="settings-section__header history-header">
         <div>
-          <h1>历史记录</h1>
+          <h1 id="history-title">历史记录</h1>
           <p>截图、提示词快照和模型结果仅保存在本机。</p>
         </div>
         <Button
           variant="danger"
-          onClick={() => {
-            if (window.confirm("清空全部历史记录和截图？此操作不可撤销。")) {
-              void api
-                .clearHistory()
-                .then(() => {
-                  setDetail(null);
-                  void query();
-                })
-                .catch((value: AppError) => setError(value.message));
-            }
-          }}
+          onClick={() => setConfirmation({ kind: "all" })}
         >
           清空全部历史
         </Button>
@@ -191,19 +188,7 @@ export function History({ api = ipc }: { api?: HistoryApi }) {
                     </Button>
                     <Button
                       variant="danger"
-                      onClick={() => {
-                        if (window.confirm("删除这条历史记录和截图？")) {
-                          void api
-                            .deleteHistoryEntry(item.id)
-                            .then(() => {
-                              if (detail?.id === item.id) setDetail(null);
-                              void query();
-                            })
-                            .catch((value: AppError) =>
-                              setError(value.message),
-                            );
-                        }
-                      }}
+                      onClick={() => setConfirmation({ kind: "entry", item })}
                     >
                       删除记录
                     </Button>
@@ -273,6 +258,42 @@ export function History({ api = ipc }: { api?: HistoryApi }) {
           )}
         </aside>
       </div>
-    </main>
+      <ConfirmDialog
+        open={Boolean(confirmation)}
+        title={
+          confirmation?.kind === "all" ? "清空全部历史？" : "删除历史记录？"
+        }
+        description={
+          confirmation?.kind === "all"
+            ? "将删除全部历史记录和截图，此操作不可撤销。"
+            : "将删除这条历史记录和截图，此操作不可撤销。"
+        }
+        confirmLabel={confirmation?.kind === "all" ? "确认清空" : "删除记录"}
+        danger
+        onCancel={() => setConfirmation(null)}
+        onConfirm={() => {
+          const target = confirmation;
+          if (!target) return;
+          setConfirmation(null);
+          if (target.kind === "all") {
+            void api
+              .clearHistory()
+              .then(() => {
+                setDetail(null);
+                void query();
+              })
+              .catch((value: AppError) => setError(value.message));
+            return;
+          }
+          void api
+            .deleteHistoryEntry(target.item.id)
+            .then(() => {
+              if (detail?.id === target.item.id) setDetail(null);
+              void query();
+            })
+            .catch((value: AppError) => setError(value.message));
+        }}
+      />
+    </section>
   );
 }

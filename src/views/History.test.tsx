@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { History, type HistoryApi } from "./History";
 
@@ -69,11 +75,22 @@ describe("History", () => {
     const { rerender } = render(<History api={emptyService} />);
     expect(await screen.findByText("没有历史记录")).toBeInTheDocument();
     const service = api();
-    vi.spyOn(window, "confirm").mockReturnValue(true);
     rerender(<History api={service} />);
     expect(await screen.findByText("旅行：旅行")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "删除记录" }));
+    fireEvent.click(
+      within(screen.getByRole("dialog", { name: "删除历史记录？" })).getByRole(
+        "button",
+        { name: "删除记录" },
+      ),
+    );
     fireEvent.click(screen.getByRole("button", { name: "清空全部历史" }));
+    fireEvent.click(
+      within(screen.getByRole("dialog", { name: "清空全部历史？" })).getByRole(
+        "button",
+        { name: "确认清空" },
+      ),
+    );
     await waitFor(() =>
       expect(service.deleteHistoryEntry).toHaveBeenCalledWith("h1"),
     );
