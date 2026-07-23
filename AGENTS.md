@@ -31,9 +31,9 @@ Automatically select the matching Spec Kit workflow:
 
 - Features: `speckit-specify` → `speckit-plan` → `speckit-tasks` → `speckit-implement`; add `clarify`, `analyze`, or `converge` when needed.
 - Bugs: `speckit-bug-assess` → `speckit-bug-fix` → `speckit-bug-test`. Keep reports in `.specify/bugs/<slug>/`.
-- Git: initialize only if needed, create one numbered branch with `speckit-git-feature`, then use `speckit-git-validate`, `speckit-git-remote`, and the configured `speckit-git-commit` hooks.
+- Git: initialize only if needed, detect the remote with `speckit-git-remote`, and use the configured `speckit-git-commit` hooks. Work directly on `master` by default. Run `speckit-git-feature` and `speckit-git-validate` only when the user explicitly requests a separate branch.
 
-Every change, including documentation, must be committed atomically and pushed to the active remote branch unless the current request forbids it. Before staging, inspect status and diffs; exclude secrets, environment files, dependencies, logs, and build output.
+Every change, including documentation, must be committed atomically and pushed to `origin/master` unless the current request forbids it or explicitly names another branch. Before staging, inspect status and diffs; exclude secrets, environment files, dependencies, logs, and build output.
 
 Behavior changes increment the synchronized SemVer in `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json` once per session objective: patch for fixes, minor for compatible features, major for incompatible releases. Run relevant checks, build with `npm run tauri build`, and install locally before committing. Documentation-only changes skip versioning, application builds, and installation, but still require a formatting/readback check, commit, and push.
 
