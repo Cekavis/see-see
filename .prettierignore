@@ -1,0 +1,11 @@
+node_modules/
+dist/
+build/
+coverage/
+target/
+src-tauri/target/
+.agents/
+.specify/
+specs/
+src-tauri/
+package-lock.json

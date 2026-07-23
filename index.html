@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>See See</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      if (!window.__TAURI_INTERNALS__) {
+        const testBridge = { calls: [], results: {} };
+        window.__SEE_SEE_TEST__ = testBridge;
+        window.__TAURI_INTERNALS__ = {
+          metadata: {
+            currentWindow: { label: "main" },
+            currentWebview: { label: "main" },
+          },
+          invoke(command, args) {
+            testBridge.calls.push({ command, args });
+            return Object.hasOwn(testBridge.results, command)
+              ? Promise.resolve(testBridge.results[command])
+              : Promise.reject(
+                  new Error(`Tauri backend unavailable: ${command}`),
+                );
+          },
+        };
+      }
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
