@@ -75,7 +75,10 @@ pub fn run() {
                         }
                     }
                     "history" | "settings" => {
-                        let _ = commands::open_view(app.clone(), event.id.as_ref().to_owned());
+                        tauri::async_runtime::spawn(commands::open_view(
+                            app.clone(),
+                            event.id.as_ref().to_owned(),
+                        ));
                     }
                     "quit" => commands::quit_app(app.clone()),
                     _ => {}

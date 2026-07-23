@@ -55,7 +55,7 @@ pub fn get_app_snapshot(app: AppHandle) -> Result<settings::AppSnapshot, AppErro
 }
 
 #[tauri::command]
-pub fn open_view(app: AppHandle, view: String) -> Result<(), AppError> {
+pub async fn open_view(app: AppHandle, view: String) -> Result<(), AppError> {
     let label = match view.as_str() {
         "history" | "prompts" | "settings" => view,
         _ => return Err(AppError::invalid("未知界面")),
