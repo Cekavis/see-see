@@ -54,6 +54,7 @@ npm run tauri dev
 npm run typecheck
 npm run lint
 npm test
+npm run test:e2e:install
 npm run test:e2e
 npm run format:check
 cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
@@ -62,7 +63,7 @@ cargo test --manifest-path src-tauri/Cargo.toml
 npm run tauri build
 ```
 
-`npm run test:e2e` 启动临时 Vite 服务，在 Chrome 中用页面加载前的窄 IPC mock 桥验证桌面壳层的关键命令顺序；真实 Rust 后端、窗口、快捷键和系统集成由 Rust 测试、`tauri dev`、平台人工验证与发布构建覆盖。
+首次运行前用 `npm run test:e2e:install` 安装与锁定依赖匹配的测试专用 Chromium。`npm run test:e2e` 启动临时 Vite 服务，在无头 Chromium 中用页面加载前的窄 IPC mock 桥验证桌面壳层的关键命令顺序；真实 Rust 后端、窗口、快捷键和系统集成由 Rust 测试、`tauri dev`、平台人工验证与发布构建覆盖。
 
 目前自动检查可在 Windows 执行；真实 macOS 权限、菜单栏、双屏和发布包仍必须在 macOS 14+ 设备上复验。详细矩阵见 `specs/001-screenshot-ai-translation/quickstart.md`。
 
