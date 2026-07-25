@@ -77,6 +77,12 @@ export function Settings({ api = ipc }: { api?: SettingsApi }) {
     value: ModelConfigInput[K],
   ) => setForm((current) => ({ ...current, [key]: value }));
 
+  const beginAction = (action: "save" | "list" | "test") => {
+    setBusy(action);
+    setError(undefined);
+    setNotice(undefined);
+  };
+
   return (
     <section
       className="section-view settings-view"
@@ -89,12 +95,6 @@ export function Settings({ api = ipc }: { api?: SettingsApi }) {
           只保存在系统凭据存储中。
         </p>
       </header>
-      {error && <ErrorNotice message={error} />}
-      {notice && (
-        <p className="success-notice" role="status">
-          {notice}
-        </p>
-      )}
       <div className="section-split">
         <section className="settings-grid" aria-label="模型配置编辑器">
           <Field label="配置名称" htmlFor="model-name">
@@ -186,12 +186,19 @@ export function Settings({ api = ipc }: { api?: SettingsApi }) {
           <p className="field__hint">
             连接测试会发送一张极小图片，可能产生少量调用费用。
           </p>
+          <div className="model-action-feedback">
+            {error && <ErrorNotice message={error} />}
+            {notice && (
+              <p className="success-notice" role="status">
+                {notice}
+              </p>
+            )}
+          </div>
           <div className="button-row">
             <Button
-              disabled={busy === "list"}
+              disabled={Boolean(busy)}
               onClick={() => {
-                setBusy("list");
-                setError(undefined);
+                beginAction("list");
                 void api
                   .listRemoteModels(draft())
                   .then((items) => {
@@ -206,13 +213,12 @@ export function Settings({ api = ipc }: { api?: SettingsApi }) {
                   .finally(() => setBusy(undefined));
               }}
             >
-              获取模型列表
+              {busy === "list" ? "正在获取…" : "获取模型列表"}
             </Button>
             <Button
-              disabled={busy === "test"}
+              disabled={Boolean(busy)}
               onClick={() => {
-                setBusy("test");
-                setError(undefined);
+                beginAction("test");
                 void api
                   .testModelConfig(draft())
                   .then((result) => {
@@ -225,14 +231,13 @@ export function Settings({ api = ipc }: { api?: SettingsApi }) {
                   .finally(() => setBusy(undefined));
               }}
             >
-              测试连接
+              {busy === "test" ? "正在测试…" : "测试连接"}
             </Button>
             <Button
               variant="primary"
-              disabled={busy === "save"}
+              disabled={Boolean(busy)}
               onClick={() => {
-                setBusy("save");
-                setError(undefined);
+                beginAction("save");
                 const input = { ...form, apiKey: form.apiKey || undefined };
                 void api
                   .saveModelConfig(input)
@@ -249,7 +254,7 @@ export function Settings({ api = ipc }: { api?: SettingsApi }) {
                   .finally(() => setBusy(undefined));
               }}
             >
-              保存配置
+              {busy === "save" ? "正在保存…" : "保存配置"}
             </Button>
             {form.id && (
               <Button onClick={() => setForm(emptyForm())}>新建配置</Button>
