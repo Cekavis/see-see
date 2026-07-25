@@ -38,6 +38,8 @@ export type AppSnapshot = {
   screenPermission: "granted" | "denied" | "unknown";
 };
 
+export type ScreenPermission = AppSnapshot["screenPermission"];
+
 export type PhysicalRect = {
   x: number;
   y: number;
@@ -209,6 +211,8 @@ export const ipc = {
   setAutostart: (value: boolean) =>
     invoke<AppSettings>("set_autostart", { value }),
   completeOnboarding: () => invoke<void>("complete_onboarding"),
+  requestScreenPermission: () =>
+    invoke<ScreenPermission>("request_screen_permission"),
   openScreenPermissionSettings: () =>
     invoke<void>("open_screen_permission_settings"),
   exportSanitizedLogs: () =>

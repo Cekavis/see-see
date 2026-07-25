@@ -813,6 +813,10 @@ textarea {
   margin: 16px;
 }
 
+.onboarding > .onboarding-permission-actions {
+  margin: 0 16px 16px;
+}
+
 .onboarding-steps {
   display: grid;
   gap: 0;
@@ -848,6 +852,15 @@ textarea {
 .onboarding-steps .button {
   grid-column: 2;
   grid-row: 1 / span 2;
+}
+
+.onboarding-permission-actions {
+  display: flex;
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
 }
 
 .history-header {
@@ -1279,7 +1292,8 @@ textarea {
 
   .setting-row > .button,
   .config-card .button-row,
-  .onboarding-steps .button {
+  .onboarding-steps .button,
+  .onboarding-steps .onboarding-permission-actions {
     grid-column: 1;
     grid-row: auto;
     justify-self: start;

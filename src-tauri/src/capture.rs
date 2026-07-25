@@ -7,6 +7,9 @@ use serde::{Deserialize, Serialize};
 use std::io::Cursor;
 use xcap::Monitor;
 
+#[cfg(target_os = "macos")]
+use objc2_core_graphics::{CGPreflightScreenCaptureAccess, CGRequestScreenCaptureAccess};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ScreenPermission {
@@ -15,6 +18,20 @@ pub enum ScreenPermission {
     Unknown,
 }
 
+fn permission_status_from_grant(granted: bool) -> ScreenPermission {
+    if granted {
+        ScreenPermission::Granted
+    } else {
+        ScreenPermission::Unknown
+    }
+}
+
+#[cfg(target_os = "macos")]
+pub fn screen_permission_status() -> ScreenPermission {
+    permission_status_from_grant(CGPreflightScreenCaptureAccess())
+}
+
+#[cfg(not(target_os = "macos"))]
 pub fn screen_permission_status() -> ScreenPermission {
     let Ok(monitors) = Monitor::all() else {
         return ScreenPermission::Unknown;
@@ -33,6 +50,28 @@ pub fn screen_permission_status() -> ScreenPermission {
             ScreenPermission::Denied
         }
         Err(_) => ScreenPermission::Unknown,
+    }
+}
+
+#[cfg(target_os = "macos")]
+pub fn request_screen_permission() -> ScreenPermission {
+    if CGRequestScreenCaptureAccess() {
+        ScreenPermission::Granted
+    } else {
+        ScreenPermission::Denied
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn request_screen_permission() -> ScreenPermission {
+    screen_permission_status()
+}
+
+pub fn require_screen_permission(status: ScreenPermission) -> Result<(), AppError> {
+    if status == ScreenPermission::Granted {
+        Ok(())
+    } else {
+        Err(screen_permission_error())
     }
 }
 
@@ -280,11 +319,61 @@ pub fn compose_selection(
     normalize_png(&encoded.into_inner())
 }
 
-fn capture_error(_: impl std::fmt::Display) -> AppError {
+fn capture_error(error: impl std::fmt::Display) -> AppError {
+    if error
+        .to_string()
+        .to_ascii_lowercase()
+        .contains("permission")
+    {
+        return screen_permission_error();
+    }
     AppError::new(
         ErrorCode::CaptureFailed,
         "无法读取显示器画面",
         false,
         Some("retry"),
     )
+}
+
+fn screen_permission_error() -> AppError {
+    AppError::new(
+        ErrorCode::ScreenPermissionDenied,
+        "需要屏幕录制权限才能截图",
+        false,
+        Some("open_screen_permission_settings"),
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        ScreenPermission, capture_error, permission_status_from_grant, require_screen_permission,
+    };
+    use crate::error::ErrorCode;
+
+    #[test]
+    fn passive_preflight_maps_missing_access_without_claiming_denial() {
+        assert_eq!(
+            permission_status_from_grant(true),
+            ScreenPermission::Granted
+        );
+        assert_eq!(
+            permission_status_from_grant(false),
+            ScreenPermission::Unknown
+        );
+    }
+
+    #[test]
+    fn capture_permission_guard_and_backend_error_use_recovery_code() {
+        let guarded = require_screen_permission(ScreenPermission::Unknown).unwrap_err();
+        assert_eq!(guarded.code, ErrorCode::ScreenPermissionDenied);
+        assert_eq!(
+            guarded.action.as_deref(),
+            Some("open_screen_permission_settings")
+        );
+
+        let backend = capture_error("screen capture permission denied");
+        assert_eq!(backend.code, ErrorCode::ScreenPermissionDenied);
+        assert!(require_screen_permission(ScreenPermission::Granted).is_ok());
+    }
 }

@@ -1,6 +1,6 @@
 use crate::{
     analysis::{self, ActiveAnalysis, AnalysisEvent, AnalysisInput, AnalysisSnapshot},
-    capture::{CaptureSession, CaptureSessionSummary, PhysicalRect, compose_selection},
+    capture::{self, CaptureSession, CaptureSessionSummary, PhysicalRect, compose_selection},
     error::{AppError, ErrorCode},
     history::{self, HistoryEntryDetail, HistoryImageVariant, HistoryPage, HistoryQuery},
     providers::{self, ProviderProtocol, ProviderRequest, RemoteModel},
@@ -78,6 +78,10 @@ pub async fn begin_capture_action(app: AppHandle) -> Result<CaptureSessionSummar
         runtime.analysis = None;
     }
     require_active_configuration(&state)?;
+    if let Err(error) = capture::require_screen_permission(capture::screen_permission_status()) {
+        focus_main(&app);
+        return Err(error);
+    }
 
     let session_id = Uuid::new_v4().to_string();
     let session =
@@ -532,6 +536,11 @@ pub fn complete_onboarding(app: AppHandle) -> Result<(), AppError> {
 }
 
 #[tauri::command]
+pub fn request_screen_permission() -> capture::ScreenPermission {
+    capture::request_screen_permission()
+}
+
+#[tauri::command]
 pub fn open_screen_permission_settings(app: AppHandle) -> Result<(), AppError> {
     #[cfg(target_os = "macos")]
     app.opener()
@@ -739,6 +748,14 @@ fn capture_label(monitor_id: &str) -> String {
 
 fn focus_result(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("result") {
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
+fn focus_main(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
     }

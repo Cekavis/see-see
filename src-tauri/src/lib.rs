@@ -148,6 +148,7 @@ pub fn run() {
             commands::set_capture_shortcut,
             commands::set_autostart,
             commands::complete_onboarding,
+            commands::request_screen_permission,
             commands::open_screen_permission_settings,
             commands::export_sanitized_logs,
             commands::quit_app

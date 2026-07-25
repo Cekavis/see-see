@@ -1,11 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "../components/Button";
 import { useNotifications } from "../components/Notifications";
-import { ipc, type AppError, type AppSnapshot } from "../ipc";
+import {
+  ipc,
+  type AppError,
+  type AppSnapshot,
+  type ScreenPermission,
+} from "../ipc";
 
 export type OnboardingApi = {
   getAppSnapshot: () => Promise<AppSnapshot>;
   completeOnboarding: () => Promise<void>;
+  requestScreenPermission: () => Promise<ScreenPermission>;
   openScreenPermissionSettings: () => Promise<void>;
 };
 
@@ -18,11 +24,19 @@ export function Onboarding({
 }) {
   const notifications = useNotifications();
   const [snapshot, setSnapshot] = useState<AppSnapshot>();
+  const [requestingPermission, setRequestingPermission] = useState(false);
   const refresh = useCallback(() => {
     function run() {
       void api
         .getAppSnapshot()
-        .then(setSnapshot)
+        .then((value) =>
+          setSnapshot((current) =>
+            current?.screenPermission === "denied" &&
+            value.screenPermission === "unknown"
+              ? { ...value, screenPermission: "denied" }
+              : value,
+          ),
+        )
         .catch((failure: AppError) =>
           notifications.error(failure.message, {
             action: { label: "重试", onClick: run },
@@ -34,17 +48,75 @@ export function Onboarding({
   useEffect(() => {
     refresh();
   }, [refresh]);
+  useEffect(() => {
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+  }, [refresh]);
   if (!snapshot)
     return (
       <section className="settings-group onboarding" aria-label="首次设置">
         <p>正在检查桌面环境…</p>
       </section>
     );
-  if (snapshot.settings.onboardingCompleted) return null;
   const permissionReady = snapshot.screenPermission === "granted";
   const modelReady = Boolean(snapshot.activeModelConfigId);
   const promptReady = Boolean(snapshot.activePromptId);
   const ready = permissionReady && modelReady && promptReady;
+  const permissionMessage = permissionReady
+    ? "屏幕权限已就绪"
+    : snapshot.screenPermission === "denied"
+      ? "屏幕录制权限尚未授予，请在系统设置中允许 See See"
+      : "尚未请求屏幕录制权限";
+  const permissionActions =
+    permissionReady ? null : snapshot.screenPermission === "denied" ? (
+      <div className="onboarding-permission-actions">
+        <Button
+          onClick={() =>
+            void api
+              .openScreenPermissionSettings()
+              .catch((failure: AppError) =>
+                notifications.error(failure.message),
+              )
+          }
+        >
+          打开系统权限设置
+        </Button>
+        <Button onClick={refresh}>重新检查权限</Button>
+      </div>
+    ) : (
+      <Button
+        disabled={requestingPermission}
+        onClick={() => {
+          setRequestingPermission(true);
+          void api
+            .requestScreenPermission()
+            .then((screenPermission) =>
+              setSnapshot((current) =>
+                current ? { ...current, screenPermission } : current,
+              ),
+            )
+            .catch((failure: AppError) => notifications.error(failure.message))
+            .finally(() => setRequestingPermission(false));
+        }}
+      >
+        {requestingPermission ? "正在请求…" : "请求屏幕录制权限"}
+      </Button>
+    );
+  if (snapshot.settings.onboardingCompleted) {
+    if (permissionReady) return null;
+    return (
+      <section
+        className="settings-group onboarding"
+        aria-labelledby="screen-permission-title"
+      >
+        <header>
+          <h2 id="screen-permission-title">屏幕录制权限需要恢复</h2>
+          <p>{permissionMessage}</p>
+        </header>
+        {permissionActions}
+      </section>
+    );
+  }
   return (
     <section
       className="settings-group onboarding"
@@ -57,27 +129,8 @@ export function Onboarding({
       <ol className="onboarding-steps">
         <li>
           <h2>1. 屏幕截图权限</h2>
-          <p>
-            {permissionReady
-              ? "屏幕权限已就绪"
-              : snapshot.screenPermission === "denied"
-                ? "屏幕权限被拒绝"
-                : "尚未确认屏幕权限"}
-          </p>
-          {!permissionReady && (
-            <Button
-              onClick={() =>
-                void api
-                  .openScreenPermissionSettings()
-                  .then(refresh)
-                  .catch((failure: AppError) =>
-                    notifications.error(failure.message),
-                  )
-              }
-            >
-              打开系统权限设置
-            </Button>
-          )}
+          <p>{permissionMessage}</p>
+          {permissionActions}
         </li>
         <li>
           <h2>2. 多模态模型</h2>

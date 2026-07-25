@@ -22,6 +22,7 @@ function api(overrides: Partial<OnboardingApi> = {}): OnboardingApi {
       screenPermission: "granted",
     }),
     completeOnboarding: vi.fn().mockResolvedValue(undefined),
+    requestScreenPermission: vi.fn().mockResolvedValue("granted"),
     openScreenPermissionSettings: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
@@ -49,7 +50,7 @@ describe("Onboarding", () => {
     expect(onSelectSection).toHaveBeenCalledWith("prompts");
   });
 
-  it("offers recovery when screen permission is denied", async () => {
+  it("requests permission explicitly before offering system settings recovery", async () => {
     const service = api({
       getAppSnapshot: vi.fn().mockResolvedValue({
         settings: {
@@ -65,16 +66,62 @@ describe("Onboarding", () => {
         modelConfigCount: 1,
         activePromptId: "p1",
         activeModelConfigId: "m1",
-        screenPermission: "denied",
+        screenPermission: "unknown",
       }),
+      requestScreenPermission: vi.fn().mockResolvedValue("denied"),
     });
     renderOnboarding(service);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "请求屏幕录制权限" }),
+    );
+    await waitFor(() =>
+      expect(service.requestScreenPermission).toHaveBeenCalledTimes(1),
+    );
+    expect(await screen.findByText(/屏幕录制权限尚未授予/)).toBeInTheDocument();
     fireEvent.click(
       await screen.findByRole("button", { name: "打开系统权限设置" }),
     );
     await waitFor(() =>
       expect(service.openScreenPermissionSettings).toHaveBeenCalled(),
     );
+  });
+
+  it("rechecks passively on focus after returning from system settings", async () => {
+    const initial = await api().getAppSnapshot();
+    const service = api({
+      getAppSnapshot: vi
+        .fn()
+        .mockResolvedValueOnce({ ...initial, screenPermission: "unknown" })
+        .mockResolvedValue({ ...initial, screenPermission: "granted" }),
+    });
+    renderOnboarding(service);
+    expect(await screen.findByText("尚未请求屏幕录制权限")).toBeInTheDocument();
+
+    fireEvent.focus(window);
+
+    expect(await screen.findByText("屏幕权限已就绪")).toBeInTheDocument();
+    expect(service.getAppSnapshot).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows permission recovery after completed onboarding when access is revoked", async () => {
+    const initial = await api().getAppSnapshot();
+    const service = api({
+      getAppSnapshot: vi.fn().mockResolvedValue({
+        ...initial,
+        settings: { ...initial.settings, onboardingCompleted: true },
+        screenPermission: "unknown",
+      }),
+    });
+    renderOnboarding(service);
+
+    expect(
+      await screen.findByRole("heading", {
+        name: "屏幕录制权限需要恢复",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "请求屏幕录制权限" }),
+    ).toBeInTheDocument();
   });
 
   it("completes ready onboarding without reloading the window", async () => {

@@ -4530,7 +4530,7 @@ dependencies = [
 
 [[package]]
 name = "see-see"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "base64 0.22.1",
  "eventsource-stream",
@@ -4538,6 +4538,7 @@ dependencies = [
  "image",
  "keyring",
  "log",
+ "objc2-core-graphics",
  "reqwest 0.12.28",
  "rusqlite",
  "secrecy",
