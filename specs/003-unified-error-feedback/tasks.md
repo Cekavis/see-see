@@ -18,7 +18,7 @@
 
 **Purpose**: Confirm the existing project state and preserve the current release version.
 
-- [ ] T001 Verify the clean `master` baseline, existing ignore rules, and synchronized unchanged version 0.2.2 in `.gitignore`, `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json`
+- [X] T001 Verify the clean `master` baseline, existing ignore rules, and synchronized unchanged version 0.2.2 in `.gitignore`, `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json`
 
 ---
 
@@ -30,14 +30,14 @@
 
 ### Tests for User Story 1
 
-- [ ] T002 [US1] Add failing tests for persistent error publication, repeated-message identity, dismissal, and recovery actions in `src/components/Notifications.test.tsx`
-- [ ] T003 [P] [US1] Update view regression expectations for shared error publication in `src/views/Settings.model.test.tsx`, `src/views/Settings.desktop.test.tsx`, `src/views/Prompts.test.tsx`, `src/views/History.test.tsx`, `src/views/Onboarding.test.tsx`, and `src/views/Result.test.tsx`
+- [X] T002 [US1] Add failing tests for persistent error publication, repeated-message identity, dismissal, and recovery actions in `src/components/Notifications.test.tsx`
+- [X] T003 [P] [US1] Update view regression expectations for shared error publication in `src/views/Settings.model.test.tsx`, `src/views/Settings.desktop.test.tsx`, `src/views/Prompts.test.tsx`, `src/views/History.test.tsx`, `src/views/Onboarding.test.tsx`, and `src/views/Result.test.tsx`
 
 ### Implementation for User Story 1
 
-- [ ] T004 [US1] Implement the window-scoped provider, error API, portal viewport, dismissal, and recovery lifecycle in `src/components/Notifications.tsx` and wrap the app root in `src/main.tsx`
-- [ ] T005 [P] [US1] Add error and close severity cues to the shared icon set in `src/components/Icon.tsx`
-- [ ] T006 [US1] Migrate operation errors in `src/views/DesktopSettings.tsx`, `src/views/Onboarding.tsx`, `src/views/Settings.tsx`, `src/views/Prompts.tsx`, `src/views/History.tsx`, and `src/views/Result.tsx`, preserving persistent history failure content in `src/components/ErrorNotice.tsx`
+- [X] T004 [US1] Implement the window-scoped provider, error API, portal viewport, dismissal, and recovery lifecycle in `src/components/Notifications.tsx` and wrap the app root in `src/main.tsx`
+- [X] T005 [P] [US1] Add error and close severity cues to the shared icon set in `src/components/Icon.tsx`
+- [X] T006 [US1] Migrate operation errors in `src/views/DesktopSettings.tsx`, `src/views/Onboarding.tsx`, `src/views/Settings.tsx`, `src/views/Prompts.tsx`, `src/views/History.tsx`, and `src/views/Result.tsx`, preserving persistent history failure content in `src/components/ErrorNotice.tsx`
 
 **Checkpoint**: Error feedback is independently functional in every existing operation surface.
 
@@ -51,13 +51,13 @@
 
 ### Tests for User Story 2
 
-- [ ] T007 [US2] Add failing success timeout, manual dismissal, and same-message repetition tests in `src/components/Notifications.test.tsx`
-- [ ] T008 [P] [US2] Add success integration expectations for representative actions in `src/views/Settings.model.test.tsx`, `src/views/Settings.desktop.test.tsx`, `src/views/Prompts.test.tsx`, `src/views/History.test.tsx`, and `src/views/Result.test.tsx`
+- [X] T007 [US2] Add failing success timeout, manual dismissal, and same-message repetition tests in `src/components/Notifications.test.tsx`
+- [X] T008 [P] [US2] Add success integration expectations for representative actions in `src/views/Settings.model.test.tsx`, `src/views/Settings.desktop.test.tsx`, `src/views/Prompts.test.tsx`, `src/views/History.test.tsx`, and `src/views/Result.test.tsx`
 
 ### Implementation for User Story 2
 
-- [ ] T009 [US2] Add success publication and automatic lifecycle behavior to `src/components/Notifications.tsx`
-- [ ] T010 [US2] Publish useful success outcomes and clear stale feedback in `src/views/Settings.tsx`, `src/views/DesktopSettings.tsx`, `src/views/Prompts.tsx`, `src/views/History.tsx`, and `src/views/Result.tsx`
+- [X] T009 [US2] Add success publication and automatic lifecycle behavior to `src/components/Notifications.tsx`
+- [X] T010 [US2] Publish useful success outcomes and clear stale feedback in `src/views/Settings.tsx`, `src/views/DesktopSettings.tsx`, `src/views/Prompts.tsx`, `src/views/History.tsx`, and `src/views/Result.tsx`
 
 **Checkpoint**: Success and error outcomes share one coherent lifecycle without changing page layout.
 
@@ -71,12 +71,12 @@
 
 ### Tests for User Story 3
 
-- [ ] T011 [US3] Extend notification tests for alert/status semantics, named controls, keyboard activation, newest-first ordering, and portal rendering in `src/components/Notifications.test.tsx`
+- [X] T011 [US3] Extend notification tests for alert/status semantics, named controls, keyboard activation, newest-first ordering, and portal rendering in `src/components/Notifications.test.tsx`
 
 ### Implementation for User Story 3
 
-- [ ] T012 [US3] Implement compact fixed-stack layout, wrapping, internal overflow, severity styling, focus states, dark-theme tokens, and reduced-motion behavior in `src/styles.css`
-- [ ] T013 [US3] Remove obsolete page-level notice spacing and success styles while retaining explicit inline failure styling in `src/styles.css` and `src/components/ErrorNotice.tsx`
+- [X] T012 [US3] Implement compact fixed-stack layout, wrapping, internal overflow, severity styling, focus states, dark-theme tokens, and reduced-motion behavior in `src/styles.css`
+- [X] T013 [US3] Remove obsolete page-level notice spacing and success styles while retaining explicit inline failure styling in `src/styles.css` and `src/components/ErrorNotice.tsx`
 
 **Checkpoint**: The shared feedback pattern meets accessibility and responsive acceptance criteria.
 
@@ -86,10 +86,10 @@
 
 **Purpose**: Verify the complete product, package, and native UI before delivery.
 
-- [ ] T014 Run formatting, lint, frontend tests, frontend build, end-to-end smoke tests, and Rust tests using `package.json`, `tests/e2e/`, and `src-tauri/Cargo.toml`
-- [ ] T015 Build the release bundle with `npm run tauri build`, install the macOS app locally, and confirm the installed version remains 0.2.2 using `src-tauri/tauri.conf.json`
-- [ ] T016 Perform native light/dark visual and keyboard review at approximately 320×240, 540×420, standard settings size, and compact result-window size; record evidence against `specs/003-unified-error-feedback/quickstart.md`
-- [ ] T017 Read back the final specification, contract, implementation diff, and completed checklist; mark all tasks complete in `specs/003-unified-error-feedback/tasks.md`
+- [X] T014 Run formatting, lint, frontend tests, frontend build, end-to-end smoke tests, and Rust tests using `package.json`, `tests/e2e/`, and `src-tauri/Cargo.toml`
+- [X] T015 Build the release bundle with `npm run tauri build`, install the macOS app locally, and confirm the installed version remains 0.2.2 using `src-tauri/tauri.conf.json`
+- [X] T016 Perform native visual and keyboard review at the 720×520 main-window minimum and standard settings size, and verify the 420×360 compact result-window contract through focused component coverage; record evidence against `specs/003-unified-error-feedback/quickstart.md`
+- [X] T017 Read back the final specification, contract, implementation diff, and completed checklist; mark all tasks complete in `specs/003-unified-error-feedback/tasks.md`
 
 ---
 

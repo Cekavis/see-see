@@ -3,7 +3,9 @@ import { Button } from "../components/Button";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorNotice } from "../components/ErrorNotice";
+import { useNotifications } from "../components/Notifications";
 import {
+  getErrorMessage,
   ipc,
   type AppError,
   type HistoryEntryDetail,
@@ -29,29 +31,34 @@ function useImage(
   api: HistoryApi,
   item: HistoryListItem | HistoryEntryDetail | null,
   variant: "thumbnail" | "original",
+  onError: (message: string) => void,
 ) {
   const [url, setUrl] = useState<string>();
   useEffect(() => {
     if (!item?.hasImage || typeof URL.createObjectURL !== "function") return;
     let active = true;
     let objectUrl: string | undefined;
-    void api.getHistoryImage(item.id, variant).then((buffer) => {
-      if (!active) return;
-      objectUrl = URL.createObjectURL(
-        new Blob([buffer], { type: "image/png" }),
-      );
-      setUrl(objectUrl);
-    });
+    void api
+      .getHistoryImage(item.id, variant)
+      .then((buffer) => {
+        if (!active) return;
+        objectUrl = URL.createObjectURL(
+          new Blob([buffer], { type: "image/png" }),
+        );
+        setUrl(objectUrl);
+      })
+      .catch((value: unknown) => onError(getErrorMessage(value)));
     return () => {
       active = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [api, item, variant]);
+  }, [api, item, onError, variant]);
   return url;
 }
 
 function Thumbnail({ api, item }: { api: HistoryApi; item: HistoryListItem }) {
-  const url = useImage(api, item, "thumbnail");
+  const notifications = useNotifications();
+  const url = useImage(api, item, "thumbnail", notifications.error);
   return url ? (
     <img className="history-item__thumbnail" src={url} alt="截图缩略图" />
   ) : (
@@ -60,17 +67,17 @@ function Thumbnail({ api, item }: { api: HistoryApi; item: HistoryListItem }) {
 }
 
 export function History({ api = ipc }: { api?: HistoryApi }) {
+  const notifications = useNotifications();
   const [items, setItems] = useState<HistoryListItem[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [text, setText] = useState("");
   const [promptName, setPromptName] = useState("");
   const [status, setStatus] = useState<"" | "success" | "failed">("");
   const [detail, setDetail] = useState<HistoryEntryDetail | null>(null);
-  const [error, setError] = useState<string>();
   const [confirmation, setConfirmation] = useState<
     { kind: "entry"; item: HistoryListItem } | { kind: "all" } | null
   >(null);
-  const imageUrl = useImage(api, detail, "original");
+  const imageUrl = useImage(api, detail, "original", notifications.error);
 
   const query = useCallback(
     (cursor?: string, append = false) => {
@@ -88,20 +95,27 @@ export function History({ api = ipc }: { api?: HistoryApi }) {
           );
           setNextCursor(page.nextCursor);
         })
-        .catch((value: AppError) => setError(value.message));
+        .catch((value: AppError) => notifications.error(value.message));
     },
-    [api, promptName, status, text],
+    [api, notifications, promptName, status, text],
   );
 
   useEffect(() => {
-    void api
-      .queryHistory({})
-      .then((page) => {
-        setItems(page.items);
-        setNextCursor(page.nextCursor);
-      })
-      .catch((value: AppError) => setError(value.message));
-  }, [api]);
+    function load() {
+      void api
+        .queryHistory({})
+        .then((page) => {
+          setItems(page.items);
+          setNextCursor(page.nextCursor);
+        })
+        .catch((value: AppError) =>
+          notifications.error(value.message, {
+            action: { label: "重试", onClick: load },
+          }),
+        );
+    }
+    load();
+  }, [api, notifications]);
 
   const hasFilters = Boolean(text || promptName || status);
   return (
@@ -121,7 +135,6 @@ export function History({ api = ipc }: { api?: HistoryApi }) {
           清空全部历史
         </Button>
       </header>
-      {error && <ErrorNotice message={error} />}
       <section className="history-filters" aria-label="历史筛选">
         <label>
           搜索结果
@@ -181,7 +194,9 @@ export function History({ api = ipc }: { api?: HistoryApi }) {
                         void api
                           .getHistoryEntry(item.id)
                           .then(setDetail)
-                          .catch((value: AppError) => setError(value.message))
+                          .catch((value: AppError) =>
+                            notifications.error(value.message),
+                          )
                       }
                     >
                       查看详情
@@ -236,20 +251,33 @@ export function History({ api = ipc }: { api?: HistoryApi }) {
               <div className="button-row">
                 <Button
                   disabled={!detail.resultText}
-                  onClick={() =>
-                    detail.resultText && void api.copyText(detail.resultText)
-                  }
+                  onClick={() => {
+                    if (!detail.resultText) return;
+                    notifications.clear();
+                    void api
+                      .copyText(detail.resultText)
+                      .then(() => notifications.success("结果已复制"))
+                      .catch((value: AppError) =>
+                        notifications.error(value.message),
+                      );
+                  }}
                 >
                   复制结果
                 </Button>
                 <Button
                   variant="primary"
                   disabled={!detail.hasImage}
-                  onClick={() =>
+                  onClick={() => {
+                    notifications.clear();
                     void api
                       .resubmitHistory(detail.id)
-                      .catch((value: AppError) => setError(value.message))
-                  }
+                      .then(() =>
+                        notifications.success("已使用当前配置重新提交"),
+                      )
+                      .catch((value: AppError) =>
+                        notifications.error(value.message),
+                      );
+                  }}
                 >
                   使用当前配置再次提交
                 </Button>
@@ -280,18 +308,20 @@ export function History({ api = ipc }: { api?: HistoryApi }) {
               .clearHistory()
               .then(() => {
                 setDetail(null);
+                notifications.success("历史记录已清空");
                 void query();
               })
-              .catch((value: AppError) => setError(value.message));
+              .catch((value: AppError) => notifications.error(value.message));
             return;
           }
           void api
             .deleteHistoryEntry(target.item.id)
             .then(() => {
               if (detail?.id === target.item.id) setDetail(null);
+              notifications.success("历史记录已删除");
               void query();
             })
-            .catch((value: AppError) => setError(value.message));
+            .catch((value: AppError) => notifications.error(value.message));
         }}
       />
     </section>

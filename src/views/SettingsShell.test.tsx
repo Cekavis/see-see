@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { NotificationProvider } from "../components/Notifications";
 import { SettingsShell } from "./SettingsShell";
 
 const mocks = vi.hoisted(() => ({
@@ -43,7 +44,11 @@ describe("SettingsShell", () => {
   });
 
   it("switches all settings sections locally without a capture control", async () => {
-    render(<SettingsShell />);
+    render(
+      <NotificationProvider>
+        <SettingsShell />
+      </NotificationProvider>,
+    );
     expect(
       await screen.findByRole("heading", { name: "常规" }),
     ).toBeInTheDocument();

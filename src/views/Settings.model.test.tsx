@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { NotificationProvider } from "../components/Notifications";
 import { Settings, type SettingsApi } from "./Settings";
 
 function api(overrides: Partial<SettingsApi> = {}): SettingsApi {
@@ -27,10 +28,18 @@ function api(overrides: Partial<SettingsApi> = {}): SettingsApi {
   };
 }
 
+function renderSettings(service: SettingsApi) {
+  return render(
+    <NotificationProvider>
+      <Settings api={service} />
+    </NotificationProvider>,
+  );
+}
+
 describe("model settings", () => {
   it("supports preset endpoints, manual model IDs, and clears the key after save", async () => {
     const service = api();
-    render(<Settings api={service} />);
+    renderSettings(service);
     fireEvent.change(screen.getByLabelText("配置名称"), {
       target: { value: "我的 OpenAI" },
     });
@@ -42,6 +51,7 @@ describe("model settings", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "保存配置" }));
     await waitFor(() => expect(service.saveModelConfig).toHaveBeenCalled());
+    expect(await screen.findByRole("status")).toHaveTextContent("配置已保存");
     expect(screen.getByLabelText("API Key")).toHaveValue("");
     expect(service.saveModelConfig).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -65,7 +75,7 @@ describe("model settings", () => {
         },
       }),
     });
-    render(<Settings api={service} />);
+    renderSettings(service);
     fireEvent.click(screen.getByRole("button", { name: "获取模型列表" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "无法获取模型列表",
@@ -94,7 +104,7 @@ describe("model settings", () => {
     const service = api({
       listModelConfigs: vi.fn().mockResolvedValue([config]),
     });
-    render(<Settings api={service} />);
+    renderSettings(service);
     expect(
       await screen.findByRole("heading", { name: "视觉模型" }),
     ).toBeInTheDocument();
@@ -109,5 +119,6 @@ describe("model settings", () => {
     await waitFor(() =>
       expect(service.deleteModelConfig).toHaveBeenCalledWith("model-1"),
     );
+    expect(await screen.findByText("模型配置已删除")).toBeInTheDocument();
   });
 });

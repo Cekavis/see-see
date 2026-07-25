@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { NotificationProvider } from "../components/Notifications";
 import { Result, type ResultSnapshot } from "./Result";
 
 const snapshot = (overrides: Partial<ResultSnapshot> = {}): ResultSnapshot => ({
@@ -11,12 +12,16 @@ const snapshot = (overrides: Partial<ResultSnapshot> = {}): ResultSnapshot => ({
   ...overrides,
 });
 
+function renderResult(node: React.ReactNode) {
+  return render(<NotificationProvider>{node}</NotificationProvider>);
+}
+
 describe("Result", () => {
   it("shows streaming text and exposes cancel, copy, and always-on-top controls", () => {
     const onCancel = vi.fn();
     const onCopy = vi.fn();
     const onAlwaysOnTop = vi.fn();
-    render(
+    renderResult(
       <Result
         snapshot={snapshot()}
         alwaysOnTop
@@ -31,11 +36,12 @@ describe("Result", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: "窗口置顶" }));
     expect(onCancel).toHaveBeenCalledOnce();
     expect(onCopy).toHaveBeenCalledWith("逐步输出");
+    expect(screen.getByRole("status")).toHaveTextContent("结果已复制");
     expect(onAlwaysOnTop).toHaveBeenCalledWith(false);
   });
 
   it("renders completed and failed terminal states without unsafe rich text", () => {
-    const { rerender } = render(
+    const { rerender } = renderResult(
       <Result
         snapshot={snapshot({
           state: "completed",
@@ -46,13 +52,15 @@ describe("Result", () => {
     expect(screen.getByText("<script>纯文本</script>")).toBeInTheDocument();
     expect(document.querySelector("script")).toBeNull();
     rerender(
-      <Result
-        snapshot={snapshot({
-          state: "failed",
-          text: "",
-          error: { code: "timeout", message: "请求超时", retryable: true },
-        })}
-      />,
+      <NotificationProvider>
+        <Result
+          snapshot={snapshot({
+            state: "failed",
+            text: "",
+            error: { code: "timeout", message: "请求超时", retryable: true },
+          })}
+        />
+      </NotificationProvider>,
     );
     expect(screen.getByRole("alert")).toHaveTextContent("请求超时");
   });

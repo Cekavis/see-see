@@ -2,8 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { Button } from "../components/Button";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { EmptyState } from "../components/EmptyState";
-import { ErrorNotice } from "../components/ErrorNotice";
 import { Field } from "../components/Field";
+import { useNotifications } from "../components/Notifications";
 import {
   ipc,
   type AppError,
@@ -22,17 +22,17 @@ export type PromptsApi = {
 const empty = (): PromptPresetInput => ({ name: "", body: "" });
 
 export function Prompts({ api = ipc }: { api?: PromptsApi }) {
+  const notifications = useNotifications();
   const [prompts, setPrompts] = useState<PromptPreset[]>([]);
   const [form, setForm] = useState<PromptPresetInput>(empty);
-  const [error, setError] = useState<string>();
   const [deleteTarget, setDeleteTarget] = useState<PromptPreset | null>(null);
   const refresh = useCallback(
     () =>
       api
         .listPromptPresets()
         .then(setPrompts)
-        .catch((value: AppError) => setError(value.message)),
-    [api],
+        .catch((value: AppError) => notifications.error(value.message)),
+    [api, notifications],
   );
   useEffect(() => {
     void refresh();
@@ -49,7 +49,6 @@ export function Prompts({ api = ipc }: { api?: PromptsApi }) {
           当前提示词会在截图提交时固定为快照，后续编辑不会改变正在进行或已有的记录。
         </p>
       </header>
-      {error && <ErrorNotice message={error} />}
       <div className="section-split">
         <section className="settings-grid" aria-label="提示词编辑器">
           <Field label="提示词名称" htmlFor="prompt-name">
@@ -82,14 +81,17 @@ export function Prompts({ api = ipc }: { api?: PromptsApi }) {
               type="button"
               variant="primary"
               onClick={() => {
-                setError(undefined);
+                notifications.clear();
                 void api
                   .savePromptPreset(form)
                   .then(() => {
                     setForm(empty());
+                    notifications.success("提示词已保存");
                     void refresh();
                   })
-                  .catch((value: AppError) => setError(value.message));
+                  .catch((value: AppError) =>
+                    notifications.error(value.message),
+                  );
               }}
             >
               保存提示词
@@ -136,8 +138,13 @@ export function Prompts({ api = ipc }: { api?: PromptsApi }) {
                     onClick={() =>
                       void api
                         .duplicatePromptPreset(prompt.id)
-                        .then(refresh)
-                        .catch((value: AppError) => setError(value.message))
+                        .then(() => {
+                          notifications.success("提示词已复制");
+                          void refresh();
+                        })
+                        .catch((value: AppError) =>
+                          notifications.error(value.message),
+                        )
                     }
                   >
                     复制
@@ -148,8 +155,13 @@ export function Prompts({ api = ipc }: { api?: PromptsApi }) {
                     onClick={() =>
                       void api
                         .setActivePrompt(prompt.id)
-                        .then(refresh)
-                        .catch((value: AppError) => setError(value.message))
+                        .then(() => {
+                          notifications.success("已设为当前提示词");
+                          void refresh();
+                        })
+                        .catch((value: AppError) =>
+                          notifications.error(value.message),
+                        )
                     }
                   >
                     设为当前
@@ -182,9 +194,10 @@ export function Prompts({ api = ipc }: { api?: PromptsApi }) {
             .deletePromptPreset(target.id)
             .then(() => {
               if (form.id === target.id) setForm(empty());
+              notifications.success("提示词已删除");
               void refresh();
             })
-            .catch((value: AppError) => setError(value.message));
+            .catch((value: AppError) => notifications.error(value.message));
         }}
       />
     </section>

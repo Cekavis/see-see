@@ -24,7 +24,7 @@ Replace page-positioned operation messages with one window-scoped notification p
 
 **Performance Goals**: Feedback rendered in the current viewport within one second; no document reflow; small bounded in-memory queue
 
-**Constraints**: 320×240 minimum representative viewport, light/dark themes, reduced motion, no credential or raw provider-response exposure, independent notification state per window
+**Constraints**: 720×520 configured main-window minimum, 420×360 result-window minimum, light/dark themes, reduced motion, no credential or raw provider-response exposure, independent notification state per window
 
 **Scale/Scope**: Main settings view, result view, and all existing asynchronous action feedback; no backend protocol or persistence change
 

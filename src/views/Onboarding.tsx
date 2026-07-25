@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "../components/Button";
-import { ErrorNotice } from "../components/ErrorNotice";
+import { useNotifications } from "../components/Notifications";
 import { ipc, type AppError, type AppSnapshot } from "../ipc";
 
 export type OnboardingApi = {
@@ -16,27 +16,28 @@ export function Onboarding({
   api?: OnboardingApi;
   onSelectSection: (section: "models" | "prompts") => void;
 }) {
+  const notifications = useNotifications();
   const [snapshot, setSnapshot] = useState<AppSnapshot>();
-  const [error, setError] = useState<string>();
-  const refresh = useCallback(
-    () =>
-      api
+  const refresh = useCallback(() => {
+    function run() {
+      void api
         .getAppSnapshot()
         .then(setSnapshot)
-        .catch((failure: AppError) => setError(failure.message)),
-    [api],
-  );
+        .catch((failure: AppError) =>
+          notifications.error(failure.message, {
+            action: { label: "重试", onClick: run },
+          }),
+        );
+    }
+    run();
+  }, [api, notifications]);
   useEffect(() => {
-    void refresh();
+    refresh();
   }, [refresh]);
   if (!snapshot)
     return (
       <section className="settings-group onboarding" aria-label="首次设置">
-        {error ? (
-          <ErrorNotice message={error} onRetry={() => void refresh()} />
-        ) : (
-          <p>正在检查桌面环境…</p>
-        )}
+        <p>正在检查桌面环境…</p>
       </section>
     );
   if (snapshot.settings.onboardingCompleted) return null;
@@ -53,7 +54,6 @@ export function Onboarding({
         <h2 id="onboarding-title">欢迎使用 See See</h2>
         <p>完成三项本地设置后，即可用快捷键直接把截图交给多模态模型。</p>
       </header>
-      {error && <ErrorNotice message={error} />}
       <ol className="onboarding-steps">
         <li>
           <h2>1. 屏幕截图权限</h2>
@@ -67,7 +67,12 @@ export function Onboarding({
           {!permissionReady && (
             <Button
               onClick={() =>
-                void api.openScreenPermissionSettings().then(refresh)
+                void api
+                  .openScreenPermissionSettings()
+                  .then(refresh)
+                  .catch((failure: AppError) =>
+                    notifications.error(failure.message),
+                  )
               }
             >
               打开系统权限设置
@@ -91,7 +96,8 @@ export function Onboarding({
         onClick={() =>
           void api
             .completeOnboarding()
-            .then(() =>
+            .then(() => {
+              notifications.success("首次设置已完成");
               setSnapshot((current) =>
                 current
                   ? {
@@ -102,9 +108,9 @@ export function Onboarding({
                       },
                     }
                   : current,
-              ),
-            )
-            .catch((failure: AppError) => setError(failure.message))
+              );
+            })
+            .catch((failure: AppError) => notifications.error(failure.message))
         }
       >
         完成设置

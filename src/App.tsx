@@ -1,7 +1,13 @@
 import { Channel } from "@tauri-apps/api/core";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { useEffect, useState } from "react";
-import { ipc, type AnalysisEvent, type AnalysisSnapshot } from "./ipc";
+import { useNotifications } from "./components/Notifications";
+import {
+  getErrorMessage,
+  ipc,
+  type AnalysisEvent,
+  type AnalysisSnapshot,
+} from "./ipc";
 import { CaptureOverlay } from "./views/CaptureOverlay";
 import { Result } from "./views/Result";
 import { SettingsShell } from "./views/SettingsShell";
@@ -28,6 +34,7 @@ function CaptureView() {
 }
 
 function ResultView() {
+  const notifications = useNotifications();
   const runId = new URLSearchParams(window.location.search).get("run") ?? "";
   const [snapshot, setSnapshot] = useState<AnalysisSnapshot>({
     runId,
@@ -68,21 +75,25 @@ function ResultView() {
         return { ...current, state: "cancelled", text: "" };
       });
     };
-    void ipc.attachAnalysis(runId, channel).then(setSnapshot);
+    void ipc
+      .attachAnalysis(runId, channel)
+      .then(setSnapshot)
+      .catch((value: unknown) => notifications.error(getErrorMessage(value)));
     void ipc
       .getAppSnapshot()
-      .then((value) => setAlwaysOnTop(value.settings.resultAlwaysOnTop));
-  }, [runId]);
+      .then((value) => setAlwaysOnTop(value.settings.resultAlwaysOnTop))
+      .catch((value: unknown) => notifications.error(getErrorMessage(value)));
+  }, [notifications, runId]);
 
   return (
     <Result
       snapshot={snapshot}
       alwaysOnTop={alwaysOnTop}
-      onCancel={() => void ipc.cancelAnalysis(runId)}
-      onCopy={(text) => void ipc.copyText(text)}
+      onCancel={() => ipc.cancelAnalysis(runId)}
+      onCopy={(text) => ipc.copyText(text)}
       onAlwaysOnTop={(value) => {
         setAlwaysOnTop(value);
-        void ipc.setResultAlwaysOnTop(value);
+        return ipc.setResultAlwaysOnTop(value);
       }}
     />
   );

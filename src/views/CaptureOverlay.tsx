@@ -5,7 +5,8 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { ipc, type PhysicalRect } from "../ipc";
+import { useNotifications } from "../components/Notifications";
+import { getErrorMessage, ipc, type PhysicalRect } from "../ipc";
 
 type Point = { x: number; y: number };
 
@@ -47,6 +48,7 @@ export function CaptureOverlay({
   onFinish,
   onCancel,
 }: Props) {
+  const notifications = useNotifications();
   const start = useRef<Point | null>(null);
   const [localSelection, setLocalSelection] = useState<PhysicalRect | null>(
     null,
@@ -59,10 +61,13 @@ export function CaptureOverlay({
   useEffect(() => {
     if (!sessionId || !monitorId) return;
     let url: string | undefined;
-    void ipc.getCaptureFrame(sessionId, monitorId).then((buffer) => {
-      url = URL.createObjectURL(new Blob([buffer], { type: "image/png" }));
-      setFrameUrl(url);
-    });
+    void ipc
+      .getCaptureFrame(sessionId, monitorId)
+      .then((buffer) => {
+        url = URL.createObjectURL(new Blob([buffer], { type: "image/png" }));
+        setFrameUrl(url);
+      })
+      .catch((value: unknown) => notifications.error(getErrorMessage(value)));
     const unlisten = listen<PhysicalRect>("capture-selection", (event) =>
       setRemoteSelection(event.payload),
     );
@@ -70,19 +75,24 @@ export function CaptureOverlay({
       void unlisten.then((stop) => stop());
       if (url) URL.revokeObjectURL(url);
     };
-  }, [monitorId, sessionId]);
+  }, [monitorId, notifications, sessionId]);
 
   useEffect(() => {
     const cancel = () => {
       if (onCancel) onCancel();
-      else if (sessionId) void ipc.cancelCapture(sessionId);
+      else if (sessionId)
+        void ipc
+          .cancelCapture(sessionId)
+          .catch((value: unknown) =>
+            notifications.error(getErrorMessage(value)),
+          );
     };
     const keydown = (event: KeyboardEvent) => {
       if (event.key === "Escape") cancel();
     };
     window.addEventListener("keydown", keydown);
     return () => window.removeEventListener("keydown", keydown);
-  }, [onCancel, sessionId]);
+  }, [notifications, onCancel, sessionId]);
 
   const selection = localSelection ?? remoteSelection;
   const handleMove = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -92,7 +102,12 @@ export function CaptureOverlay({
     setLocalSelection(value);
     if (value) {
       if (onSelection) onSelection(value);
-      else if (sessionId) void ipc.updateCaptureSelection(sessionId, value);
+      else if (sessionId)
+        void ipc
+          .updateCaptureSelection(sessionId, value)
+          .catch((failure: unknown) =>
+            notifications.error(getErrorMessage(failure)),
+          );
     }
   };
 
@@ -119,9 +134,19 @@ export function CaptureOverlay({
         setLocalSelection(null);
         if (value) {
           if (onFinish) onFinish(value);
-          else if (sessionId) void ipc.finishCapture(sessionId, value);
+          else if (sessionId)
+            void ipc
+              .finishCapture(sessionId, value)
+              .catch((failure: unknown) =>
+                notifications.error(getErrorMessage(failure)),
+              );
         } else if (onCancel) onCancel();
-        else if (sessionId) void ipc.cancelCapture(sessionId);
+        else if (sessionId)
+          void ipc
+            .cancelCapture(sessionId)
+            .catch((failure: unknown) =>
+              notifications.error(getErrorMessage(failure)),
+            );
       }}
     >
       <div className="capture-overlay__hint">拖动选择区域 · Esc 取消</div>

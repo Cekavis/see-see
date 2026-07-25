@@ -6,6 +6,7 @@ import {
   within,
 } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { NotificationProvider } from "../components/Notifications";
 import { History, type HistoryApi } from "./History";
 
 const item = {
@@ -41,10 +42,18 @@ function api(items = [item]): HistoryApi {
   };
 }
 
+function renderHistory(service: HistoryApi) {
+  return render(
+    <NotificationProvider>
+      <History api={service} />
+    </NotificationProvider>,
+  );
+}
+
 describe("History", () => {
   it("loads, searches, filters, opens detail, copies, and resubmits", async () => {
     const service = api();
-    render(<History api={service} />);
+    renderHistory(service);
     expect(await screen.findByText("旅行：旅行")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("搜索结果"), {
       target: { value: "旅行" },
@@ -68,14 +77,22 @@ describe("History", () => {
     );
     expect(service.copyText).toHaveBeenCalledWith("旅行（りょこう）：旅行");
     expect(service.resubmitHistory).toHaveBeenCalledWith("h1");
+    expect(await screen.findByText("结果已复制")).toBeInTheDocument();
+    expect(
+      await screen.findByText("已使用当前配置重新提交"),
+    ).toBeInTheDocument();
   });
 
   it("shows empty/no-result states and confirms single/all deletion", async () => {
     const emptyService = api([]);
-    const { rerender } = render(<History api={emptyService} />);
+    const { rerender } = renderHistory(emptyService);
     expect(await screen.findByText("没有历史记录")).toBeInTheDocument();
     const service = api();
-    rerender(<History api={service} />);
+    rerender(
+      <NotificationProvider>
+        <History api={service} />
+      </NotificationProvider>,
+    );
     expect(await screen.findByText("旅行：旅行")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "删除记录" }));
     fireEvent.click(
@@ -95,5 +112,6 @@ describe("History", () => {
       expect(service.deleteHistoryEntry).toHaveBeenCalledWith("h1"),
     );
     expect(service.clearHistory).toHaveBeenCalled();
+    expect(await screen.findByText("历史记录已清空")).toBeInTheDocument();
   });
 });

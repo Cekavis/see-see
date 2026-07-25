@@ -2,8 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { Button } from "../components/Button";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { EmptyState } from "../components/EmptyState";
-import { ErrorNotice } from "../components/ErrorNotice";
 import { Field } from "../components/Field";
+import { useNotifications } from "../components/Notifications";
 import {
   getErrorMessage,
   ipc,
@@ -42,27 +42,31 @@ const emptyForm = (): ModelConfigInput => ({
 });
 
 export function Settings({ api = ipc }: { api?: SettingsApi }) {
+  const notifications = useNotifications();
   const [configs, setConfigs] = useState<ModelConfigSummary[]>([]);
   const [form, setForm] = useState<ModelConfigInput>(emptyForm);
   const [models, setModels] = useState<RemoteModel[]>([]);
-  const [error, setError] = useState<string>();
-  const [notice, setNotice] = useState<string>();
   const [busy, setBusy] = useState<"save" | "list" | "test">();
   const [deleteTarget, setDeleteTarget] = useState<ModelConfigSummary | null>(
     null,
   );
 
-  const refresh = useCallback(
-    () =>
-      api
+  const refresh = useCallback(() => {
+    function run() {
+      void api
         .listModelConfigs()
         .then(setConfigs)
-        .catch((value: unknown) => setError(getErrorMessage(value))),
-    [api],
-  );
+        .catch((value: unknown) =>
+          notifications.error(getErrorMessage(value), {
+            action: { label: "重试", onClick: run },
+          }),
+        );
+    }
+    run();
+  }, [api, notifications]);
   useEffect(() => {
-    void refresh();
-  }, [api, refresh]);
+    refresh();
+  }, [refresh]);
 
   const draft = (): ModelConnectionInput => ({
     id: form.id,
@@ -89,12 +93,6 @@ export function Settings({ api = ipc }: { api?: SettingsApi }) {
           只保存在系统凭据存储中。
         </p>
       </header>
-      {error && <ErrorNotice message={error} />}
-      {notice && (
-        <p className="success-notice" role="status">
-          {notice}
-        </p>
-      )}
       <div className="section-split">
         <section className="settings-grid" aria-label="模型配置编辑器">
           <Field label="配置名称" htmlFor="model-name">
@@ -191,18 +189,20 @@ export function Settings({ api = ipc }: { api?: SettingsApi }) {
               disabled={busy === "list"}
               onClick={() => {
                 setBusy("list");
-                setError(undefined);
+                notifications.clear();
                 void api
                   .listRemoteModels(draft())
                   .then((items) => {
                     setModels(items);
-                    setNotice(
+                    notifications.success(
                       items.length
                         ? `已获取 ${items.length} 个模型`
                         : "端点未返回可用模型，可继续手动输入",
                     );
                   })
-                  .catch((value: unknown) => setError(getErrorMessage(value)))
+                  .catch((value: unknown) =>
+                    notifications.error(getErrorMessage(value)),
+                  )
                   .finally(() => setBusy(undefined));
               }}
             >
@@ -212,16 +212,23 @@ export function Settings({ api = ipc }: { api?: SettingsApi }) {
               disabled={busy === "test"}
               onClick={() => {
                 setBusy("test");
-                setError(undefined);
+                notifications.clear();
                 void api
                   .testModelConfig(draft())
                   .then((result) => {
                     if (result.passed)
-                      setNotice(`连接成功（${result.latencyMs} ms）`);
-                    else setError(result.error?.message ?? "连接测试失败");
+                      notifications.success(
+                        `连接成功（${result.latencyMs} ms）`,
+                      );
+                    else
+                      notifications.error(
+                        result.error?.message ?? "连接测试失败",
+                      );
                     void refresh();
                   })
-                  .catch((value: unknown) => setError(getErrorMessage(value)))
+                  .catch((value: unknown) =>
+                    notifications.error(getErrorMessage(value)),
+                  )
                   .finally(() => setBusy(undefined));
               }}
             >
@@ -232,7 +239,7 @@ export function Settings({ api = ipc }: { api?: SettingsApi }) {
               disabled={busy === "save"}
               onClick={() => {
                 setBusy("save");
-                setError(undefined);
+                notifications.clear();
                 const input = { ...form, apiKey: form.apiKey || undefined };
                 void api
                   .saveModelConfig(input)
@@ -242,10 +249,14 @@ export function Settings({ api = ipc }: { api?: SettingsApi }) {
                       apiKey: "",
                       clearApiKey: false,
                     }));
-                    setNotice("配置已保存；修改后的配置需要重新测试连接。");
+                    notifications.success(
+                      "配置已保存；修改后的配置需要重新测试连接。",
+                    );
                     void refresh();
                   })
-                  .catch((value: unknown) => setError(getErrorMessage(value)))
+                  .catch((value: unknown) =>
+                    notifications.error(getErrorMessage(value)),
+                  )
                   .finally(() => setBusy(undefined));
               }}
             >
@@ -302,9 +313,18 @@ export function Settings({ api = ipc }: { api?: SettingsApi }) {
                   </Button>
                   <Button
                     disabled={config.testStatus !== "passed" || config.isActive}
-                    onClick={() =>
-                      void api.setActiveModelConfig(config.id).then(refresh)
-                    }
+                    onClick={() => {
+                      notifications.clear();
+                      void api
+                        .setActiveModelConfig(config.id)
+                        .then(() => {
+                          notifications.success("已设为当前模型");
+                          void refresh();
+                        })
+                        .catch((value: unknown) =>
+                          notifications.error(getErrorMessage(value)),
+                        );
+                    }}
                   >
                     设为当前
                   </Button>
@@ -335,9 +355,12 @@ export function Settings({ api = ipc }: { api?: SettingsApi }) {
             .deleteModelConfig(target.id)
             .then(() => {
               if (form.id === target.id) setForm(emptyForm());
+              notifications.success("模型配置已删除");
               void refresh();
             })
-            .catch((value: unknown) => setError(getErrorMessage(value)));
+            .catch((value: unknown) =>
+              notifications.error(getErrorMessage(value)),
+            );
         }}
       />
     </section>

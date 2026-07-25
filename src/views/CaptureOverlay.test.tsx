@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { NotificationProvider } from "../components/Notifications";
 import { CaptureOverlay } from "./CaptureOverlay";
 
 describe("CaptureOverlay", () => {
@@ -9,13 +10,15 @@ describe("CaptureOverlay", () => {
     const onCancel = vi.fn();
     HTMLElement.prototype.setPointerCapture = vi.fn();
     render(
-      <CaptureOverlay
-        origin={{ x: -100, y: 0 }}
-        scaleFactor={2}
-        onSelection={onSelection}
-        onFinish={onFinish}
-        onCancel={onCancel}
-      />,
+      <NotificationProvider>
+        <CaptureOverlay
+          origin={{ x: -100, y: 0 }}
+          scaleFactor={2}
+          onSelection={onSelection}
+          onFinish={onFinish}
+          onCancel={onCancel}
+        />
+      </NotificationProvider>,
     );
     const overlay = screen.getByTestId("capture-overlay");
     fireEvent.pointerDown(overlay, { pointerId: 7, clientX: 50, clientY: 40 });

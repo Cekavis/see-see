@@ -373,7 +373,7 @@ p {
 .settings-grid,
 .config-list,
 .empty-state,
-.error-notice {
+.inline-error-notice {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface-raised);
@@ -456,11 +456,6 @@ p {
   margin: 0;
   font-size: 1rem;
   font-weight: 650;
-}
-
-.section-view > .error-notice,
-.section-view > .success-notice {
-  margin: 18px clamp(20px, 3vw, 34px) 0;
 }
 
 .field {
@@ -644,16 +639,7 @@ textarea {
   transform: translateX(16px);
 }
 
-.success-notice {
-  padding: 10px 12px;
-  border: 1px solid color-mix(in srgb, var(--success) 30%, var(--border));
-  border-radius: var(--radius-sm);
-  background: var(--success-soft);
-  color: var(--success);
-  font-size: 0.86rem;
-}
-
-.error-notice {
+.inline-error-notice {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -664,8 +650,108 @@ textarea {
   color: var(--danger);
 }
 
-.error-notice .button {
+.inline-error-notice .button {
   flex: 0 0 auto;
+}
+
+.notification-viewport {
+  position: fixed;
+  top: max(12px, env(safe-area-inset-top));
+  right: max(12px, env(safe-area-inset-right));
+  z-index: 1000;
+  display: flex;
+  width: min(380px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  flex-direction: column;
+  gap: 8px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  pointer-events: none;
+  scrollbar-gutter: stable;
+}
+
+.notification {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px 10px;
+  align-items: start;
+  width: 100%;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-md);
+  color: var(--text);
+  pointer-events: auto;
+}
+
+.notification--error {
+  border-color: color-mix(in srgb, var(--danger) 42%, var(--border));
+  background: color-mix(in srgb, var(--danger-soft) 76%, var(--surface-raised));
+}
+
+.notification--success {
+  border-color: color-mix(in srgb, var(--success) 36%, var(--border));
+  background: color-mix(
+    in srgb,
+    var(--success-soft) 72%,
+    var(--surface-raised)
+  );
+}
+
+.notification__icon {
+  display: inline-grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: 50%;
+}
+
+.notification--error .notification__icon {
+  color: var(--danger);
+}
+
+.notification--success .notification__icon {
+  color: var(--success);
+}
+
+.notification__message {
+  min-width: 0;
+  margin: 2px 0 0;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.notification__action {
+  grid-column: 2;
+  justify-self: start;
+}
+
+.notification__dismiss {
+  display: inline-grid;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.notification__dismiss:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.notification__dismiss .icon {
+  width: 16px;
+  height: 16px;
 }
 
 .empty-state {
@@ -722,7 +808,6 @@ textarea {
   padding-bottom: 16px;
 }
 
-.onboarding > .error-notice,
 .onboarding > p,
 .onboarding > .button {
   margin: 16px;
@@ -1081,7 +1166,7 @@ textarea {
   margin-top: 12px;
 }
 
-.result-view > .error-notice {
+.result-view > .inline-error-notice {
   padding: 9px 11px;
 }
 
@@ -1181,9 +1266,7 @@ textarea {
   }
 
   .settings-section > .settings-group,
-  .history-filters,
-  .section-view > .error-notice,
-  .section-view > .success-notice {
+  .history-filters {
     margin-right: 14px;
     margin-left: 14px;
   }

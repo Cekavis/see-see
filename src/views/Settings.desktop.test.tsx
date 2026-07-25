@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { NotificationProvider } from "../components/Notifications";
 import { DesktopSettings, type DesktopSettingsApi } from "./DesktopSettings";
 
 const settings = {
@@ -27,6 +28,14 @@ function api(overrides: Partial<DesktopSettingsApi> = {}): DesktopSettingsApi {
   };
 }
 
+function renderSettings(service: DesktopSettingsApi) {
+  return render(
+    <NotificationProvider>
+      <DesktopSettings api={service} />
+    </NotificationProvider>,
+  );
+}
+
 describe("DesktopSettings", () => {
   it("defaults autostart off and updates shortcut without losing the old value on conflict", async () => {
     const service = api({
@@ -35,7 +44,7 @@ describe("DesktopSettings", () => {
         message: "快捷键已占用",
       }),
     });
-    render(<DesktopSettings api={service} />);
+    renderSettings(service);
     expect(await screen.findByLabelText("开机启动")).not.toBeChecked();
     fireEvent.change(screen.getByLabelText("截图快捷键"), {
       target: { value: "Taken" },
@@ -47,7 +56,7 @@ describe("DesktopSettings", () => {
 
   it("syncs autostart, history preference, and exports sanitized logs", async () => {
     const service = api();
-    render(<DesktopSettings api={service} />);
+    renderSettings(service);
     fireEvent.click(await screen.findByLabelText("开机启动"));
     fireEvent.click(screen.getByLabelText("保存历史记录"));
     fireEvent.click(screen.getByRole("button", { name: "导出诊断日志" }));
@@ -56,5 +65,6 @@ describe("DesktopSettings", () => {
     );
     expect(service.setSaveHistory).toHaveBeenCalledWith(false);
     expect(service.exportSanitizedLogs).toHaveBeenCalled();
+    expect(await screen.findByText("诊断日志已导出")).toBeInTheDocument();
   });
 });

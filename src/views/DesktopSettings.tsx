@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "../components/Button";
-import { ErrorNotice } from "../components/ErrorNotice";
 import { Field } from "../components/Field";
+import { useNotifications } from "../components/Notifications";
 import { ipc, type AppError, type AppSettings } from "../ipc";
 
 export type DesktopSettingsApi = {
@@ -13,39 +13,39 @@ export type DesktopSettingsApi = {
 };
 
 export function DesktopSettings({ api = ipc }: { api?: DesktopSettingsApi }) {
+  const notifications = useNotifications();
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [shortcut, setShortcut] = useState("");
-  const [error, setError] = useState<string>();
-  const load = useCallback(
-    () =>
-      api
+  const load = useCallback(() => {
+    function run() {
+      void api
         .getSettings()
         .then((value) => {
           setSettings(value);
           setShortcut(value.captureShortcut);
         })
-        .catch((failure: AppError) => setError(failure.message)),
-    [api],
-  );
+        .catch((failure: AppError) =>
+          notifications.error(failure.message, {
+            action: { label: "重试", onClick: run },
+          }),
+        );
+    }
+    run();
+  }, [api, notifications]);
   useEffect(() => {
-    void load();
+    load();
   }, [load]);
 
   if (!settings) {
     return (
       <section className="settings-group" aria-label="桌面设置">
-        {error ? (
-          <ErrorNotice message={error} onRetry={() => void load()} />
-        ) : (
-          <p className="settings-loading">正在加载桌面设置…</p>
-        )}
+        <p className="settings-loading">正在加载桌面设置…</p>
       </section>
     );
   }
   return (
     <section className="settings-group" aria-label="桌面设置">
       <h2>应用偏好</h2>
-      {error && <ErrorNotice message={error} />}
       <div className="setting-row">
         <div className="setting-row__body">
           <Field
@@ -62,16 +62,17 @@ export function DesktopSettings({ api = ipc }: { api?: DesktopSettingsApi }) {
         </div>
         <Button
           onClick={() => {
-            setError(undefined);
+            notifications.clear();
             void api
               .setCaptureShortcut(shortcut)
               .then((value) => {
                 setSettings(value);
                 setShortcut(value.captureShortcut);
+                notifications.success("快捷键已保存");
               })
               .catch((failure: AppError) => {
                 setShortcut(settings.captureShortcut);
-                setError(failure.message);
+                notifications.error(failure.message);
               });
           }}
         >
@@ -93,7 +94,9 @@ export function DesktopSettings({ api = ipc }: { api?: DesktopSettingsApi }) {
             void api
               .setAutostart(value)
               .then(setSettings)
-              .catch((failure: AppError) => setError(failure.message));
+              .catch((failure: AppError) =>
+                notifications.error(failure.message),
+              );
           }}
         />
       </label>
@@ -113,7 +116,9 @@ export function DesktopSettings({ api = ipc }: { api?: DesktopSettingsApi }) {
             void api
               .setSaveHistory(event.target.checked)
               .then(setSettings)
-              .catch((failure: AppError) => setError(failure.message));
+              .catch((failure: AppError) =>
+                notifications.error(failure.message),
+              );
           }}
         />
       </label>
@@ -125,11 +130,17 @@ export function DesktopSettings({ api = ipc }: { api?: DesktopSettingsApi }) {
           </span>
         </div>
         <Button
-          onClick={() =>
+          onClick={() => {
+            notifications.clear();
             void api
               .exportSanitizedLogs()
-              .catch((failure: AppError) => setError(failure.message))
-          }
+              .then((result) => {
+                if (result.exported) notifications.success("诊断日志已导出");
+              })
+              .catch((failure: AppError) =>
+                notifications.error(failure.message),
+              );
+          }}
         >
           导出诊断日志
         </Button>

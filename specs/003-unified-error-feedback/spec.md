@@ -91,9 +91,9 @@ As a keyboard or assistive-technology user, I can distinguish, read, and dismiss
 - **UX-003**: Error feedback MUST use stronger visual emphasis and persist; success feedback MUST use lighter visual emphasis and auto-dismiss after a default interval of four seconds.
 - **UX-004**: A newly shown error MUST be announced assertively, while success MUST be announced politely; neither announcement may forcibly move keyboard focus.
 - **UI-001**: The shared pattern MUST include a severity icon or equivalent non-color cue, message text, optional recovery action, and an accessible dismiss control.
-- **UI-002**: The notification stack MUST stay within a 320 px wide by 240 px high viewport and all larger supported viewports, wrapping content and allowing the stack itself to scroll when necessary.
+- **UI-002**: The notification stack MUST stay within the supported 720×520 main-window minimum and the 420×360 result-window minimum, wrapping content and allowing the stack itself to scroll when necessary.
 - **UI-003**: Dismiss and recovery controls MUST show a visible focus indicator and have accessible names; notification text MUST meet existing light and dark theme contrast expectations.
-- **UI-004**: Human visual review MUST cover the main settings window at approximately 320×240, 540×420, and a standard desktop size, plus the compact result window, in available light and dark appearances.
+- **UI-004**: Human visual review MUST cover the main settings window at its 720×520 configured minimum and a standard desktop size, plus the 420×360 compact result-window contract, in available light and dark appearances.
 - **UI-005**: Notification appearance and dismissal MUST respect reduced-motion preferences and MUST not obscure an entire primary action area at representative viewport sizes.
 
 ## Success Criteria *(mandatory)*
@@ -104,7 +104,7 @@ As a keyboard or assistive-technology user, I can distinguish, read, and dismiss
 - **SC-002**: Showing or dismissing any notification changes the underlying page's measured layout position by 0 pixels.
 - **SC-003**: 100% of tested success notifications remain visible for at least four seconds unless manually dismissed and then disappear without user action.
 - **SC-004**: 100% of tested notifications can be dismissed using keyboard-only navigation and are announced with the appropriate urgency by accessibility tooling.
-- **SC-005**: At 320×240 and larger viewports, notification text, dismissal, and any recovery action remain reachable with no horizontal clipping.
+- **SC-005**: At the configured 720×520 main-window and 420×360 result-window minimums, notification text, dismissal, and any recovery action remain reachable with no horizontal clipping.
 - **SC-006**: All existing automated checks pass, and focused regression tests cover error persistence, success timeout, repeated messages, recovery actions, and non-layout positioning.
 
 ## Assumptions

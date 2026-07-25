@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { NotificationProvider } from "../components/Notifications";
 import { Onboarding, type OnboardingApi } from "./Onboarding";
 
 function api(overrides: Partial<OnboardingApi> = {}): OnboardingApi {
@@ -26,11 +27,19 @@ function api(overrides: Partial<OnboardingApi> = {}): OnboardingApi {
   };
 }
 
+function renderOnboarding(service: OnboardingApi, onSelectSection = vi.fn()) {
+  return render(
+    <NotificationProvider>
+      <Onboarding api={service} onSelectSection={onSelectSection} />
+    </NotificationProvider>,
+  );
+}
+
 describe("Onboarding", () => {
   it("shows permission/model/prompt steps and blocks completion until configured", async () => {
     const service = api();
     const onSelectSection = vi.fn();
-    render(<Onboarding api={service} onSelectSection={onSelectSection} />);
+    renderOnboarding(service, onSelectSection);
     expect(await screen.findByText("屏幕权限已就绪")).toBeInTheDocument();
     expect(screen.getByText("尚未配置可用模型")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "完成设置" })).toBeDisabled();
@@ -59,7 +68,7 @@ describe("Onboarding", () => {
         screenPermission: "denied",
       }),
     });
-    render(<Onboarding api={service} onSelectSection={vi.fn()} />);
+    renderOnboarding(service);
     fireEvent.click(
       await screen.findByRole("button", { name: "打开系统权限设置" }),
     );
@@ -87,11 +96,24 @@ describe("Onboarding", () => {
         screenPermission: "granted",
       }),
     });
-    render(<Onboarding api={service} onSelectSection={vi.fn()} />);
+    renderOnboarding(service);
     fireEvent.click(await screen.findByRole("button", { name: "完成设置" }));
     await waitFor(() => expect(service.completeOnboarding).toHaveBeenCalled());
     expect(
       screen.queryByRole("heading", { name: "欢迎使用 See See" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("publishes a recoverable loading error in the shared notification layer", async () => {
+    const service = api();
+    vi.mocked(service.getAppSnapshot)
+      .mockRejectedValueOnce({ message: "桌面环境读取失败" })
+      .mockResolvedValueOnce(await api().getAppSnapshot());
+    renderOnboarding(service);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("桌面环境读取失败");
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    expect(await screen.findByText("屏幕权限已就绪")).toBeInTheDocument();
   });
 });

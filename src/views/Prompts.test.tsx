@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { NotificationProvider } from "../components/Notifications";
 import { Prompts, type PromptsApi } from "./Prompts";
 
 const prompt = {
@@ -22,10 +23,18 @@ function api(items = [prompt]): PromptsApi {
   };
 }
 
+function renderPrompts(service: PromptsApi) {
+  return render(
+    <NotificationProvider>
+      <Prompts api={service} />
+    </NotificationProvider>,
+  );
+}
+
 describe("Prompts", () => {
   it("loads, creates, edits, duplicates, activates, and keeps keyboard-focusable controls", async () => {
     const service = api();
-    render(<Prompts api={service} />);
+    renderPrompts(service);
     expect(
       await screen.findByRole("heading", { name: /日语学习解析/ }),
     ).toBeInTheDocument();
@@ -36,10 +45,12 @@ describe("Prompts", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "保存提示词" }));
     await waitFor(() => expect(service.savePromptPreset).toHaveBeenCalled());
+    expect(await screen.findByText("提示词已保存")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "复制" }));
     await waitFor(() =>
       expect(service.duplicatePromptPreset).toHaveBeenCalledWith("p1"),
     );
+    expect(await screen.findByText("提示词已复制")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "复制" })).toHaveAttribute(
       "type",
       "button",
@@ -48,10 +59,14 @@ describe("Prompts", () => {
 
   it("shows empty state and confirms deletion", async () => {
     const emptyService = api([]);
-    const { rerender } = render(<Prompts api={emptyService} />);
+    const { rerender } = renderPrompts(emptyService);
     expect(await screen.findByText("还没有提示词")).toBeInTheDocument();
     const service = api();
-    rerender(<Prompts api={service} />);
+    rerender(
+      <NotificationProvider>
+        <Prompts api={service} />
+      </NotificationProvider>,
+    );
     expect(
       await screen.findByRole("heading", { name: /日语学习解析/ }),
     ).toBeInTheDocument();
@@ -63,5 +78,6 @@ describe("Prompts", () => {
     await waitFor(() =>
       expect(service.deletePromptPreset).toHaveBeenCalledWith("p1"),
     );
+    expect(await screen.findByText("提示词已删除")).toBeInTheDocument();
   });
 });
