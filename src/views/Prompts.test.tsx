@@ -38,6 +38,9 @@ describe("Prompts", () => {
     expect(
       await screen.findByRole("heading", { name: /日语学习解析/ }),
     ).toBeInTheDocument();
+    expect(
+      screen.getByText(/截图提交时会保存提示词快照，后续编辑不影响已有记录/),
+    ).toHaveClass("field__hint");
     fireEvent.click(screen.getByRole("button", { name: "编辑" }));
     expect(screen.getByLabelText("提示词名称")).toHaveValue("日语学习解析");
     fireEvent.change(screen.getByLabelText("提示词正文"), {

@@ -45,9 +45,6 @@ export function Prompts({ api = ipc }: { api?: PromptsApi }) {
     >
       <header className="settings-section__header">
         <h1 id="prompts-title">提示词</h1>
-        <p>
-          当前提示词会在截图提交时固定为快照，后续编辑不会改变正在进行或已有的记录。
-        </p>
       </header>
       <div className="section-split">
         <section className="settings-grid" aria-label="提示词编辑器">
@@ -64,7 +61,7 @@ export function Prompts({ api = ipc }: { api?: PromptsApi }) {
           <Field
             label="提示词正文"
             htmlFor="prompt-body"
-            hint={`${form.body.length}/20000`}
+            hint={`截图提交时会保存提示词快照，后续编辑不影响已有记录。${form.body.length}/20000`}
           >
             <textarea
               id="prompt-body"

@@ -59,7 +59,6 @@ impl RuntimeState {
 
 pub struct AppState {
     pub database: Database,
-    pub credentials: Arc<dyn CredentialStore>,
     pub http: Client,
     pub runtime: Mutex<RuntimeState>,
 }
@@ -69,9 +68,9 @@ impl AppState {
         database: Database,
         credentials: Arc<dyn CredentialStore>,
     ) -> Result<Self, crate::error::AppError> {
+        crate::settings::migrate_model_credentials(&database, credentials.as_ref())?;
         Ok(Self {
             database,
-            credentials,
             http: client()?,
             runtime: Mutex::new(RuntimeState::default()),
         })

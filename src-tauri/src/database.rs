@@ -2,7 +2,8 @@ use crate::error::AppError;
 use rusqlite::{Connection, Transaction};
 use std::{path::Path, sync::Mutex};
 
-const MIGRATION: &str = include_str!("../migrations/0001_init.sql");
+const INITIAL_SCHEMA: &str = include_str!("../migrations/0001_init.sql");
+const PLAINTEXT_KEY_MIGRATION: &str = include_str!("../migrations/0002_plaintext_model_keys.sql");
 
 pub struct Database {
     connection: Mutex<Connection>,
@@ -32,7 +33,7 @@ impl Database {
             )
             .map_err(|_| AppError::storage("无法配置本地数据库"))?;
         connection
-            .execute_batch(MIGRATION)
+            .execute_batch(INITIAL_SCHEMA)
             .map_err(|_| AppError::storage("无法初始化本地数据库"))?;
         let has_onboarding = {
             let mut statement = connection
@@ -50,8 +51,33 @@ impl Database {
                 .execute("ALTER TABLE app_settings ADD COLUMN onboarding_completed INTEGER NOT NULL DEFAULT 0 CHECK (onboarding_completed IN (0, 1))", [])
                 .map_err(|_| AppError::storage("无法升级本地数据库"))?;
         }
+        let has_plaintext_api_key = {
+            let mut statement = connection
+                .prepare("PRAGMA table_info(model_configs)")
+                .map_err(|_| AppError::storage("无法检查模型配置数据库版本"))?;
+            let columns = statement
+                .query_map([], |row| row.get::<_, String>(1))
+                .map_err(|_| AppError::storage("无法检查模型配置数据库版本"))?;
+            columns
+                .filter_map(Result::ok)
+                .any(|column| column == "api_key")
+        };
+        if !has_plaintext_api_key {
+            connection
+                .execute_batch(PLAINTEXT_KEY_MIGRATION)
+                .map_err(|_| AppError::storage("无法升级模型配置存储"))?;
+        } else {
+            connection
+                .execute(
+                    "UPDATE model_configs
+                     SET test_status = 'untested', tested_at = NULL, test_error_code = NULL
+                     WHERE test_status != 'untested' OR tested_at IS NOT NULL OR test_error_code IS NOT NULL",
+                    [],
+                )
+                .map_err(|_| AppError::storage("无法清理旧模型测试结果"))?;
+        }
         connection
-            .pragma_update(None, "user_version", 2)
+            .pragma_update(None, "user_version", 3)
             .map_err(|_| AppError::storage("无法记录数据库版本"))?;
         Ok(Self {
             connection: Mutex::new(connection),

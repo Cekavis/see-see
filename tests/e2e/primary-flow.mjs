@@ -50,7 +50,7 @@ export async function runPrimaryFlow(page) {
   assert.ok(desktopLayout.sidebarHeight > 700);
   assert.equal(desktopLayout.contentScrollable, "auto");
 
-  await page.setViewportSize({ width: 720, height: 720 });
+  await page.setViewportSize({ width: 720, height: 520 });
   const compactLayout = await page.evaluate(() => {
     const sidebarElement = document.querySelector(".settings-sidebar");
     const nav = document.querySelector(".settings-nav");
@@ -80,7 +80,7 @@ export async function runPrimaryFlow(page) {
       save_model_config: { id: "model-1" },
       copy_text: null,
       query_history: { items: [], nextCursor: null },
-      "plugin:app|version": "0.2.1",
+      "plugin:app|version": "0.3.0",
     },
   );
 
@@ -95,6 +95,11 @@ export async function runPrimaryFlow(page) {
     await assertCurrentPage(button);
 
     if (name === "模型") {
+      assert.equal(await page.getByLabel("配置名称").count(), 0);
+      await page.getByRole("button", { name: "新增配置" }).click();
+      await page.getByLabel("配置名称").waitFor({ state: "visible" });
+      await page.getByRole("button", { name: "取消" }).click();
+      assert.equal(await page.getByLabel("配置名称").count(), 0);
       await page.evaluate(() =>
         window.__TAURI_INTERNALS__.invoke("save_model_config", {
           input: { name: "测试模型" },

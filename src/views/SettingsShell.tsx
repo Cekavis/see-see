@@ -30,7 +30,6 @@ function General({ onSelect }: { onSelect: (value: SettingsSection) => void }) {
     >
       <header className="settings-section__header">
         <h1 id="general-section-title">常规</h1>
-        <p>管理首次设置、全局快捷键和本地应用偏好。</p>
       </header>
       <div className="settings-groups">
         <Onboarding onSelectSection={onSelect} />
@@ -66,7 +65,6 @@ function About() {
         </span>
         <div>
           <h1 id="about-title">关于 See See</h1>
-          <p>用全局快捷键截取屏幕区域，并交给你配置的多模态模型。</p>
         </div>
       </header>
       <div className="settings-group">
@@ -74,7 +72,9 @@ function About() {
           <dt>版本</dt>
           <dd>{version}</dd>
           <dt>数据与隐私</dt>
-          <dd>模型凭据保存在系统凭据存储中；历史记录仅在启用后保存在本机。</dd>
+          <dd>
+            API Key 与模型端点以明文保存在本机；历史记录仅在启用后保存在本机。
+          </dd>
         </dl>
       </div>
     </section>

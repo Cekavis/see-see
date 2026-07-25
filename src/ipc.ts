@@ -94,9 +94,6 @@ export type ModelConfigSummary = {
   baseUrl: string;
   modelId: string;
   hasApiKey: boolean;
-  testStatus: "untested" | "passed" | "failed";
-  testedAt: string | null;
-  testErrorCode: string | null;
   isActive: boolean;
 };
 
@@ -176,6 +173,8 @@ export const ipc = {
   listModelConfigs: () => invoke<ModelConfigSummary[]>("list_model_configs"),
   saveModelConfig: (input: ModelConfigInput) =>
     invoke<ModelConfigSummary>("save_model_config", { input }),
+  duplicateModelConfig: (id: string) =>
+    invoke<ModelConfigSummary>("duplicate_model_config", { id }),
   deleteModelConfig: (id: string) =>
     invoke<void>("delete_model_config", { id }),
   setActiveModelConfig: (id: string) =>

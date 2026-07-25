@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS model_configs (
     protocol TEXT NOT NULL CHECK (protocol IN ('openai', 'anthropic', 'gemini')),
     base_url TEXT NOT NULL,
     model_id TEXT NOT NULL,
+    api_key TEXT,
     credential_ref TEXT,
     test_status TEXT NOT NULL DEFAULT 'untested' CHECK (test_status IN ('untested', 'passed', 'failed')),
     tested_at TEXT,

@@ -52,6 +52,9 @@ describe("SettingsShell", () => {
     expect(
       await screen.findByRole("heading", { name: "常规" }),
     ).toBeInTheDocument();
+    expect(
+      screen.queryByText("管理首次设置、全局快捷键和本地应用偏好。"),
+    ).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "常规" })).toHaveAttribute(
       "aria-current",
       "page",
@@ -84,5 +87,11 @@ describe("SettingsShell", () => {
     ).toBeInTheDocument();
     await waitFor(() => expect(getVersion).toHaveBeenCalled());
     expect(screen.getByText("0.2.0")).toBeInTheDocument();
+    expect(
+      screen.getByText(/API Key 与模型端点以明文保存在本机/),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/用全局快捷键截取屏幕区域/),
+    ).not.toBeInTheDocument();
   });
 });

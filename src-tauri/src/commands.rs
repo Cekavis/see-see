@@ -39,7 +39,7 @@ pub struct ExportResult {
     pub exported: bool,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelConnectionInput {
     pub id: Option<String>,
@@ -199,12 +199,7 @@ fn start_analysis_with_image(
 ) -> Result<AnalysisStarted, AppError> {
     let state = app.state::<AppState>();
     let (model, prompt) = require_active_configuration(&state)?;
-    let api_key = model
-        .credential_ref
-        .as_deref()
-        .map(|reference| state.credentials.get(reference))
-        .transpose()?
-        .flatten();
+    let api_key = settings::load_model_api_key(&state.database, &model.id)?;
     let save_history = settings::load_app_snapshot(&state.database)?
         .settings
         .save_history;
@@ -328,8 +323,7 @@ pub fn copy_text(app: AppHandle, text: String) -> Result<(), AppError> {
 
 #[tauri::command]
 pub fn list_model_configs(app: AppHandle) -> Result<Vec<ModelConfigSummary>, AppError> {
-    let state = app.state::<AppState>();
-    settings::list_model_configs(&state.database, state.credentials.as_ref())
+    settings::list_model_configs(&app.state::<AppState>().database)
 }
 
 #[tauri::command]
@@ -337,14 +331,17 @@ pub fn save_model_config(
     app: AppHandle,
     input: ModelConfigInput,
 ) -> Result<ModelConfigSummary, AppError> {
-    let state = app.state::<AppState>();
-    settings::save_model_config(&state.database, state.credentials.as_ref(), input)
+    settings::save_model_config(&app.state::<AppState>().database, input)
 }
 
 #[tauri::command]
 pub fn delete_model_config(app: AppHandle, id: String) -> Result<(), AppError> {
-    let state = app.state::<AppState>();
-    settings::delete_model_config(&state.database, state.credentials.as_ref(), &id)
+    settings::delete_model_config(&app.state::<AppState>().database, &id)
+}
+
+#[tauri::command]
+pub fn duplicate_model_config(app: AppHandle, id: String) -> Result<ModelConfigSummary, AppError> {
+    settings::duplicate_model_config(&app.state::<AppState>().database, &id)
 }
 
 #[tauri::command]
@@ -373,7 +370,7 @@ pub async fn test_model_config(
     }
     let state = app.state::<AppState>();
     let key = connection_key(&state, &draft)?;
-    let result = providers::test_connection(
+    Ok(providers::test_connection(
         &state.http,
         ProviderRequest {
             protocol: draft.protocol,
@@ -385,16 +382,7 @@ pub async fn test_model_config(
             stream: true,
         },
     )
-    .await;
-    if let Some(id) = draft.id.as_deref() {
-        settings::record_model_test(
-            &state.database,
-            id,
-            result.passed,
-            result.error.as_ref().map(|error| error.code.as_str()),
-        )?;
-    }
-    Ok(result)
+    .await)
 }
 
 #[tauri::command]
@@ -608,7 +596,7 @@ fn require_active_configuration(
     let model = settings::load_active_model(&state.database)?.ok_or_else(|| {
         AppError::new(
             ErrorCode::NoActiveModel,
-            "请先选择并测试一个模型配置",
+            "请先选择一个模型配置",
             false,
             Some("edit_model_config"),
         )
@@ -634,14 +622,7 @@ fn connection_key(
     let Some(id) = draft.id.as_deref() else {
         return Ok(None);
     };
-    let model = settings::load_model(&state.database, id)?
-        .ok_or_else(|| AppError::new(ErrorCode::NotFound, "模型配置不存在", false, None))?;
-    model
-        .credential_ref
-        .as_deref()
-        .map(|reference| state.credentials.get(reference))
-        .transpose()
-        .map(Option::flatten)
+    settings::load_model_api_key(&state.database, id)
 }
 
 fn active_analysis(app: &AppHandle, run_id: &str) -> Result<Arc<ActiveAnalysis>, AppError> {

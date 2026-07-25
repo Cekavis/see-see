@@ -5,6 +5,7 @@ use crate::{
     providers::{ProviderProtocol, validate_endpoint},
 };
 use rusqlite::OptionalExtension;
+use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -65,41 +66,9 @@ pub struct ModelSnapshot {
     pub protocol: ProviderProtocol,
     pub base_url: String,
     pub model_id: String,
-    pub credential_ref: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum ModelTestStatus {
-    Untested,
-    Passed,
-    Failed,
-}
-
-impl ModelTestStatus {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::Untested => "untested",
-            Self::Passed => "passed",
-            Self::Failed => "failed",
-        }
-    }
-}
-
-impl TryFrom<&str> for ModelTestStatus {
-    type Error = AppError;
-
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        match value {
-            "untested" => Ok(Self::Untested),
-            "passed" => Ok(Self::Passed),
-            "failed" => Ok(Self::Failed),
-            _ => Err(AppError::storage("模型测试状态无效")),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelConfigInput {
     pub id: Option<String>,
@@ -121,9 +90,6 @@ pub struct ModelConfigSummary {
     pub base_url: String,
     pub model_id: String,
     pub has_api_key: bool,
-    pub test_status: ModelTestStatus,
-    pub tested_at: Option<String>,
-    pub test_error_code: Option<String>,
     pub is_active: bool,
 }
 
@@ -132,7 +98,7 @@ struct StoredModel {
     protocol: String,
     base_url: String,
     model_id: String,
-    credential_ref: Option<String>,
+    api_key: Option<String>,
 }
 
 pub fn load_app_snapshot(database: &Database) -> Result<AppSnapshot, AppError> {
@@ -430,7 +396,7 @@ pub fn load_active_model(database: &Database) -> Result<Option<ModelSnapshot>, A
     database.read(|connection| {
         connection
             .query_row(
-                "SELECT m.id, m.name, m.protocol, m.base_url, m.model_id, m.credential_ref
+                "SELECT m.id, m.name, m.protocol, m.base_url, m.model_id
                  FROM app_settings s JOIN model_configs m ON m.id = s.active_model_config_id
                  WHERE s.id = 1",
                 [],
@@ -448,7 +414,6 @@ pub fn load_active_model(database: &Database) -> Result<Option<ModelSnapshot>, A
                         })?,
                         base_url: row.get(3)?,
                         model_id: row.get(4)?,
-                        credential_ref: row.get(5)?,
                     })
                 },
             )
@@ -456,19 +421,15 @@ pub fn load_active_model(database: &Database) -> Result<Option<ModelSnapshot>, A
     })
 }
 
-pub fn list_model_configs(
-    database: &Database,
-    credentials: &dyn CredentialStore,
-) -> Result<Vec<ModelConfigSummary>, AppError> {
-    let rows = database.read(|connection| {
+pub fn list_model_configs(database: &Database) -> Result<Vec<ModelConfigSummary>, AppError> {
+    let (active, rows) = database.read(|connection| {
         let active: Option<String> = connection.query_row(
             "SELECT active_model_config_id FROM app_settings WHERE id = 1",
             [],
             |row| row.get(0),
         )?;
         let mut statement = connection.prepare(
-            "SELECT id, name, protocol, base_url, model_id, credential_ref,
-                    test_status, tested_at, test_error_code
+            "SELECT id, name, protocol, base_url, model_id, api_key IS NOT NULL
              FROM model_configs ORDER BY name COLLATE NOCASE, id",
         )?;
         let rows = statement.query_map([], |row| {
@@ -478,57 +439,34 @@ pub fn list_model_configs(
                 row.get::<_, String>(2)?,
                 row.get::<_, String>(3)?,
                 row.get::<_, String>(4)?,
-                row.get::<_, Option<String>>(5)?,
-                row.get::<_, String>(6)?,
-                row.get::<_, Option<String>>(7)?,
-                row.get::<_, Option<String>>(8)?,
+                row.get::<_, bool>(5)?,
             ))
         })?;
         rows.collect::<Result<Vec<_>, _>>()
             .map(|rows| (active, rows))
     })?;
-    rows.1
-        .into_iter()
-        .map(
-            |(
+    rows.into_iter()
+        .map(|(id, name, protocol, base_url, model_id, has_api_key)| {
+            Ok(ModelConfigSummary {
+                is_active: active.as_deref() == Some(id.as_str()),
                 id,
                 name,
-                protocol,
+                protocol: ProviderProtocol::try_from(protocol.as_str())?,
                 base_url,
                 model_id,
-                credential_ref,
-                test_status,
-                tested_at,
-                test_error_code,
-            )| {
-                let has_api_key = credential_ref
-                    .as_deref()
-                    .map(|reference| credentials.get(reference))
-                    .transpose()?
-                    .flatten()
-                    .is_some();
-                Ok(ModelConfigSummary {
-                    is_active: rows.0.as_deref() == Some(id.as_str()),
-                    id,
-                    name,
-                    protocol: ProviderProtocol::try_from(protocol.as_str())?,
-                    base_url,
-                    model_id,
-                    has_api_key,
-                    test_status: ModelTestStatus::try_from(test_status.as_str())?,
-                    tested_at,
-                    test_error_code,
-                })
-            },
-        )
+                has_api_key,
+            })
+        })
         .collect()
 }
 
 pub fn save_model_config(
     database: &Database,
-    credentials: &dyn CredentialStore,
     mut input: ModelConfigInput,
 ) -> Result<ModelConfigSummary, AppError> {
+    if input.api_key.as_deref() == Some("") {
+        input.api_key = None;
+    }
     validate_model_input(&mut input)?;
     let id = input
         .id
@@ -543,51 +481,31 @@ pub fn save_model_config(
             None,
         ));
     }
-    let previous_ref = existing
-        .as_ref()
-        .and_then(|model| model.credential_ref.clone());
-    let mut credential_ref = previous_ref.clone();
-    let mut previous_secret = None;
-    let mut credential_changed = false;
-
-    if let Some(api_key) = input.api_key.as_ref() {
-        let reference = previous_ref.unwrap_or_else(|| format!("model:{id}"));
-        previous_secret = credentials.get(&reference)?;
-        credentials.set(&reference, &api_key.clone().into())?;
-        credential_ref = Some(reference);
-        credential_changed = true;
-    } else if input.clear_api_key {
-        if let Some(reference) = previous_ref.as_deref() {
-            previous_secret = credentials.get(reference)?;
-            credentials.delete(reference)?;
-            credential_changed = previous_secret.is_some();
-        }
-        credential_ref = None;
-    }
-
-    let changed = credential_changed
-        || existing.as_ref().is_none_or(|model| {
-            model.name != input.name
-                || model.protocol != input.protocol.as_str()
-                || model.base_url != input.base_url
-                || model.model_id != input.model_id
-        });
+    let api_key = if input.clear_api_key {
+        None
+    } else {
+        input
+            .api_key
+            .clone()
+            .or_else(|| existing.as_ref().and_then(|model| model.api_key.clone()))
+    };
     let now = crate::analysis::now();
-    let result = database.transaction(|transaction| {
+    database.transaction(|transaction| {
         transaction.execute(
             "INSERT INTO model_configs (
-                id, name, protocol, base_url, model_id, credential_ref,
+                id, name, protocol, base_url, model_id, api_key, credential_ref,
                 test_status, tested_at, test_error_code, created_at, updated_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'untested', NULL, NULL, ?7, ?7)
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, 'untested', NULL, NULL, ?7, ?7)
              ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 protocol = excluded.protocol,
                 base_url = excluded.base_url,
                 model_id = excluded.model_id,
-                credential_ref = excluded.credential_ref,
-                test_status = CASE WHEN ?8 THEN 'untested' ELSE model_configs.test_status END,
-                tested_at = CASE WHEN ?8 THEN NULL ELSE model_configs.tested_at END,
-                test_error_code = CASE WHEN ?8 THEN NULL ELSE model_configs.test_error_code END,
+                api_key = excluded.api_key,
+                credential_ref = NULL,
+                test_status = 'untested',
+                tested_at = NULL,
+                test_error_code = NULL,
                 updated_at = excluded.updated_at",
             rusqlite::params![
                 id,
@@ -595,67 +513,37 @@ pub fn save_model_config(
                 input.protocol.as_str(),
                 input.base_url,
                 input.model_id,
-                credential_ref,
+                api_key,
                 now,
-                changed,
             ],
         )?;
         Ok(())
-    });
-    if let Err(error) = result {
-        restore_credential(
-            credentials,
-            credential_ref.as_deref(),
-            previous_secret.as_ref(),
-        );
-        return Err(error);
-    }
-    list_model_configs(database, credentials)?
+    })?;
+    list_model_configs(database)?
         .into_iter()
         .find(|model| model.id == id)
         .ok_or_else(|| AppError::storage("保存后的模型配置不可用"))
 }
 
-pub fn delete_model_config(
-    database: &Database,
-    credentials: &dyn CredentialStore,
-    id: &str,
-) -> Result<(), AppError> {
-    let model = load_stored_model(database, id)?
-        .ok_or_else(|| AppError::new(ErrorCode::NotFound, "模型配置不存在", false, None))?;
-    let secret = model
-        .credential_ref
-        .as_deref()
-        .map(|reference| credentials.get(reference))
-        .transpose()?
-        .flatten();
-    if let Some(reference) = model.credential_ref.as_deref() {
-        credentials.delete(reference)?;
-    }
-    let result = database.transaction(|transaction| {
-        transaction.execute("DELETE FROM model_configs WHERE id = ?1", [id])?;
+pub fn delete_model_config(database: &Database, id: &str) -> Result<(), AppError> {
+    database.transaction(|transaction| {
+        let deleted = transaction.execute("DELETE FROM model_configs WHERE id = ?1", [id])?;
+        if deleted == 0 {
+            return Err(rusqlite::Error::QueryReturnedNoRows);
+        }
         Ok(())
-    });
-    if let Err(error) = result {
-        restore_credential(
-            credentials,
-            model.credential_ref.as_deref(),
-            secret.as_ref(),
-        );
-        return Err(error);
-    }
-    Ok(())
+    })
 }
 
 pub fn set_active_model_config(database: &Database, id: &str) -> Result<(), AppError> {
     database.transaction(|transaction| {
-        let passed: bool = transaction.query_row(
-            "SELECT test_status = 'passed' FROM model_configs WHERE id = ?1",
+        let exists: bool = transaction.query_row(
+            "SELECT EXISTS(SELECT 1 FROM model_configs WHERE id = ?1)",
             [id],
             |row| row.get(0),
         )?;
-        if !passed {
-            return Err(rusqlite::Error::InvalidQuery);
+        if !exists {
+            return Err(rusqlite::Error::QueryReturnedNoRows);
         }
         transaction.execute(
             "UPDATE app_settings SET active_model_config_id = ?1, updated_at = ?2 WHERE id = 1",
@@ -665,40 +553,112 @@ pub fn set_active_model_config(database: &Database, id: &str) -> Result<(), AppE
     })
 }
 
-pub fn record_model_test(
+pub fn duplicate_model_config(
     database: &Database,
     id: &str,
-    passed: bool,
-    error_code: Option<&str>,
-) -> Result<(), AppError> {
-    database.transaction(|transaction| {
-        let changed = transaction.execute(
-            "UPDATE model_configs
-             SET test_status = ?2, tested_at = ?3, test_error_code = ?4, updated_at = ?3
-             WHERE id = ?1",
-            rusqlite::params![
-                id,
-                if passed {
-                    ModelTestStatus::Passed.as_str()
-                } else {
-                    ModelTestStatus::Failed.as_str()
-                },
-                crate::analysis::now(),
-                error_code,
-            ],
-        )?;
-        if changed == 0 {
-            return Err(rusqlite::Error::QueryReturnedNoRows);
+) -> Result<ModelConfigSummary, AppError> {
+    let original = load_stored_model(database, id)?
+        .ok_or_else(|| AppError::new(ErrorCode::NotFound, "模型配置不存在", false, None))?;
+    for number in 1..=10_000 {
+        let suffix = if number == 1 {
+            " 副本".to_owned()
+        } else {
+            format!(" 副本 ({number})")
+        };
+        let available = 80usize.saturating_sub(suffix.chars().count());
+        let base = original.name.chars().take(available).collect::<String>();
+        let name = format!("{base}{suffix}");
+        let exists = database.read(|connection| {
+            connection.query_row(
+                "SELECT EXISTS(SELECT 1 FROM model_configs WHERE name = ?1 COLLATE NOCASE)",
+                [&name],
+                |row| row.get::<_, bool>(0),
+            )
+        })?;
+        if exists {
+            continue;
         }
-        Ok(())
-    })
+        return save_model_config(
+            database,
+            ModelConfigInput {
+                id: None,
+                name,
+                protocol: ProviderProtocol::try_from(original.protocol.as_str())?,
+                base_url: original.base_url,
+                model_id: original.model_id,
+                api_key: original.api_key,
+                clear_api_key: false,
+            },
+        );
+    }
+    Err(AppError::storage("无法生成唯一的模型配置副本名称"))
+}
+
+pub fn migrate_model_credentials(
+    database: &Database,
+    credentials: &dyn CredentialStore,
+) -> Result<(), AppError> {
+    let rows = database.read(|connection| {
+        let mut statement = connection.prepare(
+            "SELECT id, credential_ref, api_key
+             FROM model_configs WHERE credential_ref IS NOT NULL",
+        )?;
+        let rows = statement.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+            ))
+        })?;
+        rows.collect::<Result<Vec<_>, _>>()
+    })?;
+
+    for (id, reference, existing_key) in rows {
+        let has_database_key = if existing_key.is_some() {
+            true
+        } else {
+            match credentials.get(&reference) {
+                Ok(Some(secret)) => {
+                    database.transaction(|transaction| {
+                        transaction.execute(
+                            "UPDATE model_configs SET api_key = ?2 WHERE id = ?1",
+                            rusqlite::params![id, secret.expose_secret()],
+                        )?;
+                        Ok(())
+                    })?;
+                    true
+                }
+                Ok(None) => {
+                    database.transaction(|transaction| {
+                        transaction.execute(
+                            "UPDATE model_configs SET credential_ref = NULL WHERE id = ?1",
+                            [&id],
+                        )?;
+                        Ok(())
+                    })?;
+                    false
+                }
+                Err(_) => false,
+            }
+        };
+        if has_database_key && credentials.delete(&reference).is_ok() {
+            database.transaction(|transaction| {
+                transaction.execute(
+                    "UPDATE model_configs SET credential_ref = NULL WHERE id = ?1",
+                    [&id],
+                )?;
+                Ok(())
+            })?;
+        }
+    }
+    Ok(())
 }
 
 fn load_stored_model(database: &Database, id: &str) -> Result<Option<StoredModel>, AppError> {
     database.read(|connection| {
         connection
             .query_row(
-                "SELECT id, name, protocol, base_url, model_id, credential_ref
+                "SELECT id, name, protocol, base_url, model_id, api_key
                  FROM model_configs WHERE id = ?1",
                 [id],
                 |row| {
@@ -707,7 +667,7 @@ fn load_stored_model(database: &Database, id: &str) -> Result<Option<StoredModel
                         protocol: row.get(2)?,
                         base_url: row.get(3)?,
                         model_id: row.get(4)?,
-                        credential_ref: row.get(5)?,
+                        api_key: row.get(5)?,
                     })
                 },
             )
@@ -719,7 +679,7 @@ pub fn load_model(database: &Database, id: &str) -> Result<Option<ModelSnapshot>
     database.read(|connection| {
         connection
             .query_row(
-                "SELECT id, name, protocol, base_url, model_id, credential_ref
+                "SELECT id, name, protocol, base_url, model_id
                  FROM model_configs WHERE id = ?1",
                 [id],
                 |row| {
@@ -736,12 +696,26 @@ pub fn load_model(database: &Database, id: &str) -> Result<Option<ModelSnapshot>
                         })?,
                         base_url: row.get(3)?,
                         model_id: row.get(4)?,
-                        credential_ref: row.get(5)?,
                     })
                 },
             )
             .optional()
     })
+}
+
+pub fn load_model_api_key(database: &Database, id: &str) -> Result<Option<SecretString>, AppError> {
+    database
+        .read(|connection| {
+            connection
+                .query_row(
+                    "SELECT api_key FROM model_configs WHERE id = ?1",
+                    [id],
+                    |row| row.get::<_, Option<String>>(0),
+                )
+                .optional()
+                .map(Option::flatten)
+        })
+        .map(|value| value.map(SecretString::from))
 }
 
 fn validate_model_input(input: &mut ModelConfigInput) -> Result<(), AppError> {
@@ -757,27 +731,6 @@ fn validate_model_input(input: &mut ModelConfigInput) -> Result<(), AppError> {
     if !(1..=200).contains(&input.model_id.chars().count()) {
         return Err(AppError::invalid("模型 ID 需为 1 到 200 个字符"));
     }
-    if input
-        .api_key
-        .as_ref()
-        .is_some_and(|value| value.trim().is_empty())
-    {
-        return Err(AppError::invalid("API Key 不能为空"));
-    }
     validate_endpoint(&input.base_url)?;
     Ok(())
-}
-
-fn restore_credential(
-    credentials: &dyn CredentialStore,
-    reference: Option<&str>,
-    previous: Option<&secrecy::SecretString>,
-) {
-    if let Some(reference) = reference {
-        if let Some(previous) = previous {
-            let _ = credentials.set(reference, previous);
-        } else {
-            let _ = credentials.delete(reference);
-        }
-    }
 }

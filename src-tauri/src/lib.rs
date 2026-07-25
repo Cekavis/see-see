@@ -33,6 +33,17 @@ fn show_main_window(app: &AppHandle) {
     }
 }
 
+#[cfg(unix)]
+fn restrict_local_storage_permissions(directory: &std::path::Path, database: &std::path::Path) {
+    use std::os::unix::fs::PermissionsExt;
+
+    let _ = std::fs::set_permissions(directory, std::fs::Permissions::from_mode(0o700));
+    let _ = std::fs::set_permissions(database, std::fs::Permissions::from_mode(0o600));
+}
+
+#[cfg(not(unix))]
+fn restrict_local_storage_permissions(_: &std::path::Path, _: &std::path::Path) {}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -52,8 +63,10 @@ pub fn run() {
         .setup(|app| {
             let directory = app.path().app_data_dir()?;
             std::fs::create_dir_all(&directory)?;
-            let database = Database::open(&directory.join("see-see.sqlite3"))
-                .map_err(Box::<dyn std::error::Error>::from)?;
+            let database_path = directory.join("see-see.sqlite3");
+            let database =
+                Database::open(&database_path).map_err(Box::<dyn std::error::Error>::from)?;
+            restrict_local_storage_permissions(&directory, &database_path);
             let state = AppState::new(database, Arc::new(SystemCredentialStore))
                 .map_err(Box::<dyn std::error::Error>::from)?;
             app.manage(state);
@@ -129,6 +142,7 @@ pub fn run() {
             commands::list_model_configs,
             commands::save_model_config,
             commands::delete_model_config,
+            commands::duplicate_model_config,
             commands::set_active_model_config,
             commands::list_remote_models,
             commands::test_model_config,

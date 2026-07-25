@@ -144,6 +144,8 @@ describe("Onboarding", () => {
       }),
     });
     renderOnboarding(service);
+    expect(await screen.findByText("已选择模型")).toBeInTheDocument();
+    expect(screen.queryByText(/已选择测试通过的模型/)).not.toBeInTheDocument();
     fireEvent.click(await screen.findByRole("button", { name: "完成设置" }));
     await waitFor(() => expect(service.completeOnboarding).toHaveBeenCalled());
     expect(

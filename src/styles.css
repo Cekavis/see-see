@@ -322,10 +322,10 @@ p {
   top: 0;
   z-index: 5;
   display: flex;
-  min-height: 88px;
+  min-height: 72px;
   align-items: center;
   gap: 14px;
-  padding: 20px clamp(20px, 3vw, 34px);
+  padding: 16px clamp(20px, 3vw, 34px);
   border-bottom: 1px solid var(--border);
   background: var(--surface);
 }
@@ -357,12 +357,30 @@ p {
   padding: 24px clamp(20px, 3vw, 34px) 44px;
 }
 
+.action-header {
+  justify-content: space-between;
+}
+
+.action-header .button {
+  flex: 0 0 auto;
+}
+
 .section-split {
   display: grid;
   grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
   gap: 18px;
   align-items: start;
   padding: 24px clamp(20px, 3vw, 34px) 44px;
+}
+
+.section-stack {
+  display: grid;
+  width: 100%;
+  padding: 24px clamp(20px, 3vw, 34px) 44px;
+}
+
+.section-stack > .config-list {
+  width: min(100%, 920px);
 }
 
 .settings-section > .settings-group {
@@ -446,7 +464,6 @@ p {
   padding: 17px;
 }
 
-.settings-view .config-list,
 .prompts-view .config-list {
   order: -1;
 }
@@ -456,6 +473,11 @@ p {
   margin: 0;
   font-size: 1rem;
   font-weight: 650;
+}
+
+.model-config-editor > h2 {
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
 }
 
 .field {
@@ -780,6 +802,10 @@ textarea {
 .config-card h3,
 .config-card p {
   margin: 0 0 5px;
+}
+
+.config-card__endpoint {
+  overflow-wrap: anywhere;
 }
 
 .config-card h3 {
@@ -1268,11 +1294,12 @@ textarea {
   }
 
   .settings-section__header {
-    min-height: 78px;
+    min-height: 68px;
   }
 
   .settings-groups,
   .section-split,
+  .section-stack,
   .history-layout {
     padding-right: 14px;
     padding-left: 14px;

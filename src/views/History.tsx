@@ -124,10 +124,7 @@ export function History({ api = ipc }: { api?: HistoryApi }) {
       aria-labelledby="history-title"
     >
       <header className="settings-section__header history-header">
-        <div>
-          <h1 id="history-title">历史记录</h1>
-          <p>截图、提示词快照和模型结果仅保存在本机。</p>
-        </div>
+        <h1 id="history-title">历史记录</h1>
         <Button
           variant="danger"
           onClick={() => setConfirmation({ kind: "all" })}

@@ -124,7 +124,6 @@ export function Onboarding({
     >
       <header>
         <h2 id="onboarding-title">欢迎使用 See See</h2>
-        <p>完成三项本地设置后，即可用快捷键直接把截图交给多模态模型。</p>
       </header>
       <ol className="onboarding-steps">
         <li>
@@ -134,7 +133,7 @@ export function Onboarding({
         </li>
         <li>
           <h2>2. 多模态模型</h2>
-          <p>{modelReady ? "已选择测试通过的模型" : "尚未配置可用模型"}</p>
+          <p>{modelReady ? "已选择模型" : "尚未配置可用模型"}</p>
           <Button onClick={() => onSelectSection("models")}>配置模型</Button>
         </li>
         <li>
