@@ -60,6 +60,64 @@ describe("model settings", () => {
         apiKey: "secret",
       }),
     );
+    fireEvent.click(screen.getByRole("button", { name: "保存配置" }));
+    await waitFor(() =>
+      expect(service.saveModelConfig).toHaveBeenCalledTimes(2),
+    );
+    expect(service.saveModelConfig).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        id: "model-1",
+        apiKey: undefined,
+      }),
+    );
+  });
+
+  it("saves the key before testing and activates a passing model", async () => {
+    const service = api();
+    renderSettings(service);
+    fireEvent.change(screen.getByLabelText("配置名称"), {
+      target: { value: "我的 OpenAI" },
+    });
+    fireEvent.change(screen.getByLabelText("模型 ID"), {
+      target: { value: "gpt-vision" },
+    });
+    fireEvent.change(screen.getByLabelText("API Key"), {
+      target: { value: "secret" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "测试连接" }));
+
+    await waitFor(() =>
+      expect(service.saveModelConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ apiKey: "secret" }),
+      ),
+    );
+    await waitFor(() =>
+      expect(service.testModelConfig).toHaveBeenCalledWith({
+        id: "model-1",
+        protocol: "openai",
+        baseUrl: "https://api.openai.com/v1",
+        modelId: "gpt-vision",
+      }),
+    );
+    await waitFor(() =>
+      expect(service.setActiveModelConfig).toHaveBeenCalledWith("model-1"),
+    );
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "配置已保存、测试通过并设为当前模型",
+    );
+    expect(screen.getByLabelText("API Key")).toHaveValue("");
+
+    fireEvent.click(screen.getByRole("button", { name: "保存配置" }));
+    await waitFor(() =>
+      expect(service.saveModelConfig).toHaveBeenCalledTimes(2),
+    );
+    expect(service.saveModelConfig).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        id: "model-1",
+        apiKey: undefined,
+      }),
+    );
   });
 
   it("keeps manual input available when model listing fails and classifies connection state", async () => {
@@ -82,10 +140,14 @@ describe("model settings", () => {
     );
     expect(screen.getByLabelText("模型 ID")).toBeEnabled();
     expect(
-      screen.getByText("连接测试会发送一张极小图片，可能产生少量调用费用。"),
+      screen.getByText(
+        "连接测试会先保存当前配置，再发送一张极小图片，可能产生少量调用费用。",
+      ),
     ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "测试连接" }));
     expect(await screen.findByText("API Key 无效")).toBeInTheDocument();
+    expect(service.saveModelConfig).toHaveBeenCalled();
+    expect(service.setActiveModelConfig).not.toHaveBeenCalled();
   });
 
   it("deletes a saved configuration only after dialog confirmation", async () => {

@@ -182,11 +182,11 @@ export function Settings({ api = ipc }: { api?: SettingsApi }) {
             </label>
           )}
           <p className="field__hint">
-            连接测试会发送一张极小图片，可能产生少量调用费用。
+            连接测试会先保存当前配置，再发送一张极小图片，可能产生少量调用费用。
           </p>
           <div className="button-row">
             <Button
-              disabled={busy === "list"}
+              disabled={Boolean(busy)}
               onClick={() => {
                 setBusy("list");
                 notifications.clear();
@@ -209,46 +209,70 @@ export function Settings({ api = ipc }: { api?: SettingsApi }) {
               获取模型列表
             </Button>
             <Button
-              disabled={busy === "test"}
+              disabled={Boolean(busy)}
               onClick={() => {
                 setBusy("test");
                 notifications.clear();
+                const input = { ...form, apiKey: form.apiKey || undefined };
                 void api
-                  .testModelConfig(draft())
-                  .then((result) => {
-                    if (result.passed)
-                      notifications.success(
-                        `连接成功（${result.latencyMs} ms）`,
-                      );
-                    else
+                  .saveModelConfig(input)
+                  .then(async (saved) => {
+                    setForm({
+                      id: saved.id,
+                      name: saved.name,
+                      protocol: saved.protocol,
+                      baseUrl: saved.baseUrl,
+                      modelId: saved.modelId,
+                      apiKey: "",
+                      clearApiKey: false,
+                    });
+                    const result = await api.testModelConfig({
+                      id: saved.id,
+                      protocol: saved.protocol,
+                      baseUrl: saved.baseUrl,
+                      modelId: saved.modelId,
+                    });
+                    if (!result.passed) {
                       notifications.error(
                         result.error?.message ?? "连接测试失败",
                       );
-                    void refresh();
+                      return;
+                    }
+                    await api.setActiveModelConfig(saved.id);
+                    notifications.success(
+                      `配置已保存、测试通过并设为当前模型（${result.latencyMs} ms）`,
+                    );
                   })
                   .catch((value: unknown) =>
                     notifications.error(getErrorMessage(value)),
                   )
-                  .finally(() => setBusy(undefined));
+                  .finally(() => {
+                    setBusy(undefined);
+                    refresh();
+                  });
               }}
             >
               测试连接
             </Button>
             <Button
               variant="primary"
-              disabled={busy === "save"}
+              disabled={Boolean(busy)}
               onClick={() => {
                 setBusy("save");
                 notifications.clear();
                 const input = { ...form, apiKey: form.apiKey || undefined };
                 void api
                   .saveModelConfig(input)
-                  .then(() => {
-                    setForm((current) => ({
-                      ...current,
+                  .then((saved) => {
+                    setForm({
+                      id: saved.id,
+                      name: saved.name,
+                      protocol: saved.protocol,
+                      baseUrl: saved.baseUrl,
+                      modelId: saved.modelId,
                       apiKey: "",
                       clearApiKey: false,
-                    }));
+                    });
                     notifications.success(
                       "配置已保存；修改后的配置需要重新测试连接。",
                     );
