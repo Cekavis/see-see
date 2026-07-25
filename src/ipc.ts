@@ -7,6 +7,18 @@ export type AppError = {
   action?: string;
 };
 
+export function getErrorMessage(
+  value: unknown,
+  fallback = "操作失败，请重试",
+): string {
+  if (typeof value === "string" && value.trim()) return value;
+  if (value && typeof value === "object" && "message" in value) {
+    const message = value.message;
+    if (typeof message === "string" && message.trim()) return message;
+  }
+  return fallback;
+}
+
 export type AppSettings = {
   activeModelConfigId: string | null;
   activePromptId: string | null;

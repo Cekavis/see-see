@@ -1,6 +1,8 @@
 use see_see_lib::{
+    commands::ModelConnectionInput,
     error::{AppError, ErrorCode},
-    providers::validate_endpoint,
+    providers::{ProviderProtocol, validate_endpoint},
+    settings::ModelConfigInput,
 };
 
 #[test]
@@ -16,6 +18,41 @@ fn error_serialization_is_stable_and_redacted() {
     assert!(json.contains("auth_failed"));
     assert!(!json.contains("sk-secret"));
     assert!(!json.contains("raw_response"));
+}
+
+#[test]
+fn provider_protocol_json_matches_the_ipc_contract() {
+    for (protocol, json) in [
+        (ProviderProtocol::OpenAi, "\"openai\""),
+        (ProviderProtocol::Anthropic, "\"anthropic\""),
+        (ProviderProtocol::Gemini, "\"gemini\""),
+    ] {
+        assert_eq!(serde_json::to_string(&protocol).unwrap(), json);
+        assert_eq!(
+            serde_json::from_str::<ProviderProtocol>(json).unwrap(),
+            protocol,
+        );
+    }
+
+    assert!(serde_json::from_str::<ProviderProtocol>("\"open_ai\"").is_err());
+
+    assert!(
+        serde_json::from_value::<ModelConnectionInput>(serde_json::json!({
+            "protocol": "openai",
+            "baseUrl": "https://api.openai.com/v1",
+            "modelId": "gpt-vision"
+        }))
+        .is_ok(),
+    );
+    assert!(
+        serde_json::from_value::<ModelConfigInput>(serde_json::json!({
+            "name": "OpenAI",
+            "protocol": "openai",
+            "baseUrl": "https://api.openai.com/v1",
+            "modelId": "gpt-vision"
+        }))
+        .is_ok(),
+    );
 }
 
 #[test]

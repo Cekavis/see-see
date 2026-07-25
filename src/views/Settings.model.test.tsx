@@ -54,10 +54,7 @@ describe("model settings", () => {
 
   it("keeps manual input available when model listing fails and classifies connection state", async () => {
     const service = api({
-      listRemoteModels: vi.fn().mockRejectedValue({
-        code: "network_unavailable",
-        message: "无法获取模型列表",
-      }),
+      listRemoteModels: vi.fn().mockRejectedValue("无法获取模型列表"),
       testModelConfig: vi.fn().mockResolvedValue({
         passed: false,
         latencyMs: 15,

@@ -13,7 +13,7 @@ use std::{collections::BTreeMap, io::Cursor, net::IpAddr, time::Duration};
 use url::{Host, Url};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "lowercase")]
 pub enum ProviderProtocol {
     OpenAi,
     Anthropic,

@@ -5,8 +5,8 @@ import { EmptyState } from "../components/EmptyState";
 import { ErrorNotice } from "../components/ErrorNotice";
 import { Field } from "../components/Field";
 import {
+  getErrorMessage,
   ipc,
-  type AppError,
   type ConnectionTestResult,
   type ModelConfigInput,
   type ModelConfigSummary,
@@ -57,7 +57,7 @@ export function Settings({ api = ipc }: { api?: SettingsApi }) {
       api
         .listModelConfigs()
         .then(setConfigs)
-        .catch((value: AppError) => setError(value.message)),
+        .catch((value: unknown) => setError(getErrorMessage(value))),
     [api],
   );
   useEffect(() => {
@@ -202,7 +202,7 @@ export function Settings({ api = ipc }: { api?: SettingsApi }) {
                         : "端点未返回可用模型，可继续手动输入",
                     );
                   })
-                  .catch((value: AppError) => setError(value.message))
+                  .catch((value: unknown) => setError(getErrorMessage(value)))
                   .finally(() => setBusy(undefined));
               }}
             >
@@ -221,7 +221,7 @@ export function Settings({ api = ipc }: { api?: SettingsApi }) {
                     else setError(result.error?.message ?? "连接测试失败");
                     void refresh();
                   })
-                  .catch((value: AppError) => setError(value.message))
+                  .catch((value: unknown) => setError(getErrorMessage(value)))
                   .finally(() => setBusy(undefined));
               }}
             >
@@ -245,7 +245,7 @@ export function Settings({ api = ipc }: { api?: SettingsApi }) {
                     setNotice("配置已保存；修改后的配置需要重新测试连接。");
                     void refresh();
                   })
-                  .catch((value: AppError) => setError(value.message))
+                  .catch((value: unknown) => setError(getErrorMessage(value)))
                   .finally(() => setBusy(undefined));
               }}
             >
@@ -337,7 +337,7 @@ export function Settings({ api = ipc }: { api?: SettingsApi }) {
               if (form.id === target.id) setForm(emptyForm());
               void refresh();
             })
-            .catch((value: AppError) => setError(value.message));
+            .catch((value: unknown) => setError(getErrorMessage(value)));
         }}
       />
     </section>
