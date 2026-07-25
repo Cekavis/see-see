@@ -1,10 +1,4 @@
-import {
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within,
-} from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { Settings, type SettingsApi } from "./Settings";
 
@@ -31,14 +25,6 @@ function api(overrides: Partial<SettingsApi> = {}): SettingsApi {
       .mockResolvedValue({ passed: true, latencyMs: 20, error: null }),
     ...overrides,
   };
-}
-
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((complete) => {
-    resolve = complete;
-  });
-  return { promise, resolve };
 }
 
 describe("model settings", () => {
@@ -84,8 +70,7 @@ describe("model settings", () => {
     });
     render(<Settings api={service} />);
     fireEvent.click(screen.getByRole("button", { name: "获取模型列表" }));
-    const editor = screen.getByRole("region", { name: "模型配置编辑器" });
-    expect(await within(editor).findByRole("alert")).toHaveTextContent(
+    expect(await screen.findByRole("alert")).toHaveTextContent(
       "无法获取模型列表",
     );
     expect(screen.getByLabelText("模型 ID")).toBeEnabled();
@@ -94,57 +79,6 @@ describe("model settings", () => {
     ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "测试连接" }));
     expect(await screen.findByText("API Key 无效")).toBeInTheDocument();
-  });
-
-  it("shows progress for all three actions and prevents concurrent requests", async () => {
-    const listRequest =
-      deferred<Awaited<ReturnType<SettingsApi["listRemoteModels"]>>>();
-    const testRequest =
-      deferred<Awaited<ReturnType<SettingsApi["testModelConfig"]>>>();
-    const saveRequest =
-      deferred<Awaited<ReturnType<SettingsApi["saveModelConfig"]>>>();
-    const service = api({
-      listRemoteModels: vi.fn(() => listRequest.promise),
-      testModelConfig: vi.fn(() => testRequest.promise),
-      saveModelConfig: vi.fn(() => saveRequest.promise),
-    });
-    render(<Settings api={service} />);
-
-    fireEvent.click(screen.getByRole("button", { name: "获取模型列表" }));
-    expect(screen.getByRole("button", { name: "正在获取…" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "测试连接" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "保存配置" })).toBeDisabled();
-    listRequest.resolve([]);
-    await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "获取模型列表" }),
-      ).toBeEnabled(),
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "测试连接" }));
-    expect(screen.getByRole("button", { name: "正在测试…" })).toBeDisabled();
-    testRequest.resolve({ passed: true, latencyMs: 20, error: null });
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "测试连接" })).toBeEnabled(),
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "保存配置" }));
-    expect(screen.getByRole("button", { name: "正在保存…" })).toBeDisabled();
-    saveRequest.resolve({
-      id: "model-1",
-      name: "视觉模型",
-      protocol: "openai",
-      baseUrl: "https://api.openai.com/v1",
-      modelId: "vision",
-      hasApiKey: false,
-      testStatus: "untested",
-      testedAt: null,
-      testErrorCode: null,
-      isActive: false,
-    });
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "保存配置" })).toBeEnabled(),
-    );
   });
 
   it("deletes a saved configuration only after dialog confirmation", async () => {

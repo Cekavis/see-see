@@ -463,14 +463,6 @@ p {
   margin: 18px clamp(20px, 3vw, 34px) 0;
 }
 
-.model-action-feedback {
-  min-height: 44px;
-}
-
-.model-action-feedback .success-notice {
-  margin: 0;
-}
-
 .field {
   display: grid;
   min-width: 0;
