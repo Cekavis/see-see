@@ -4530,7 +4530,7 @@ dependencies = [
 
 [[package]]
 name = "see-see"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "base64 0.22.1",
  "block2",
@@ -4540,6 +4540,7 @@ dependencies = [
  "keyring",
  "log",
  "objc2",
+ "objc2-app-kit",
  "objc2-core-foundation",
  "objc2-core-graphics",
  "objc2-foundation",

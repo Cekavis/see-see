@@ -6,6 +6,7 @@ use crate::{
     providers::{self, ProviderProtocol, ProviderRequest, RemoteModel},
     settings::{self, ModelConfigInput, ModelConfigSummary, PromptPreset, PromptPresetInput},
     state::AppState,
+    windowing,
 };
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
@@ -688,7 +689,6 @@ fn create_capture_windows(
                     monitor.bounds.height,
                 ))
             })
-            .and_then(|_| window.show())
             .map_err(|_| {
                 AppError::new(
                     ErrorCode::CaptureFailed,
@@ -697,6 +697,14 @@ fn create_capture_windows(
                     Some("retry"),
                 )
             })?;
+        windowing::show_capture_window(&window).map_err(|_| {
+            AppError::new(
+                ErrorCode::CaptureFailed,
+                "无法显示截图遮罩",
+                false,
+                Some("retry"),
+            )
+        })?;
     }
     Ok(())
 }
@@ -708,18 +716,20 @@ fn create_result_window(app: &AppHandle, run_id: &str) -> Result<(), AppError> {
     let always_on_top = settings::load_app_snapshot(&app.state::<AppState>().database)?
         .settings
         .result_always_on_top;
-    WebviewWindowBuilder::new(
+    let size = windowing::result_window_size();
+    let window = WebviewWindowBuilder::new(
         app,
         "result",
         WebviewUrl::App(format!("index.html?run={run_id}").into()),
     )
     .title("See See · 识别结果")
-    .inner_size(620.0, 720.0)
-    .min_inner_size(420.0, 360.0)
+    .inner_size(size.width, size.height)
+    .min_inner_size(size.min_width, size.min_height)
     .always_on_top(always_on_top)
+    .visible(false)
     .build()
     .map_err(|_| AppError::invalid("无法创建结果窗口"))?;
-    Ok(())
+    windowing::present_result_window(&window)
 }
 
 fn close_capture_windows(app: &AppHandle, summary: &CaptureSessionSummary) {

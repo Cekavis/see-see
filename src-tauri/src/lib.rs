@@ -9,6 +9,7 @@ pub mod history;
 pub mod providers;
 pub mod settings;
 pub mod state;
+pub mod windowing;
 
 use credentials::SystemCredentialStore;
 use database::Database;

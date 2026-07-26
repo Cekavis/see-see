@@ -6,6 +6,10 @@ use see_see_lib::{
         load_app_snapshot, replace_shortcut, sanitize_log_line, set_autostart_with,
         set_capture_shortcut_value,
     },
+    windowing::{
+        WindowRole, ignores_window_cycle, is_stationary, joins_all_spaces, moves_to_active_space,
+        policy_for, result_window_size, supports_full_screen_space,
+    },
 };
 use std::cell::RefCell;
 
@@ -76,6 +80,35 @@ fn macos_login_item_status_requires_explicit_approval() {
     assert_eq!(error.code, ErrorCode::AutostartApprovalRequired);
     assert_eq!(error.action.as_deref(), Some("open_login_items"));
     assert!(error.message.contains("登录项与扩展"));
+}
+
+#[test]
+fn macos_capture_and_result_windows_use_distinct_space_policies() {
+    let capture = policy_for(WindowRole::CaptureOverlay);
+    assert!(joins_all_spaces(capture));
+    assert!(!moves_to_active_space(capture));
+    assert!(supports_full_screen_space(capture));
+    assert!(is_stationary(capture));
+    assert!(ignores_window_cycle(capture));
+    assert!(capture.elevated_overlay_level);
+
+    let result = policy_for(WindowRole::Result);
+    assert!(!joins_all_spaces(result));
+    assert!(moves_to_active_space(result));
+    assert!(supports_full_screen_space(result));
+    assert!(!is_stationary(result));
+    assert!(!ignores_window_cycle(result));
+    assert!(!result.elevated_overlay_level);
+}
+
+#[test]
+fn result_window_defaults_are_compact_and_keep_accessible_minimums() {
+    let size = result_window_size();
+    assert!(size.width >= size.min_width);
+    assert!(size.height >= size.min_height);
+    assert!(size.width <= 480.0);
+    assert!(size.height <= 520.0);
+    assert_eq!((size.min_width, size.min_height), (420.0, 360.0));
 }
 
 #[test]

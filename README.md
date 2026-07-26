@@ -4,7 +4,7 @@ See See 是一个本地优先的 Windows/macOS 截图翻译桌面应用。它不
 
 ## 功能
 
-- 全局快捷键区域截图，支持物理像素坐标、负坐标和跨显示器选区。
+- 全局快捷键区域截图，支持物理像素坐标、负坐标和跨显示器选区；macOS 可直接覆盖当前普通或系统全屏 Space，结果紧凑显示在同一 Space。
 - OpenAI Chat Completions、Anthropic Messages、Gemini GenerateContent 三类 API 协议。
 - 预设端点和自定义端点；远程地址只允许 HTTPS，本机回环可使用 HTTP。
 - 多模型配置、系统凭据存储、连接测试和手动模型 ID。
