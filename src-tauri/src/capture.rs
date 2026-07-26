@@ -5,7 +5,12 @@ use crate::{
 use image::{ImageFormat, RgbaImage, imageops};
 use serde::{Deserialize, Serialize};
 use std::io::Cursor;
+
+#[cfg(not(target_os = "macos"))]
 use xcap::Monitor;
+
+#[cfg(target_os = "macos")]
+mod macos;
 
 #[cfg(target_os = "macos")]
 use objc2_core_graphics::{CGPreflightScreenCaptureAccess, CGRequestScreenCaptureAccess};
@@ -201,29 +206,11 @@ pub struct CaptureSession {
 
 impl CaptureSession {
     pub fn capture_all(id: impl Into<String>) -> Result<Self, AppError> {
-        let mut frozen = Vec::new();
-        for monitor in Monitor::all().map_err(capture_error)? {
-            let id = monitor.id().map_err(capture_error)?.to_string();
-            let bounds = PhysicalRect {
-                x: monitor.x().map_err(capture_error)?,
-                y: monitor.y().map_err(capture_error)?,
-                width: monitor.width().map_err(capture_error)?,
-                height: monitor.height().map_err(capture_error)?,
-            };
-            let image = monitor.capture_image().map_err(capture_error)?;
-            let mut frame = FrozenMonitor::new(
-                id,
-                bounds,
-                monitor.scale_factor().map_err(capture_error)?,
-                image,
-            )?;
-            frame.summary.name = monitor
-                .friendly_name()
-                .or_else(|_| monitor.name())
-                .unwrap_or_else(|_| "Display".into());
-            frame.summary.primary = monitor.is_primary().unwrap_or(false);
-            frozen.push(frame);
-        }
+        #[cfg(target_os = "macos")]
+        let frozen = macos::capture_all()?;
+        #[cfg(not(target_os = "macos"))]
+        let frozen = capture_all_with_xcap()?;
+
         if frozen.is_empty() {
             return Err(AppError::new(
                 ErrorCode::CaptureFailed,
@@ -274,6 +261,104 @@ impl CaptureSession {
     }
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct MonitorMetadata {
+    pub id: String,
+    pub name: String,
+    pub bounds: PhysicalRect,
+    pub scale_factor: f32,
+    pub primary: bool,
+}
+
+pub(crate) fn frozen_monitor_from_bgra(
+    metadata: MonitorMetadata,
+    width: usize,
+    height: usize,
+    bytes_per_row: usize,
+    data: &[u8],
+) -> Result<FrozenMonitor, AppError> {
+    let row_bytes = width
+        .checked_mul(4)
+        .ok_or_else(|| capture_error("convert_image", "captured image row length overflow"))?;
+    let data_len = bytes_per_row
+        .checked_mul(height)
+        .ok_or_else(|| capture_error("convert_image", "captured image buffer length overflow"))?;
+    if width != metadata.bounds.width as usize
+        || height != metadata.bounds.height as usize
+        || bytes_per_row < row_bytes
+        || data.len() < data_len
+    {
+        return Err(capture_error(
+            "convert_image",
+            format!(
+                "invalid BGRA frame: image={width}x{height}, row={bytes_per_row}, data={}, expected={}x{}",
+                data.len(),
+                metadata.bounds.width,
+                metadata.bounds.height
+            ),
+        ));
+    }
+
+    let mut rgba = vec![0; row_bytes * height];
+    for row in 0..height {
+        let source = &data[row * bytes_per_row..row * bytes_per_row + row_bytes];
+        let target = &mut rgba[row * row_bytes..(row + 1) * row_bytes];
+        for (bgra, rgba) in source.chunks_exact(4).zip(target.chunks_exact_mut(4)) {
+            rgba.copy_from_slice(&[bgra[2], bgra[1], bgra[0], bgra[3]]);
+        }
+    }
+    let image = RgbaImage::from_raw(width as u32, height as u32, rgba)
+        .ok_or_else(|| capture_error("convert_image", "unable to create RGBA image"))?;
+    let mut monitor =
+        FrozenMonitor::new(metadata.id, metadata.bounds, metadata.scale_factor, image)?;
+    monitor.summary.name = metadata.name;
+    monitor.summary.primary = metadata.primary;
+    Ok(monitor)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn capture_all_with_xcap() -> Result<Vec<FrozenMonitor>, AppError> {
+    let mut frozen = Vec::new();
+    for monitor in Monitor::all().map_err(|error| capture_error("list_displays", error))? {
+        let id = monitor
+            .id()
+            .map_err(|error| capture_error("read_display_id", error))?
+            .to_string();
+        let bounds = PhysicalRect {
+            x: monitor
+                .x()
+                .map_err(|error| capture_error("read_display_bounds", error))?,
+            y: monitor
+                .y()
+                .map_err(|error| capture_error("read_display_bounds", error))?,
+            width: monitor
+                .width()
+                .map_err(|error| capture_error("read_display_bounds", error))?,
+            height: monitor
+                .height()
+                .map_err(|error| capture_error("read_display_bounds", error))?,
+        };
+        let image = monitor
+            .capture_image()
+            .map_err(|error| capture_error("capture_display", error))?;
+        let mut frame = FrozenMonitor::new(
+            id,
+            bounds,
+            monitor
+                .scale_factor()
+                .map_err(|error| capture_error("read_display_scale", error))?,
+            image,
+        )?;
+        frame.summary.name = monitor
+            .friendly_name()
+            .or_else(|_| monitor.name())
+            .unwrap_or_else(|_| "Display".into());
+        frame.summary.primary = monitor.is_primary().unwrap_or(false);
+        frozen.push(frame);
+    }
+    Ok(frozen)
+}
+
 pub fn compose_selection(
     monitors: &[FrozenMonitor],
     selection: PhysicalRect,
@@ -319,11 +404,13 @@ pub fn compose_selection(
     normalize_png(&encoded.into_inner())
 }
 
-fn capture_error(error: impl std::fmt::Display) -> AppError {
-    if error
-        .to_string()
-        .to_ascii_lowercase()
-        .contains("permission")
+pub(crate) fn capture_error(stage: &'static str, error: impl std::fmt::Display) -> AppError {
+    let detail = sanitized_diagnostic(error);
+    log::warn!("screen capture backend failed at {stage}: {detail}");
+    let lower = detail.to_ascii_lowercase();
+    if ["permission", "access", "denied", "declined"]
+        .iter()
+        .any(|needle| lower.contains(needle))
     {
         return screen_permission_error();
     }
@@ -333,6 +420,21 @@ fn capture_error(error: impl std::fmt::Display) -> AppError {
         false,
         Some("retry"),
     )
+}
+
+fn sanitized_diagnostic(error: impl std::fmt::Display) -> String {
+    error
+        .to_string()
+        .chars()
+        .map(|character| {
+            if character.is_control() {
+                ' '
+            } else {
+                character
+            }
+        })
+        .take(400)
+        .collect()
 }
 
 fn screen_permission_error() -> AppError {
@@ -347,7 +449,8 @@ fn screen_permission_error() -> AppError {
 #[cfg(test)]
 mod tests {
     use super::{
-        ScreenPermission, capture_error, permission_status_from_grant, require_screen_permission,
+        MonitorMetadata, PhysicalRect, ScreenPermission, capture_error, frozen_monitor_from_bgra,
+        permission_status_from_grant, require_screen_permission, sanitized_diagnostic,
     };
     use crate::error::ErrorCode;
 
@@ -372,8 +475,66 @@ mod tests {
             Some("open_screen_permission_settings")
         );
 
-        let backend = capture_error("screen capture permission denied");
+        let backend = capture_error("capture_display", "screen capture permission denied");
         assert_eq!(backend.code, ErrorCode::ScreenPermissionDenied);
         assert!(require_screen_permission(ScreenPermission::Granted).is_ok());
+    }
+
+    #[test]
+    fn screen_capture_adapter_converts_padded_bgra_and_preserves_metadata() {
+        let metadata = MonitorMetadata {
+            id: "42".into(),
+            name: "Studio Display".into(),
+            bounds: PhysicalRect {
+                x: -2,
+                y: 3,
+                width: 2,
+                height: 1,
+            },
+            scale_factor: 2.0,
+            primary: true,
+        };
+        let monitor = frozen_monitor_from_bgra(
+            metadata,
+            2,
+            1,
+            12,
+            &[30, 20, 10, 255, 60, 50, 40, 128, 0, 0, 0, 0],
+        )
+        .unwrap();
+
+        assert_eq!(monitor.summary.id, "42");
+        assert_eq!(monitor.summary.name, "Studio Display");
+        assert_eq!(monitor.summary.bounds.x, -2);
+        assert_eq!(monitor.summary.scale_factor, 2.0);
+        assert!(monitor.summary.primary);
+        assert_eq!(monitor.image.get_pixel(0, 0).0, [10, 20, 30, 255]);
+        assert_eq!(monitor.image.get_pixel(1, 0).0, [40, 50, 60, 128]);
+    }
+
+    #[test]
+    fn screen_capture_adapter_rejects_bad_frames_without_leaking_details() {
+        let metadata = MonitorMetadata {
+            id: "1".into(),
+            name: "Display".into(),
+            bounds: PhysicalRect {
+                x: 0,
+                y: 0,
+                width: 2,
+                height: 1,
+            },
+            scale_factor: 1.0,
+            primary: false,
+        };
+        let error = match frozen_monitor_from_bgra(metadata, 2, 1, 8, &[0; 4]) {
+            Ok(_) => panic!("short image data should be rejected"),
+            Err(error) => error,
+        };
+
+        assert_eq!(error.code, ErrorCode::CaptureFailed);
+        assert_eq!(error.message, "无法读取显示器画面");
+        assert!(!error.message.contains("BGRA"));
+        assert_eq!(sanitized_diagnostic("first\nsecond"), "first second");
+        assert_eq!(sanitized_diagnostic("x".repeat(500)).len(), 400);
     }
 }

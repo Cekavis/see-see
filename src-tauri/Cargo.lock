@@ -4533,12 +4533,16 @@ name = "see-see"
 version = "0.3.2"
 dependencies = [
  "base64 0.22.1",
+ "block2",
  "eventsource-stream",
  "futures-util",
  "image",
  "keyring",
  "log",
+ "objc2",
+ "objc2-core-foundation",
  "objc2-core-graphics",
+ "objc2-foundation",
  "reqwest 0.12.28",
  "rusqlite",
  "secrecy",

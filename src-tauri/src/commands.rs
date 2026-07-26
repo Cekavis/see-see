@@ -16,7 +16,7 @@ use tauri::{
 };
 use tauri_plugin_autostart::ManagerExt as AutostartExt;
 use tauri_plugin_clipboard_manager::ClipboardExt;
-use tauri_plugin_dialog::DialogExt;
+use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 #[cfg(target_os = "macos")]
 use tauri_plugin_opener::OpenerExt;
@@ -84,7 +84,7 @@ pub async fn begin_capture_action(app: AppHandle) -> Result<CaptureSessionSummar
     }
 
     let session_id = Uuid::new_v4().to_string();
-    let session =
+    let session_result =
         tauri::async_runtime::spawn_blocking(move || CaptureSession::capture_all(session_id))
             .await
             .map_err(|_| {
@@ -94,7 +94,14 @@ pub async fn begin_capture_action(app: AppHandle) -> Result<CaptureSessionSummar
                     false,
                     Some("retry"),
                 )
-            })??;
+            })?;
+    let session = match session_result {
+        Ok(session) => session,
+        Err(error) => {
+            focus_main(&app);
+            return Err(error);
+        }
+    };
     let summary = session.summary();
     {
         let mut runtime = state
@@ -742,6 +749,19 @@ fn focus_main(app: &AppHandle) {
     }
 }
 
+pub fn report_capture_failure(app: &AppHandle, source: &'static str, error: &AppError) {
+    log::warn!("{source} capture failed: {}", error.code.as_str());
+    if error.code == ErrorCode::AlreadyRunning {
+        return;
+    }
+    focus_main(app);
+    app.dialog()
+        .message(error.message.clone())
+        .title("截图失败")
+        .kind(MessageDialogKind::Error)
+        .show(|_| {});
+}
+
 fn already_running(message: &str) -> AppError {
     AppError::new(
         ErrorCode::AlreadyRunning,
@@ -760,8 +780,8 @@ pub fn register_capture_shortcut(
             if event.state == ShortcutState::Pressed {
                 let app = app.clone();
                 tauri::async_runtime::spawn(async move {
-                    if let Err(error) = begin_capture_action(app).await {
-                        log::warn!("capture shortcut failed: {}", error.code.as_str());
+                    if let Err(error) = begin_capture_action(app.clone()).await {
+                        report_capture_failure(&app, "shortcut", &error);
                     }
                 });
             }

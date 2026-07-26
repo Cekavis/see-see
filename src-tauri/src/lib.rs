@@ -92,8 +92,8 @@ pub fn run() {
                     "capture" => {
                         let app = app.clone();
                         tauri::async_runtime::spawn(async move {
-                            if let Err(error) = commands::begin_capture_action(app).await {
-                                log::warn!("tray capture failed: {}", error.code.as_str());
+                            if let Err(error) = commands::begin_capture_action(app.clone()).await {
+                                commands::report_capture_failure(&app, "tray", &error);
                             }
                         });
                     }

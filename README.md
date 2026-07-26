@@ -26,7 +26,7 @@ npm install
 npm run tauri dev
 ```
 
-首次启动时依次确认屏幕权限、模型配置和当前提示词。macOS 需要授予“屏幕录制”权限；Windows 通常无需额外授权。默认截图快捷键为 `CommandOrControl+Shift+X`，可在设置中修改。
+首次启动时依次确认屏幕权限、模型配置和当前提示词。macOS 14+ 使用 ScreenCaptureKit，需要授予“屏幕录制”权限；Windows 通常无需额外授权。默认截图快捷键为 `CommandOrControl+Shift+X`，可在设置中修改。
 
 ## 数据与隐私
 
