@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { Button } from "../components/Button";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { EmptyState } from "../components/EmptyState";
@@ -68,6 +74,9 @@ function Thumbnail({ api, item }: { api: HistoryApi; item: HistoryListItem }) {
 
 export function History({ api = ipc }: { api?: HistoryApi }) {
   const notifications = useNotifications();
+  const rootRef = useRef<HTMLElement>(null);
+  const listScrollTop = useRef(0);
+  const restoreListScroll = useRef(false);
   const [items, setItems] = useState<HistoryListItem[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [text, setText] = useState("");
@@ -78,6 +87,18 @@ export function History({ api = ipc }: { api?: HistoryApi }) {
     { kind: "entry"; item: HistoryListItem } | { kind: "all" } | null
   >(null);
   const imageUrl = useImage(api, detail, "original", notifications.error);
+
+  useLayoutEffect(() => {
+    const scrollContainer =
+      rootRef.current?.closest<HTMLElement>(".settings-content");
+    if (detail) {
+      if (scrollContainer) scrollContainer.scrollTop = 0;
+      return;
+    }
+    if (!restoreListScroll.current) return;
+    if (scrollContainer) scrollContainer.scrollTop = listScrollTop.current;
+    restoreListScroll.current = false;
+  }, [detail]);
 
   const query = useCallback(
     (cursor?: string, append = false) => {
@@ -118,8 +139,92 @@ export function History({ api = ipc }: { api?: HistoryApi }) {
   }, [api, notifications]);
 
   const hasFilters = Boolean(text || promptName || status);
+  if (detail) {
+    return (
+      <section
+        ref={rootRef}
+        className="section-view history-view"
+        aria-labelledby="history-detail-title"
+      >
+        <header className="settings-section__header history-detail-header">
+          <Button
+            onClick={() => {
+              restoreListScroll.current = true;
+              setDetail(null);
+            }}
+          >
+            返回历史记录
+          </Button>
+          <h1 id="history-detail-title">历史详情</h1>
+        </header>
+        <div className="history-detail-layout">
+          <section className="history-detail" aria-labelledby="detail-heading">
+            <h2 id="detail-heading">
+              {detail.status === "success" ? "识别结果" : "失败详情"}
+            </h2>
+            {imageUrl && (
+              <img
+                className="history-detail__image"
+                src={imageUrl}
+                alt="原始截图"
+              />
+            )}
+            <dl>
+              <dt>提示词</dt>
+              <dd>{detail.promptName}</dd>
+              <dt>模型</dt>
+              <dd>
+                {detail.modelConfigName} · {detail.modelId}
+              </dd>
+            </dl>
+            {detail.status === "success" ? (
+              <pre className="result-view__text">{detail.resultText}</pre>
+            ) : (
+              <ErrorNotice
+                message={detail.errorMessage ?? detail.errorCode ?? "分析失败"}
+              />
+            )}
+            <div className="button-row">
+              <Button
+                disabled={!detail.resultText}
+                onClick={() => {
+                  if (!detail.resultText) return;
+                  notifications.clear();
+                  void api
+                    .copyText(detail.resultText)
+                    .then(() => notifications.success("结果已复制"))
+                    .catch((value: AppError) =>
+                      notifications.error(value.message),
+                    );
+                }}
+              >
+                复制结果
+              </Button>
+              <Button
+                variant="primary"
+                disabled={!detail.hasImage}
+                onClick={() => {
+                  notifications.clear();
+                  void api
+                    .resubmitHistory(detail.id)
+                    .then(() => notifications.success("已使用当前配置重新提交"))
+                    .catch((value: AppError) =>
+                      notifications.error(value.message),
+                    );
+                }}
+              >
+                使用当前配置再次提交
+              </Button>
+            </div>
+          </section>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section
+      ref={rootRef}
       className="section-view history-view"
       aria-labelledby="history-title"
     >
@@ -173,10 +278,7 @@ export function History({ api = ipc }: { api?: HistoryApi }) {
             />
           ) : (
             items.map((item) => (
-              <article
-                className={`history-item ${detail?.id === item.id ? "history-item--selected" : ""}`}
-                key={item.id}
-              >
+              <article className="history-item" key={item.id}>
                 <Thumbnail api={api} item={item} />
                 <div className="history-item__content">
                   <p className="history-item__meta">
@@ -184,17 +286,24 @@ export function History({ api = ipc }: { api?: HistoryApi }) {
                     {item.promptName} ·{" "}
                     {new Date(item.startedAt).toLocaleString()}
                   </p>
-                  <p>{item.resultPreview ?? item.errorMessage ?? "无结果"}</p>
+                  <pre className="history-item__summary">
+                    {item.resultPreview ?? item.errorMessage ?? "无结果"}
+                  </pre>
                   <div className="button-row">
                     <Button
-                      onClick={() =>
+                      onClick={() => {
+                        const scrollContainer =
+                          rootRef.current?.closest<HTMLElement>(
+                            ".settings-content",
+                          );
+                        listScrollTop.current = scrollContainer?.scrollTop ?? 0;
                         void api
                           .getHistoryEntry(item.id)
                           .then(setDetail)
                           .catch((value: AppError) =>
                             notifications.error(value.message),
-                          )
-                      }
+                          );
+                      }}
                     >
                       查看详情
                     </Button>
@@ -215,73 +324,6 @@ export function History({ api = ipc }: { api?: HistoryApi }) {
             </Button>
           )}
         </section>
-        <aside className="history-detail" aria-label="历史详情">
-          {!detail ? (
-            <EmptyState title="选择一条记录查看详情" />
-          ) : (
-            <>
-              <h2>{detail.status === "success" ? "识别结果" : "失败详情"}</h2>
-              {imageUrl && (
-                <img
-                  className="history-detail__image"
-                  src={imageUrl}
-                  alt="原始截图"
-                />
-              )}
-              <dl>
-                <dt>提示词</dt>
-                <dd>{detail.promptName}</dd>
-                <dt>模型</dt>
-                <dd>
-                  {detail.modelConfigName} · {detail.modelId}
-                </dd>
-              </dl>
-              {detail.status === "success" ? (
-                <pre className="result-view__text">{detail.resultText}</pre>
-              ) : (
-                <ErrorNotice
-                  message={
-                    detail.errorMessage ?? detail.errorCode ?? "分析失败"
-                  }
-                />
-              )}
-              <div className="button-row">
-                <Button
-                  disabled={!detail.resultText}
-                  onClick={() => {
-                    if (!detail.resultText) return;
-                    notifications.clear();
-                    void api
-                      .copyText(detail.resultText)
-                      .then(() => notifications.success("结果已复制"))
-                      .catch((value: AppError) =>
-                        notifications.error(value.message),
-                      );
-                  }}
-                >
-                  复制结果
-                </Button>
-                <Button
-                  variant="primary"
-                  disabled={!detail.hasImage}
-                  onClick={() => {
-                    notifications.clear();
-                    void api
-                      .resubmitHistory(detail.id)
-                      .then(() =>
-                        notifications.success("已使用当前配置重新提交"),
-                      )
-                      .catch((value: AppError) =>
-                        notifications.error(value.message),
-                      );
-                  }}
-                >
-                  使用当前配置再次提交
-                </Button>
-              </div>
-            </>
-          )}
-        </aside>
       </div>
       <ConfirmDialog
         open={Boolean(confirmation)}
@@ -314,7 +356,6 @@ export function History({ api = ipc }: { api?: HistoryApi }) {
           void api
             .deleteHistoryEntry(target.item.id)
             .then(() => {
-              if (detail?.id === target.item.id) setDetail(null);
               notifications.success("历史记录已删除");
               void query();
             })

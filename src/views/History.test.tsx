@@ -45,13 +45,15 @@ function api(items = [item]): HistoryApi {
 function renderHistory(service: HistoryApi) {
   return render(
     <NotificationProvider>
-      <History api={service} />
+      <div className="settings-content">
+        <History api={service} />
+      </div>
     </NotificationProvider>,
   );
 }
 
 describe("History", () => {
-  it("loads, searches, filters, opens detail, copies, and resubmits", async () => {
+  it("opens a dedicated detail view and returns to the preserved list state", async () => {
     const service = api();
     renderHistory(service);
     expect(await screen.findByText("旅行：旅行")).toBeInTheDocument();
@@ -67,10 +69,21 @@ describe("History", () => {
         expect.objectContaining({ text: "旅行", status: "success" }),
       ),
     );
+    const queryCount = vi.mocked(service.queryHistory).mock.calls.length;
+    const scrollContainer = document.querySelector(
+      ".settings-content",
+    ) as HTMLElement;
+    scrollContainer.scrollTop = 240;
     fireEvent.click(screen.getByRole("button", { name: "查看详情" }));
     expect(
       await screen.findByText("旅行（りょこう）：旅行"),
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "返回历史记录" }),
+    ).toBeInTheDocument();
+    expect(scrollContainer.scrollTop).toBe(0);
+    expect(screen.queryByLabelText("搜索结果")).not.toBeInTheDocument();
+    expect(screen.queryByText("旅行：旅行")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "复制结果" }));
     fireEvent.click(
       screen.getByRole("button", { name: "使用当前配置再次提交" }),
@@ -81,6 +94,40 @@ describe("History", () => {
     expect(
       await screen.findByText("已使用当前配置重新提交"),
     ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "返回历史记录" }));
+    expect(await screen.findByLabelText("搜索结果")).toHaveValue("旅行");
+    expect(screen.getByLabelText("状态")).toHaveValue("success");
+    expect(screen.getByText("旅行：旅行")).toBeInTheDocument();
+    expect(scrollContainer.scrollTop).toBe(240);
+    expect(service.queryHistory).toHaveBeenCalledTimes(queryCount);
+  });
+
+  it("keeps the list available when detail loading fails", async () => {
+    const service = api();
+    vi.mocked(service.getHistoryEntry).mockRejectedValue({
+      message: "详情加载失败",
+    });
+    renderHistory(service);
+    expect(await screen.findByText("旅行：旅行")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "查看详情" }));
+    expect(await screen.findByText("详情加载失败")).toBeInTheDocument();
+    expect(screen.getByLabelText("搜索结果")).toBeInTheDocument();
+    expect(screen.getByText("旅行：旅行")).toBeInTheDocument();
+  });
+
+  it("preserves line breaks and blank lines in result summaries", async () => {
+    const service = api([
+      {
+        ...item,
+        resultPreview: "第一行\n\n第三行",
+      },
+    ]);
+    renderHistory(service);
+    const summary = await screen.findByText(
+      (_, element) => element?.textContent === "第一行\n\n第三行",
+    );
+    expect(summary.tagName).toBe("PRE");
+    expect(summary).toHaveClass("history-item__summary");
   });
 
   it("shows empty/no-result states and confirms single/all deletion", async () => {
@@ -90,7 +137,9 @@ describe("History", () => {
     const service = api();
     rerender(
       <NotificationProvider>
-        <History api={service} />
+        <div className="settings-content">
+          <History api={service} />
+        </div>
       </NotificationProvider>,
     );
     expect(await screen.findByText("旅行：旅行")).toBeInTheDocument();
