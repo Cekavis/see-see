@@ -53,7 +53,7 @@ export async function runPrimaryFlow(page) {
         save_model_config: { id: "model-1" },
         copy_text: null,
         query_history: { items: [], nextCursor: null },
-        "plugin:app|version": "0.3.1",
+        "plugin:app|version": "0.3.2",
       },
     },
   );

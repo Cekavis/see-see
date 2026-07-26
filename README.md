@@ -73,4 +73,6 @@ npm run tauri build
 npm run tauri build
 ```
 
-Windows 生成安装包和可执行文件；macOS 发布应在 macOS 主机上生成 universal 包，并另行完成签名、公证和屏幕录制权限验证。仓库不包含 API Key、签名证书或公证凭据。
+Windows 生成安装包和可执行文件。macOS 少量自用设备使用固定的 `See See Local Release` 自签名证书，创建、备份、目标设备信任和首次权限迁移步骤见 [`docs/macos-local-signing.md`](docs/macos-local-signing.md)；构建后运行 `npm run verify:macos-signature`，避免安装会改变屏幕录制权限身份的 ad-hoc 包。
+
+自签名方案不适用于公开分发；公开 macOS 发布仍需另行完成 Developer ID 签名和 Apple 公证。仓库不包含 API Key、签名证书、私钥或公证凭据。

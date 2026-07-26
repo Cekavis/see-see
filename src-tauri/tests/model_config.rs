@@ -96,14 +96,13 @@ fn duplicate_preserves_connection_values_and_current_selection() {
     assert!(!first.is_active);
     assert_eq!(first.model_id, "vision-copy");
     assert_eq!(key_value(&db, &first.id).as_deref(), Some("copy-secret"));
-    assert_eq!(
+    assert!(
         list_model_configs(&db)
             .unwrap()
             .into_iter()
             .find(|model| model.id == original.id)
             .unwrap()
             .is_active,
-        true,
     );
 }
 
