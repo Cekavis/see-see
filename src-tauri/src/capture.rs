@@ -5,6 +5,8 @@ use crate::{
 use image::{ImageFormat, RgbaImage, imageops};
 use serde::{Deserialize, Serialize};
 use std::io::Cursor;
+#[cfg(target_os = "macos")]
+use std::path::Path;
 
 #[cfg(not(target_os = "macos"))]
 use xcap::Monitor;
@@ -78,6 +80,42 @@ pub fn require_screen_permission(status: ScreenPermission) -> Result<(), AppErro
     } else {
         Err(screen_permission_error())
     }
+}
+
+#[cfg(target_os = "macos")]
+pub const NATIVE_REGION_CAPTURE_TOOL: &str = "/usr/sbin/screencapture";
+
+#[cfg(target_os = "macos")]
+pub fn native_region_capture_command(output_path: &Path) -> std::process::Command {
+    let mut command = std::process::Command::new(NATIVE_REGION_CAPTURE_TOOL);
+    command
+        .arg("-i")
+        .arg("-r")
+        .arg("-t")
+        .arg("png")
+        .arg(output_path);
+    command
+}
+
+#[cfg(target_os = "macos")]
+pub fn capture_native_region(output_path: &Path) -> Result<Option<Vec<u8>>, AppError> {
+    let _ = std::fs::remove_file(output_path);
+    native_region_capture_command(output_path)
+        .output()
+        .map_err(|error| capture_error("launch_native_region_picker", error))?;
+    read_native_region_output(output_path)
+}
+
+#[cfg(target_os = "macos")]
+fn read_native_region_output(output_path: &Path) -> Result<Option<Vec<u8>>, AppError> {
+    if !output_path.exists() {
+        return Ok(None);
+    }
+    let result = std::fs::read(output_path)
+        .map_err(|error| capture_error("read_native_region_capture", error))
+        .and_then(|bytes| normalize_png(&bytes).map(Some));
+    let _ = std::fs::remove_file(output_path);
+    result
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -453,6 +491,8 @@ mod tests {
         permission_status_from_grant, require_screen_permission, sanitized_diagnostic,
     };
     use crate::error::ErrorCode;
+    #[cfg(target_os = "macos")]
+    use std::ffi::OsStr;
 
     #[test]
     fn passive_preflight_maps_missing_access_without_claiming_denial() {
@@ -536,5 +576,29 @@ mod tests {
         assert!(!error.message.contains("BGRA"));
         assert_eq!(sanitized_diagnostic("first\nsecond"), "first second");
         assert_eq!(sanitized_diagnostic("x".repeat(500)).len(), 400);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn native_region_picker_matches_macos_interactive_capture_contract() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("selection.png");
+        let command = super::native_region_capture_command(&path);
+        let arguments: Vec<_> = command.get_args().collect();
+
+        assert_eq!(
+            command.get_program(),
+            OsStr::new(super::NATIVE_REGION_CAPTURE_TOOL)
+        );
+        assert_eq!(arguments[..4], ["-i", "-r", "-t", "png"]);
+        assert_eq!(arguments[4], path.as_os_str());
+        assert_eq!(super::read_native_region_output(&path).unwrap(), None);
+
+        image::RgbaImage::from_pixel(2, 1, image::Rgba([10, 20, 30, 255]))
+            .save_with_format(&path, image::ImageFormat::Png)
+            .unwrap();
+        let png = super::read_native_region_output(&path).unwrap().unwrap();
+        assert!(png.starts_with(b"\x89PNG\r\n\x1a\n"));
+        assert!(!path.exists());
     }
 }

@@ -1,6 +1,8 @@
+#[cfg(not(target_os = "macos"))]
+use crate::capture::CaptureSession;
 use crate::{
     analysis::{self, ActiveAnalysis, AnalysisEvent, AnalysisInput, AnalysisSnapshot},
-    capture::{self, CaptureSession, CaptureSessionSummary, PhysicalRect, compose_selection},
+    capture::{self, CaptureSessionSummary, PhysicalRect, compose_selection},
     error::{AppError, ErrorCode},
     history::{self, HistoryEntryDetail, HistoryImageVariant, HistoryPage, HistoryQuery},
     providers::{self, ProviderProtocol, ProviderRequest, RemoteModel},
@@ -12,9 +14,11 @@ use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tauri::{
-    AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindowBuilder,
+    AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder,
     ipc::{Channel, Response},
 };
+#[cfg(not(target_os = "macos"))]
+use tauri::{PhysicalPosition, PhysicalSize};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
@@ -55,18 +59,18 @@ pub fn get_app_snapshot(app: AppHandle) -> Result<settings::AppSnapshot, AppErro
 }
 
 #[tauri::command]
-pub async fn begin_capture(app: AppHandle) -> Result<CaptureSessionSummary, AppError> {
+pub async fn begin_capture(app: AppHandle) -> Result<(), AppError> {
     begin_capture_action(app).await
 }
 
-pub async fn begin_capture_action(app: AppHandle) -> Result<CaptureSessionSummary, AppError> {
-    let state = app.state::<AppState>();
+pub async fn begin_capture_action(app: AppHandle) -> Result<(), AppError> {
     {
+        let state = app.state::<AppState>();
         let mut runtime = state
             .runtime
             .lock()
             .map_err(|_| AppError::storage("运行状态不可用"))?;
-        if runtime.capture.is_some() {
+        if runtime.capture_is_active() {
             return Err(already_running("截图正在进行"));
         }
         if let Some(active) = &runtime.analysis
@@ -76,12 +80,76 @@ pub async fn begin_capture_action(app: AppHandle) -> Result<CaptureSessionSummar
             return Err(already_running("已有分析正在进行"));
         }
         runtime.analysis = None;
+        require_active_configuration(&state)?;
     }
-    require_active_configuration(&state)?;
     if let Err(error) = capture::require_screen_permission(capture::screen_permission_status()) {
         focus_main(&app);
         return Err(error);
     }
+
+    #[cfg(target_os = "macos")]
+    {
+        begin_native_region_capture(app).await
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        begin_overlay_capture(app).await
+    }
+}
+
+#[cfg(target_os = "macos")]
+async fn begin_native_region_capture(app: AppHandle) -> Result<(), AppError> {
+    let capture_id = Uuid::new_v4().to_string();
+    let output_directory = app
+        .path()
+        .app_cache_dir()
+        .map_err(|_| AppError::storage("无法定位截图缓存目录"))?;
+    std::fs::create_dir_all(&output_directory)
+        .map_err(|_| AppError::storage("无法创建截图缓存目录"))?;
+    let output_path = output_directory.join(format!("native-region-{capture_id}.png"));
+    {
+        let state = app.state::<AppState>();
+        let mut runtime = state
+            .runtime
+            .lock()
+            .map_err(|_| AppError::storage("运行状态不可用"))?;
+        if let Some(active) = &runtime.analysis
+            && !active.snapshot()?.state.is_terminal()
+        {
+            focus_result(&app);
+            return Err(already_running("已有分析正在进行"));
+        }
+        runtime.reserve_capture(capture_id.clone())?;
+    }
+
+    let capture_result =
+        tauri::async_runtime::spawn_blocking(move || capture::capture_native_region(&output_path))
+            .await
+            .map_err(|_| {
+                AppError::new(
+                    ErrorCode::CaptureFailed,
+                    "截图任务异常结束",
+                    false,
+                    Some("retry"),
+                )
+            });
+
+    let outcome = match capture_result {
+        Ok(Ok(Some(image_png))) => start_analysis_with_image(app.clone(), image_png).map(|_| ()),
+        Ok(Ok(None)) => Ok(()),
+        Ok(Err(error)) | Err(error) => Err(error),
+    };
+    app.state::<AppState>()
+        .runtime
+        .lock()
+        .map_err(|_| AppError::storage("运行状态不可用"))?
+        .release_capture(&capture_id);
+    outcome
+}
+
+#[cfg(not(target_os = "macos"))]
+async fn begin_overlay_capture(app: AppHandle) -> Result<(), AppError> {
+    let state = app.state::<AppState>();
 
     let session_id = Uuid::new_v4().to_string();
     let session_result =
@@ -122,7 +190,7 @@ pub async fn begin_capture_action(app: AppHandle) -> Result<CaptureSessionSummar
         close_capture_windows(&app, &summary);
         return Err(error);
     }
-    Ok(summary)
+    Ok(())
 }
 
 #[tauri::command]
@@ -651,6 +719,7 @@ fn active_analysis(app: &AppHandle, run_id: &str) -> Result<Arc<ActiveAnalysis>,
         .ok_or_else(|| AppError::new(ErrorCode::NotFound, "分析任务不存在", false, None))
 }
 
+#[cfg(not(target_os = "macos"))]
 fn create_capture_windows(
     app: &AppHandle,
     summary: &CaptureSessionSummary,

@@ -36,10 +36,34 @@ impl AnalysisState {
 #[derive(Default)]
 pub struct RuntimeState {
     pub capture: Option<CaptureSession>,
+    pub capture_reservation: Option<String>,
     pub analysis: Option<Arc<ActiveAnalysis>>,
 }
 
 impl RuntimeState {
+    pub fn capture_is_active(&self) -> bool {
+        self.capture.is_some() || self.capture_reservation.is_some()
+    }
+
+    pub fn reserve_capture(&mut self, id: String) -> Result<(), AppError> {
+        if self.capture_is_active() {
+            return Err(AppError::new(
+                ErrorCode::AlreadyRunning,
+                "截图正在进行",
+                false,
+                Some("focus_active"),
+            ));
+        }
+        self.capture_reservation = Some(id);
+        Ok(())
+    }
+
+    pub fn release_capture(&mut self, id: &str) {
+        if self.capture_reservation.as_deref() == Some(id) {
+            self.capture_reservation = None;
+        }
+    }
+
     pub fn take_capture(&mut self, session_id: &str) -> Result<CaptureSession, AppError> {
         if self
             .capture
@@ -90,6 +114,7 @@ mod tests {
                 monitors: vec![],
                 selection: None,
             }),
+            capture_reservation: None,
             analysis: None,
         };
 
@@ -100,5 +125,18 @@ mod tests {
         );
         assert_eq!(runtime.take_capture("active").unwrap().id, "active");
         assert!(runtime.capture.is_none());
+    }
+
+    #[test]
+    fn capture_reservation_blocks_duplicates_and_only_owner_releases_it() {
+        let mut runtime = RuntimeState::default();
+        runtime.reserve_capture("native".into()).unwrap();
+
+        assert!(runtime.capture_is_active());
+        assert!(runtime.reserve_capture("duplicate".into()).is_err());
+        runtime.release_capture("stale");
+        assert_eq!(runtime.capture_reservation.as_deref(), Some("native"));
+        runtime.release_capture("native");
+        assert!(!runtime.capture_is_active());
     }
 }
