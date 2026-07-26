@@ -14,7 +14,6 @@ use tauri::{
     AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindowBuilder,
     ipc::{Channel, Response},
 };
-use tauri_plugin_autostart::ManagerExt as AutostartExt;
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
@@ -517,12 +516,13 @@ pub fn set_capture_shortcut(
 pub fn set_autostart(app: AppHandle, value: bool) -> Result<settings::AppSettings, AppError> {
     let state = app.state::<AppState>();
     settings::set_autostart_with(&state.database, value, |enabled| {
-        if enabled {
-            app.autolaunch().enable()
-        } else {
-            app.autolaunch().disable()
-        }
+        crate::autostart::set_system_enabled(&app, enabled)
     })
+}
+
+#[tauri::command]
+pub fn open_login_items_settings() -> Result<(), AppError> {
+    crate::autostart::open_login_items_settings()
 }
 
 #[tauri::command]

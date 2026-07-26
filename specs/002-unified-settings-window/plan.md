@@ -18,7 +18,7 @@ Replace four management windows with one React-owned settings shell in the exist
 
 **Testing**: Vitest/Testing Library, WebdriverIO, cargo test, Clippy, manual desktop visual review
 
-**Target Platform**: Windows 10/11 and macOS 14+
+**Target Platform**: Windows 10/11 and macOS 26+
 
 **Project Type**: Tauri desktop application
 

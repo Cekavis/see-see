@@ -1,4 +1,5 @@
 pub mod analysis;
+pub mod autostart;
 pub mod capture;
 pub mod commands;
 pub mod credentials;
@@ -18,7 +19,6 @@ use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
 };
-use tauri_plugin_autostart::ManagerExt as AutostartExt;
 use tauri_plugin_log::{Target, TargetKind};
 
 fn should_hide_on_close(label: &str) -> bool {
@@ -73,13 +73,16 @@ pub fn run() {
             let snapshot = settings::load_app_snapshot(&app.state::<AppState>().database)
                 .map_err(Box::<dyn std::error::Error>::from)?;
             commands::register_capture_shortcut(app.handle(), &snapshot.settings.capture_shortcut)?;
-            if let Ok(actual) = app.autolaunch().is_enabled()
-                && actual != snapshot.settings.autostart
-            {
-                let _ =
-                    settings::set_autostart_with(&app.state::<AppState>().database, actual, |_| {
-                        Ok::<(), ()>(())
-                    });
+            match autostart::reconcile_on_startup(app.handle(), snapshot.settings.autostart) {
+                Ok(actual) if actual != snapshot.settings.autostart => {
+                    let _ = settings::set_autostart_with(
+                        &app.state::<AppState>().database,
+                        actual,
+                        |_| Ok::<(), ()>(()),
+                    );
+                }
+                Err(error) => log::warn!("无法同步开机启动状态：{error}"),
+                _ => {}
             }
             let capture = MenuItem::with_id(app, "capture", "开始截图", true, None::<&str>)?;
             let show = MenuItem::with_id(app, "show", "打开 See See", true, None::<&str>)?;
@@ -161,6 +164,7 @@ pub fn run() {
             commands::get_settings,
             commands::set_capture_shortcut,
             commands::set_autostart,
+            commands::open_login_items_settings,
             commands::complete_onboarding,
             commands::request_screen_permission,
             commands::open_screen_permission_settings,

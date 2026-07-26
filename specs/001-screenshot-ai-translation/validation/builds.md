@@ -39,4 +39,15 @@ Date: 2026-07-23
 - The first Tauri bundle attempt failed because `bundle.icon` was empty even though icon files existed. The config now declares the existing PNG, ICNS, and ICO files; the rerun produced both installers.
 - `@wdio/tauri-service` 1.2.0 could not initialize because it imports `installMockSyncOverride`, absent from its pinned `@wdio/native-utils` 2.4.0 and current 2.5.0 package exports. The unusable service was removed; WebdriverIO now uses native Chrome with a narrow pre-load IPC mock bridge, while actual desktop startup is verified separately by `tauri dev`.
 - `npm install` reported 3 dependency advisories (2 moderate, 1 high). Detailed audit was not authorized because it transmits dependency metadata to npm.
-- No macOS command or build was run. T071 remains open until the same checks and a universal Tauri build pass on macOS 14+.
+- No macOS command or build was run at the time of this report. T071 remains open until the same checks and a universal Tauri build pass on macOS 26+.
+
+## macOS update — 2026-07-26
+
+Host: macOS 27.0 arm64, Node.js 26.5.0, rustc 1.97.1.
+
+- `npm run lint`, `npm run format:check`, `npm test`, and `npm run build`: passed; 12 frontend files and 37 tests passed.
+- `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check` and `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings`: passed.
+- `cargo test --manifest-path src-tauri/Cargo.toml`: passed after running outside the filesystem sandbox so Wiremock could bind loopback ports.
+- `npm run tauri build`: produced the signed 0.3.3 arm64 application and DMG with `LSMinimumSystemVersion=26.0`.
+- `npm run verify:macos-signature`: passed for certificate `See See Local Release` and bundle identifier `app.seesee.desktop`.
+- The signed app was installed to `/Applications/See See.app` and exercised against `SMAppService`; a universal build and the remaining manual platform matrix are still outstanding, so T071 stays open.

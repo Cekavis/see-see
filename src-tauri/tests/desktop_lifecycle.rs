@@ -1,5 +1,7 @@
 use see_see_lib::{
+    autostart::{SystemAutostartStatus, confirm_enabled},
     database::{DEFAULT_CAPTURE_SHORTCUT, Database},
+    error::ErrorCode,
     settings::{
         load_app_snapshot, replace_shortcut, sanitize_log_line, set_autostart_with,
         set_capture_shortcut_value,
@@ -52,6 +54,28 @@ fn desktop_settings_only_persist_after_system_success() {
             .capture_shortcut,
         "Ctrl+Shift+X"
     );
+}
+
+#[test]
+fn macos_login_item_status_requires_explicit_approval() {
+    assert_eq!(
+        SystemAutostartStatus::from_raw(0),
+        SystemAutostartStatus::NotRegistered
+    );
+    assert!(SystemAutostartStatus::from_raw(1).is_enabled());
+    assert_eq!(
+        SystemAutostartStatus::from_raw(3),
+        SystemAutostartStatus::NotFound
+    );
+    assert_eq!(
+        SystemAutostartStatus::from_raw(9),
+        SystemAutostartStatus::Unknown(9)
+    );
+
+    let error = confirm_enabled(SystemAutostartStatus::RequiresApproval).unwrap_err();
+    assert_eq!(error.code, ErrorCode::AutostartApprovalRequired);
+    assert_eq!(error.action.as_deref(), Some("open_login_items"));
+    assert!(error.message.contains("登录项与扩展"));
 }
 
 #[test]

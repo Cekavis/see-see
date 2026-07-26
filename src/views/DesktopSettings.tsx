@@ -134,6 +134,7 @@ export type DesktopSettingsApi = {
   getSettings: () => Promise<AppSettings>;
   setCaptureShortcut: (shortcut: string) => Promise<AppSettings>;
   setAutostart: (value: boolean) => Promise<AppSettings>;
+  openLoginItemsSettings: () => Promise<void>;
   setSaveHistory: (value: boolean) => Promise<AppSettings>;
   exportSanitizedLogs: () => Promise<{ exported: boolean }>;
 };
@@ -257,9 +258,19 @@ export function DesktopSettings({ api = ipc }: { api?: DesktopSettingsApi }) {
             void api
               .setAutostart(value)
               .then(setSettings)
-              .catch((failure: AppError) =>
-                notifications.error(failure.message),
-              );
+              .catch((failure: AppError) => {
+                notifications.error(
+                  failure.message,
+                  failure.action === "open_login_items"
+                    ? {
+                        action: {
+                          label: "打开系统设置",
+                          onClick: () => void api.openLoginItemsSettings(),
+                        },
+                      }
+                    : undefined,
+                );
+              });
           }}
         />
       </label>

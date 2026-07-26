@@ -20,6 +20,7 @@ function api(overrides: Partial<DesktopSettingsApi> = {}): DesktopSettingsApi {
       .fn()
       .mockResolvedValue({ ...settings, captureShortcut: "Ctrl+Shift+X" }),
     setAutostart: vi.fn().mockResolvedValue({ ...settings, autostart: true }),
+    openLoginItemsSettings: vi.fn().mockResolvedValue(undefined),
     setSaveHistory: vi
       .fn()
       .mockResolvedValue({ ...settings, saveHistory: false }),
@@ -129,5 +130,23 @@ describe("DesktopSettings", () => {
     expect(
       screen.getByText("原始截图、结果和提示词快照仅保存在本机。"),
     ).toBeInTheDocument();
+  });
+
+  it("opens macOS Login Items when autostart requires approval", async () => {
+    const service = api({
+      setAutostart: vi.fn().mockRejectedValue({
+        code: "autostart_approval_required",
+        message: "请在系统设置的“登录项与扩展”中允许 See See",
+        action: "open_login_items",
+      }),
+    });
+    renderSettings(service);
+
+    fireEvent.click(await screen.findByLabelText("开机启动"));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "打开系统设置" }),
+    );
+
+    expect(service.openLoginItemsSettings).toHaveBeenCalledOnce();
   });
 });

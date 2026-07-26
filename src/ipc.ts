@@ -209,6 +209,7 @@ export const ipc = {
     invoke<AppSettings>("set_capture_shortcut", { shortcut }),
   setAutostart: (value: boolean) =>
     invoke<AppSettings>("set_autostart", { value }),
+  openLoginItemsSettings: () => invoke<void>("open_login_items_settings"),
   completeOnboarding: () => invoke<void>("complete_onboarding"),
   requestScreenPermission: () =>
     invoke<ScreenPermission>("request_screen_permission"),

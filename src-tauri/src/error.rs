@@ -24,6 +24,7 @@ pub enum ErrorCode {
     StorageFull,
     StorageFailed,
     ClipboardFailed,
+    AutostartApprovalRequired,
     AlreadyRunning,
     NotFound,
 }
@@ -51,6 +52,7 @@ impl ErrorCode {
             Self::StorageFull => "storage_full",
             Self::StorageFailed => "storage_failed",
             Self::ClipboardFailed => "clipboard_failed",
+            Self::AutostartApprovalRequired => "autostart_approval_required",
             Self::AlreadyRunning => "already_running",
             Self::NotFound => "not_found",
         }

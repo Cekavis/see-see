@@ -18,7 +18,7 @@
 
 **Testing**: `cargo test`（领域逻辑、协议序列化、SSE 解析、SQLite 集成）；Vitest + React Testing Library（界面状态和无障碍交互）；WebdriverIO Tauri service（一个关键桌面流程烟雾测试）；Windows/macOS 人工截图与视觉验证
 
-**Target Platform**: Windows 10/11 x64；macOS 14+ universal（Apple Silicon + Intel）
+**Target Platform**: Windows 10/11 x64；macOS 26+ universal（Apple Silicon + Intel），不保留旧版 macOS 兼容路径
 
 **Project Type**: 单仓库跨平台桌面应用，无远程后端
 

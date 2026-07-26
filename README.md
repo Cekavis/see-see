@@ -16,7 +16,7 @@ See See 是一个本地优先的 Windows/macOS 截图翻译桌面应用。它不
 
 ## 开发环境
 
-- Windows 10/11 或 macOS 14+
+- Windows 10/11 或 macOS 26+
 - Rust 1.95
 - Node.js 24 LTS 或更新版本、npm
 - 一个支持图片输入的兼容模型端点
@@ -26,7 +26,9 @@ npm install
 npm run tauri dev
 ```
 
-首次启动时依次确认屏幕权限、模型配置和当前提示词。macOS 14+ 使用 ScreenCaptureKit，需要授予“屏幕录制”权限；Windows 通常无需额外授权。默认截图快捷键为 `CommandOrControl+Shift+X`，可在设置中修改。
+首次启动时依次确认屏幕权限、模型配置和当前提示词。macOS 26+ 使用 ScreenCaptureKit，需要授予“屏幕录制”权限；Windows 通常无需额外授权。默认截图快捷键为 `CommandOrControl+Shift+X`，可在设置中修改。
+
+macOS 只支持 26 及以后版本，并优先采用这些系统推荐的原生能力，不提供旧系统兼容分支。登录时启动使用 `SMAppService` 创建系统可见的主应用登录项；完整策略见 [`docs/macos-platform-support.md`](docs/macos-platform-support.md)。
 
 ## 数据与隐私
 
@@ -65,7 +67,7 @@ npm run tauri build
 
 首次运行前用 `npm run test:e2e:install` 安装与锁定依赖匹配的测试专用 Chromium。`npm run test:e2e` 启动临时 Vite 服务，在无头 Chromium 中用页面加载前的窄 IPC mock 桥验证桌面壳层的关键命令顺序；真实 Rust 后端、窗口、快捷键和系统集成由 Rust 测试、`tauri dev`、平台人工验证与发布构建覆盖。
 
-目前自动检查可在 Windows 执行；真实 macOS 权限、菜单栏、双屏和发布包仍必须在 macOS 14+ 设备上复验。详细矩阵见 `specs/001-screenshot-ai-translation/quickstart.md`。
+真实 macOS 权限、登录项、菜单栏、双屏和发布包必须在 macOS 26+ 设备上复验。详细矩阵见 `specs/001-screenshot-ai-translation/quickstart.md`。
 
 ## 打包
 
