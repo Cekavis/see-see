@@ -3,6 +3,17 @@ import { describe, expect, it, vi } from "vitest";
 import { NotificationProvider } from "../components/Notifications";
 import { Result, type ResultSnapshot } from "./Result";
 
+const nodeProcess = (
+  globalThis as typeof globalThis & {
+    process: {
+      cwd(): string;
+      getBuiltinModule(name: "node:fs"): {
+        readFileSync(path: string, encoding: "utf8"): string;
+      };
+    };
+  }
+).process;
+
 const snapshot = (overrides: Partial<ResultSnapshot> = {}): ResultSnapshot => ({
   runId: "run-1",
   state: "streaming",
@@ -17,6 +28,20 @@ function renderResult(node: React.ReactNode) {
 }
 
 describe("Result", () => {
+  it("keeps the footer visible while the result text scrolls", () => {
+    const styles = nodeProcess
+      .getBuiltinModule("node:fs")
+      .readFileSync(`${nodeProcess.cwd()}/src/styles.css`, "utf8");
+    const resultViewRule = styles.match(/\.result-view\s*\{([^}]*)\}/)?.[1];
+
+    expect(resultViewRule).toMatch(
+      /grid-template-rows:\s*auto minmax\(0, 1fr\) auto;/,
+    );
+    expect(resultViewRule).not.toMatch(
+      /grid-template-rows:\s*auto auto minmax\(0, 1fr\) auto;/,
+    );
+  });
+
   it("shows streaming text and exposes cancel, copy, and always-on-top controls", () => {
     const onCancel = vi.fn();
     const onCopy = vi.fn();
