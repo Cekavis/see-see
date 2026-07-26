@@ -73,11 +73,12 @@ pub async fn begin_capture_action(app: AppHandle) -> Result<(), AppError> {
         if runtime.capture_is_active() {
             return Err(already_running("截图正在进行"));
         }
-        if let Some(active) = &runtime.analysis
-            && !active.snapshot()?.state.is_terminal()
-        {
-            focus_result(&app);
-            return Err(already_running("已有分析正在进行"));
+        if let Some(active) = &runtime.analysis {
+            let snapshot = active.snapshot()?;
+            if !snapshot.state.is_terminal() {
+                focus_result(&app, &snapshot.run_id);
+                return Err(already_running("已有分析正在进行"));
+            }
         }
         runtime.analysis = None;
         require_active_configuration(&state)?;
@@ -113,11 +114,12 @@ async fn begin_native_region_capture(app: AppHandle) -> Result<(), AppError> {
             .runtime
             .lock()
             .map_err(|_| AppError::storage("运行状态不可用"))?;
-        if let Some(active) = &runtime.analysis
-            && !active.snapshot()?.state.is_terminal()
-        {
-            focus_result(&app);
-            return Err(already_running("已有分析正在进行"));
+        if let Some(active) = &runtime.analysis {
+            let snapshot = active.snapshot()?;
+            if !snapshot.state.is_terminal() {
+                focus_result(&app, &snapshot.run_id);
+                return Err(already_running("已有分析正在进行"));
+            }
         }
         runtime.reserve_capture(capture_id.clone())?;
     }
@@ -285,11 +287,12 @@ fn start_analysis_with_image(
             .runtime
             .lock()
             .map_err(|_| AppError::storage("运行状态不可用"))?;
-        if let Some(current) = &runtime.analysis
-            && !current.snapshot()?.state.is_terminal()
-        {
-            focus_result(&app);
-            return Err(already_running("已有分析正在进行"));
+        if let Some(current) = &runtime.analysis {
+            let snapshot = current.snapshot()?;
+            if !snapshot.state.is_terminal() {
+                focus_result(&app, &snapshot.run_id);
+                return Err(already_running("已有分析正在进行"));
+            }
         }
         runtime.analysis = Some(active.clone());
     }
@@ -355,22 +358,18 @@ pub fn close_result(app: AppHandle, run_id: String) -> Result<(), AppError> {
         .runtime
         .lock()
         .map_err(|_| AppError::storage("运行状态不可用"))?;
-    if runtime.analysis.as_ref().is_some_and(|current| {
-        current
-            .snapshot()
-            .is_ok_and(|snapshot| snapshot.run_id == run_id)
-    }) {
-        runtime.analysis = None;
-    }
+    runtime.take_analysis(&run_id);
     Ok(())
 }
 
 #[tauri::command]
 pub fn set_result_always_on_top(app: AppHandle, value: bool) -> Result<(), AppError> {
-    if let Some(window) = app.get_webview_window("result") {
-        window
-            .set_always_on_top(value)
-            .map_err(|_| AppError::invalid("无法更新窗口置顶状态"))?;
+    for (label, window) in app.webview_windows() {
+        if windowing::result_run_id(&label).is_some() {
+            window
+                .set_always_on_top(value)
+                .map_err(|_| AppError::invalid("无法更新窗口置顶状态"))?;
+        }
     }
     app.state::<AppState>().database.transaction(|transaction| {
         transaction.execute(
@@ -779,16 +778,13 @@ fn create_capture_windows(
 }
 
 fn create_result_window(app: &AppHandle, run_id: &str) -> Result<(), AppError> {
-    if let Some(window) = app.get_webview_window("result") {
-        let _ = window.destroy();
-    }
     let always_on_top = settings::load_app_snapshot(&app.state::<AppState>().database)?
         .settings
         .result_always_on_top;
     let size = windowing::result_window_size();
     let window = WebviewWindowBuilder::new(
         app,
-        "result",
+        windowing::result_window_label(run_id),
         WebviewUrl::App(format!("index.html?run={run_id}").into()),
     )
     .title("See See · 识别结果")
@@ -813,8 +809,8 @@ fn capture_label(monitor_id: &str) -> String {
     format!("capture-{monitor_id}")
 }
 
-fn focus_result(app: &AppHandle) {
-    if let Some(window) = app.get_webview_window("result") {
+fn focus_result(app: &AppHandle, run_id: &str) {
+    if let Some(window) = app.get_webview_window(&windowing::result_window_label(run_id)) {
         let _ = window.show();
         let _ = window.set_focus();
     }

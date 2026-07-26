@@ -11,6 +11,7 @@ import {
 import { CaptureOverlay } from "./views/CaptureOverlay";
 import { Result } from "./views/Result";
 import { SettingsShell } from "./views/SettingsShell";
+import { isResultWindowLabel } from "./windowLabels";
 
 function MainView() {
   return <SettingsShell />;
@@ -111,6 +112,6 @@ export function App() {
   const label = getCurrentWebviewWindow().label;
   if (label === "main") return <MainView />;
   if (label.startsWith("capture-")) return <CaptureView />;
-  if (label === "result") return <ResultView />;
+  if (isResultWindowLabel(label)) return <ResultView />;
   return <PlaceholderView label={label} />;
 }

@@ -118,10 +118,15 @@ pub fn run() {
                 if should_hide_on_close(window.label()) {
                     api.prevent_close();
                     let _ = window.hide();
-                } else if window.label() == "result" {
-                    if let Ok(mut runtime) = window.app_handle().state::<AppState>().runtime.lock()
-                        && let Some(active) = runtime.analysis.take()
-                    {
+                } else if let Some(run_id) = windowing::result_run_id(window.label()) {
+                    let active = window
+                        .app_handle()
+                        .state::<AppState>()
+                        .runtime
+                        .lock()
+                        .ok()
+                        .and_then(|mut runtime| runtime.take_analysis(run_id));
+                    if let Some(active) = active {
                         let _ = active.cancel();
                     }
                 } else if window.label().starts_with("capture-")
@@ -188,7 +193,8 @@ mod tests {
             "prompts",
             "history",
             "onboarding",
-            "result",
+            "result-run-id",
+            "result-",
             "capture-1",
         ] {
             assert!(

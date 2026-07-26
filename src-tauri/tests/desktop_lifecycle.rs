@@ -8,7 +8,8 @@ use see_see_lib::{
     },
     windowing::{
         WindowRole, ignores_window_cycle, is_stationary, joins_all_spaces, moves_to_active_space,
-        policy_for, result_window_size, supports_full_screen_space,
+        policy_for, result_run_id, result_window_label, result_window_size,
+        supports_full_screen_space,
     },
 };
 use std::cell::RefCell;
@@ -109,6 +110,15 @@ fn result_window_defaults_are_compact_and_keep_accessible_minimums() {
     assert!(size.width <= 480.0);
     assert!(size.height <= 520.0);
     assert_eq!((size.min_width, size.min_height), (420.0, 360.0));
+}
+
+#[test]
+fn result_windows_use_unique_run_labels() {
+    assert_eq!(result_window_label("first"), "result-first");
+    assert_eq!(result_window_label("second"), "result-second");
+    assert_eq!(result_run_id("result-first"), Some("first"));
+    assert_eq!(result_run_id("result-"), None);
+    assert_eq!(result_run_id("main"), None);
 }
 
 #[test]

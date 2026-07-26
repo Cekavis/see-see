@@ -5,6 +5,7 @@ const RESULT_DEFAULT_WIDTH: f64 = 460.0;
 const RESULT_DEFAULT_HEIGHT: f64 = 500.0;
 const RESULT_MIN_WIDTH: f64 = 420.0;
 const RESULT_MIN_HEIGHT: f64 = 360.0;
+const RESULT_WINDOW_PREFIX: &str = "result-";
 
 const CAN_JOIN_ALL_SPACES: usize = 1 << 0;
 const MOVE_TO_ACTIVE_SPACE: usize = 1 << 1;
@@ -39,6 +40,16 @@ pub fn result_window_size() -> ResultWindowSize {
         min_width: RESULT_MIN_WIDTH,
         min_height: RESULT_MIN_HEIGHT,
     }
+}
+
+pub fn result_window_label(run_id: &str) -> String {
+    format!("{RESULT_WINDOW_PREFIX}{run_id}")
+}
+
+pub fn result_run_id(label: &str) -> Option<&str> {
+    label
+        .strip_prefix(RESULT_WINDOW_PREFIX)
+        .filter(|run_id| !run_id.is_empty())
 }
 
 pub fn policy_for(role: WindowRole) -> WindowPolicy {

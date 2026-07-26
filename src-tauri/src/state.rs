@@ -79,6 +79,19 @@ impl RuntimeState {
         }
         Ok(self.capture.take().expect("capture checked above"))
     }
+
+    pub fn take_analysis(&mut self, run_id: &str) -> Option<Arc<ActiveAnalysis>> {
+        let is_current = self.analysis.as_ref().is_some_and(|active| {
+            active
+                .snapshot()
+                .is_ok_and(|snapshot| snapshot.run_id == run_id)
+        });
+        if is_current {
+            self.analysis.take()
+        } else {
+            None
+        }
+    }
 }
 
 pub struct AppState {
@@ -104,7 +117,8 @@ impl AppState {
 #[cfg(test)]
 mod tests {
     use super::RuntimeState;
-    use crate::capture::CaptureSession;
+    use crate::{analysis::ActiveAnalysis, capture::CaptureSession};
+    use std::sync::Arc;
 
     #[test]
     fn wrong_capture_id_does_not_discard_active_session() {
@@ -138,5 +152,24 @@ mod tests {
         assert_eq!(runtime.capture_reservation.as_deref(), Some("native"));
         runtime.release_capture("native");
         assert!(!runtime.capture_is_active());
+    }
+
+    #[test]
+    fn stale_result_window_cannot_take_current_analysis() {
+        let active = Arc::new(ActiveAnalysis::new("current"));
+        let mut runtime = RuntimeState {
+            analysis: Some(active.clone()),
+            ..RuntimeState::default()
+        };
+
+        assert!(runtime.take_analysis("completed-old-run").is_none());
+        assert!(
+            runtime
+                .analysis
+                .as_ref()
+                .is_some_and(|value| Arc::ptr_eq(value, &active))
+        );
+        assert!(runtime.take_analysis("current").is_some());
+        assert!(runtime.analysis.is_none());
     }
 }
