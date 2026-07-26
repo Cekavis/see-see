@@ -24,7 +24,7 @@ fn database_defaults_and_pragmas_match_the_plan() {
     assert!(snapshot.active_prompt_id.is_some());
     assert_eq!(db.pragma_i64("foreign_keys").unwrap(), 1);
     assert_eq!(db.pragma_i64("secure_delete").unwrap(), 1);
-    assert_eq!(db.pragma_i64("user_version").unwrap(), 3);
+    assert_eq!(db.pragma_i64("user_version").unwrap(), 4);
 }
 
 #[test]

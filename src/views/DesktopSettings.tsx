@@ -4,6 +4,132 @@ import { Field } from "../components/Field";
 import { useNotifications } from "../components/Notifications";
 import { ipc, type AppError, type AppSettings } from "../ipc";
 
+const MODIFIER_CODES = new Set([
+  "AltLeft",
+  "AltRight",
+  "ControlLeft",
+  "ControlRight",
+  "MetaLeft",
+  "MetaRight",
+  "ShiftLeft",
+  "ShiftRight",
+]);
+
+const MODIFIER_KEYS = new Set(["Alt", "Control", "Meta", "OS", "Shift"]);
+
+const SUPPORTED_SHORTCUT_CODES = new Set([
+  "ArrowDown",
+  "ArrowLeft",
+  "ArrowRight",
+  "ArrowUp",
+  "AudioVolumeDown",
+  "AudioVolumeMute",
+  "AudioVolumeUp",
+  "Backquote",
+  "Backslash",
+  "Backspace",
+  "BracketLeft",
+  "BracketRight",
+  "CapsLock",
+  "Comma",
+  "Delete",
+  "End",
+  "Enter",
+  "Equal",
+  "Escape",
+  "Home",
+  "Insert",
+  "MediaPause",
+  "MediaPlay",
+  "MediaPlayPause",
+  "MediaStop",
+  "MediaTrackNext",
+  "MediaTrackPrevious",
+  "Minus",
+  "NumLock",
+  "NumpadAdd",
+  "NumpadDecimal",
+  "NumpadDivide",
+  "NumpadEnter",
+  "NumpadEqual",
+  "NumpadMultiply",
+  "NumpadSubtract",
+  "PageDown",
+  "PageUp",
+  "Pause",
+  "Period",
+  "PrintScreen",
+  "Quote",
+  "ScrollLock",
+  "Semicolon",
+  "Slash",
+  "Space",
+  "Tab",
+]);
+
+const SHORTCUT_KEY_ALIASES: Record<string, string> = {
+  " ": "Space",
+  "'": "Quote",
+  ",": "Comma",
+  "-": "Minus",
+  ".": "Period",
+  "/": "Slash",
+  ";": "Semicolon",
+  "=": "Equal",
+  "[": "BracketLeft",
+  "\\": "Backslash",
+  "]": "BracketRight",
+  "`": "Backquote",
+  Down: "ArrowDown",
+  Esc: "Escape",
+  Left: "ArrowLeft",
+  Right: "ArrowRight",
+  Up: "ArrowUp",
+};
+
+function normalizedShortcutKey(
+  event: Pick<KeyboardEvent, "code" | "key">,
+): string | null {
+  if (MODIFIER_CODES.has(event.code) || MODIFIER_KEYS.has(event.key)) {
+    return null;
+  }
+  if (/^Key[A-Z]$/.test(event.code)) return event.code.slice(3);
+  if (/^Digit[0-9]$/.test(event.code)) return event.code.slice(5);
+  if (
+    /^F(?:[1-9]|1[0-9]|2[0-4])$/.test(event.code) ||
+    /^Numpad[0-9]$/.test(event.code) ||
+    SUPPORTED_SHORTCUT_CODES.has(event.code)
+  ) {
+    return event.code;
+  }
+
+  if (/^[a-z0-9]$/i.test(event.key)) return event.key.toUpperCase();
+  const fallback = SHORTCUT_KEY_ALIASES[event.key] ?? event.key;
+  return SUPPORTED_SHORTCUT_CODES.has(fallback) ? fallback : null;
+}
+
+export function shortcutFromKeyboardEvent(
+  event: Pick<
+    KeyboardEvent,
+    "altKey" | "code" | "ctrlKey" | "key" | "metaKey" | "shiftKey"
+  >,
+): string | null {
+  const key = normalizedShortcutKey(event);
+  if (!key) return null;
+
+  const modifiers = [
+    event.metaKey && "Command",
+    event.ctrlKey && "Ctrl",
+    event.altKey && "Alt",
+    event.shiftKey && "Shift",
+  ].filter(Boolean);
+  if (modifiers.length === 0 && !/^F(?:[1-9]|1[0-9]|2[0-4])$/.test(key)) {
+    return null;
+  }
+
+  return [...modifiers, key].join("+");
+}
+
 export type DesktopSettingsApi = {
   getSettings: () => Promise<AppSettings>;
   setCaptureShortcut: (shortcut: string) => Promise<AppSettings>;
@@ -16,6 +142,8 @@ export function DesktopSettings({ api = ipc }: { api?: DesktopSettingsApi }) {
   const notifications = useNotifications();
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [shortcut, setShortcut] = useState("");
+  const [isRecordingShortcut, setIsRecordingShortcut] = useState(false);
+  const [isSavingShortcut, setIsSavingShortcut] = useState(false);
   const load = useCallback(() => {
     function run() {
       void api
@@ -36,6 +164,50 @@ export function DesktopSettings({ api = ipc }: { api?: DesktopSettingsApi }) {
     load();
   }, [load]);
 
+  const saveCapturedShortcut = useCallback(
+    (nextShortcut: string) => {
+      if (!settings) return;
+      setIsRecordingShortcut(false);
+      setIsSavingShortcut(true);
+      notifications.clear();
+      void api
+        .setCaptureShortcut(nextShortcut)
+        .then((value) => {
+          setSettings(value);
+          setShortcut(value.captureShortcut);
+          notifications.success("快捷键已保存并生效");
+        })
+        .catch((failure: AppError) => {
+          setShortcut(settings.captureShortcut);
+          notifications.error(failure.message);
+        })
+        .finally(() => setIsSavingShortcut(false));
+    },
+    [api, notifications, settings],
+  );
+
+  useEffect(() => {
+    if (!isRecordingShortcut) return;
+    const recordShortcut = (event: KeyboardEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (
+        (event.code === "Escape" || event.key === "Escape") &&
+        !event.altKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.shiftKey
+      ) {
+        setIsRecordingShortcut(false);
+        return;
+      }
+      const nextShortcut = shortcutFromKeyboardEvent(event);
+      if (nextShortcut) saveCapturedShortcut(nextShortcut);
+    };
+    window.addEventListener("keydown", recordShortcut, true);
+    return () => window.removeEventListener("keydown", recordShortcut, true);
+  }, [isRecordingShortcut, saveCapturedShortcut]);
+
   if (!settings) {
     return (
       <section className="settings-group" aria-label="桌面设置">
@@ -51,38 +223,29 @@ export function DesktopSettings({ api = ipc }: { api?: DesktopSettingsApi }) {
           <Field
             label="截图快捷键"
             htmlFor="capture-shortcut"
-            hint="先成功注册新组合后才会释放旧组合。"
+            hint="点击后直接按下新组合键；按 Esc 取消。"
           >
-            <input
+            <Button
               id="capture-shortcut"
-              value={shortcut}
-              onChange={(event) => setShortcut(event.target.value)}
-            />
+              type="button"
+              className="shortcut-recorder"
+              aria-label="截图快捷键"
+              aria-pressed={isRecordingShortcut}
+              disabled={isSavingShortcut}
+              onClick={() => setIsRecordingShortcut((recording) => !recording)}
+            >
+              {isSavingShortcut
+                ? "正在应用…"
+                : isRecordingShortcut
+                  ? "请按新的快捷键…"
+                  : shortcut}
+            </Button>
           </Field>
         </div>
-        <Button
-          onClick={() => {
-            notifications.clear();
-            void api
-              .setCaptureShortcut(shortcut)
-              .then((value) => {
-                setSettings(value);
-                setShortcut(value.captureShortcut);
-                notifications.success("快捷键已保存");
-              })
-              .catch((failure: AppError) => {
-                setShortcut(settings.captureShortcut);
-                notifications.error(failure.message);
-              });
-          }}
-        >
-          保存快捷键
-        </Button>
       </div>
       <label className="setting-row switch">
         <span className="setting-row__body">
           <strong>开机启动</strong>
-          <span className="field__hint">登录系统后自动启动 See See。</span>
         </span>
         <input
           aria-label="开机启动"

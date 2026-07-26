@@ -19,6 +19,8 @@ See See is a Tauri 2 desktop application. React/TypeScript UI code lives in `src
 
 Follow `.prettierrc.json`: two-space indentation, semicolons, double quotes, and trailing commas. React components and Rust types use `PascalCase`; TypeScript values use `camelCase`; Rust modules and functions use `snake_case`. Keep IPC names aligned between `src/ipc.ts` and `src-tauri/src/commands.rs`. Prefer existing helpers and small direct changes.
 
+UI copy must earn its space. Do not add subtitles, helper text, or descriptions that merely restate a nearby heading, field label, control, or button. Keep supporting copy only when it adds decision-relevant information such as dynamic status, constraints, consequences, privacy or cost implications, recovery guidance, or non-obvious behavior.
+
 ## Testing Guidelines
 
 Name frontend tests `*.test.ts[x]` and Rust tests by behavior, for example `history_integration.rs`. Add a focused regression test for behavioral changes. Before delivery, run lint, formatting, tests, and the relevant build. Capture, permission, and packaging work also requires Windows and macOS manual checks.

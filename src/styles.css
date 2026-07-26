@@ -505,6 +505,19 @@ p {
   font-size: 0.82rem;
 }
 
+.shortcut-recorder {
+  width: 100%;
+  min-height: 40px;
+  justify-content: flex-start;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+}
+
+.shortcut-recorder[aria-pressed="true"] {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
 input,
 select,
 textarea {

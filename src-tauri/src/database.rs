@@ -4,6 +4,14 @@ use std::{path::Path, sync::Mutex};
 
 const INITIAL_SCHEMA: &str = include_str!("../migrations/0001_init.sql");
 const PLAINTEXT_KEY_MIGRATION: &str = include_str!("../migrations/0002_plaintext_model_keys.sql");
+const LEGACY_DEFAULT_CAPTURE_SHORTCUT: &str = "Alt+Shift+A";
+pub const WINDOWS_DEFAULT_CAPTURE_SHORTCUT: &str = "Ctrl+Shift+X";
+pub const MACOS_DEFAULT_CAPTURE_SHORTCUT: &str = "Command+Shift+X";
+
+#[cfg(target_os = "macos")]
+pub const DEFAULT_CAPTURE_SHORTCUT: &str = MACOS_DEFAULT_CAPTURE_SHORTCUT;
+#[cfg(not(target_os = "macos"))]
+pub const DEFAULT_CAPTURE_SHORTCUT: &str = WINDOWS_DEFAULT_CAPTURE_SHORTCUT;
 
 pub struct Database {
     connection: Mutex<Connection>,
@@ -23,6 +31,9 @@ impl Database {
     }
 
     fn initialize(connection: Connection) -> Result<Self, AppError> {
+        let previous_version = connection
+            .query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
+            .map_err(|_| AppError::storage("无法检查数据库版本"))?;
         connection
             .execute_batch(
                 "PRAGMA foreign_keys=ON;
@@ -76,8 +87,16 @@ impl Database {
                 )
                 .map_err(|_| AppError::storage("无法清理旧模型测试结果"))?;
         }
+        if previous_version < 4 {
+            connection
+                .execute(
+                    "UPDATE app_settings SET capture_shortcut = ?1 WHERE capture_shortcut = ?2",
+                    rusqlite::params![DEFAULT_CAPTURE_SHORTCUT, LEGACY_DEFAULT_CAPTURE_SHORTCUT],
+                )
+                .map_err(|_| AppError::storage("无法升级默认截图快捷键"))?;
+        }
         connection
-            .pragma_update(None, "user_version", 3)
+            .pragma_update(None, "user_version", 4)
             .map_err(|_| AppError::storage("无法记录数据库版本"))?;
         Ok(Self {
             connection: Mutex::new(connection),
@@ -134,5 +153,61 @@ impl Database {
                 row.get(0)
             })
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn legacy_database(shortcut: &str) -> Database {
+        let connection = Connection::open_in_memory().unwrap();
+        connection.execute_batch(INITIAL_SCHEMA).unwrap();
+        connection
+            .execute(
+                "UPDATE app_settings SET capture_shortcut = ?1 WHERE id = 1",
+                [shortcut],
+            )
+            .unwrap();
+        connection.pragma_update(None, "user_version", 3).unwrap();
+        Database::initialize(connection).unwrap()
+    }
+
+    #[test]
+    fn platform_defaults_are_explicit() {
+        assert_eq!(WINDOWS_DEFAULT_CAPTURE_SHORTCUT, "Ctrl+Shift+X");
+        assert_eq!(MACOS_DEFAULT_CAPTURE_SHORTCUT, "Command+Shift+X");
+    }
+
+    #[test]
+    fn legacy_default_is_migrated_for_the_current_platform() {
+        let database = legacy_database(LEGACY_DEFAULT_CAPTURE_SHORTCUT);
+        let shortcut = database
+            .read(|connection| {
+                connection.query_row(
+                    "SELECT capture_shortcut FROM app_settings WHERE id = 1",
+                    [],
+                    |row| row.get::<_, String>(0),
+                )
+            })
+            .unwrap();
+
+        assert_eq!(shortcut, DEFAULT_CAPTURE_SHORTCUT);
+    }
+
+    #[test]
+    fn custom_shortcut_is_preserved_during_platform_migration() {
+        let database = legacy_database("Ctrl+Alt+P");
+        let shortcut = database
+            .read(|connection| {
+                connection.query_row(
+                    "SELECT capture_shortcut FROM app_settings WHERE id = 1",
+                    [],
+                    |row| row.get::<_, String>(0),
+                )
+            })
+            .unwrap();
+
+        assert_eq!(shortcut, "Ctrl+Alt+P");
     }
 }

@@ -6,7 +6,7 @@ const snapshot = {
   settings: {
     activeModelConfigId: "model-1",
     activePromptId: "prompt-1",
-    captureShortcut: "CommandOrControl+Shift+X",
+    captureShortcut: "Command+Shift+X",
     saveHistory: true,
     autostart: false,
     resultAlwaysOnTop: true,
@@ -25,6 +25,38 @@ async function assertCurrentPage(button) {
 }
 
 export async function runPrimaryFlow(page) {
+  await page.addInitScript(
+    ({ initialResults }) => {
+      const testBridge = { calls: [], results: initialResults };
+      window.__SEE_SEE_TEST__ = testBridge;
+      window.__TAURI_INTERNALS__ = {
+        metadata: {
+          currentWindow: { label: "main" },
+          currentWebview: { label: "main" },
+        },
+        invoke(command, args) {
+          testBridge.calls.push({ command, args });
+          return Object.hasOwn(testBridge.results, command)
+            ? Promise.resolve(testBridge.results[command])
+            : Promise.reject(
+                new Error(`Tauri backend unavailable: ${command}`),
+              );
+        },
+      };
+    },
+    {
+      initialResults: {
+        get_app_snapshot: snapshot,
+        get_settings: snapshot.settings,
+        list_model_configs: [],
+        list_prompt_presets: [],
+        save_model_config: { id: "model-1" },
+        copy_text: null,
+        query_history: { items: [], nextCursor: null },
+        "plugin:app|version": "0.3.1",
+      },
+    },
+  );
   await page.goto("http://127.0.0.1:1420/");
 
   const sidebar = page.getByRole("navigation", { name: "设置栏目" });
@@ -69,20 +101,6 @@ export async function runPrimaryFlow(page) {
     noPageOverflow: true,
   });
   await page.setViewportSize({ width: 1024, height: 720 });
-
-  await page.evaluate(
-    (values) => Object.assign(window.__SEE_SEE_TEST__.results, values),
-    {
-      get_app_snapshot: snapshot,
-      get_settings: snapshot.settings,
-      list_model_configs: [],
-      list_prompt_presets: [],
-      save_model_config: { id: "model-1" },
-      copy_text: null,
-      query_history: { items: [], nextCursor: null },
-      "plugin:app|version": "0.3.0",
-    },
-  );
 
   assert.equal(
     await page.getByRole("button", { name: "开始截图", exact: true }).count(),

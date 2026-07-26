@@ -1,5 +1,5 @@
 use see_see_lib::{
-    database::Database,
+    database::{DEFAULT_CAPTURE_SHORTCUT, Database},
     settings::{
         load_app_snapshot, replace_shortcut, sanitize_log_line, set_autostart_with,
         set_capture_shortcut_value,
@@ -35,6 +35,10 @@ fn shortcut_replacement_registers_new_before_removing_old_and_rolls_back_on_conf
 #[test]
 fn desktop_settings_only_persist_after_system_success() {
     let db = Database::open_in_memory().unwrap();
+    assert_eq!(
+        load_app_snapshot(&db).unwrap().settings.capture_shortcut,
+        DEFAULT_CAPTURE_SHORTCUT
+    );
     assert!(set_autostart_with(&db, true, |_| Err(())).is_err());
     assert!(!load_app_snapshot(&db).unwrap().settings.autostart);
     assert!(
