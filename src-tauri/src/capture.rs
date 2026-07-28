@@ -25,6 +25,7 @@ pub enum ScreenPermission {
     Unknown,
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn permission_status_from_grant(granted: bool) -> ScreenPermission {
     if granted {
         ScreenPermission::Granted
@@ -299,6 +300,7 @@ impl CaptureSession {
     }
 }
 
+#[cfg(any(target_os = "macos", test))]
 #[derive(Debug, Clone)]
 pub(crate) struct MonitorMetadata {
     pub id: String,
@@ -308,6 +310,7 @@ pub(crate) struct MonitorMetadata {
     pub primary: bool,
 }
 
+#[cfg(any(target_os = "macos", test))]
 pub(crate) fn frozen_monitor_from_bgra(
     metadata: MonitorMetadata,
     width: usize,
