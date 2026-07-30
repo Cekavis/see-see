@@ -31,6 +31,59 @@ fn result_window_creation_stays_out_of_synchronous_windows_commands() {
 }
 
 #[test]
+fn capture_overlay_disables_undecorated_window_shadow() {
+    let commands = include_str!("../src/commands.rs");
+    let capture_windows = commands
+        .split_once("fn create_capture_windows(")
+        .unwrap()
+        .1
+        .split_once("fn create_result_window(")
+        .unwrap()
+        .0;
+    assert!(capture_windows.contains(".decorations(false)"));
+    assert!(capture_windows.contains(".shadow(false)"));
+}
+
+#[test]
+fn windows_capture_overlay_disables_show_transitions() {
+    let windowing = include_str!("../src/windowing.rs");
+    let capture_show = windowing
+        .split_once("fn disable_capture_window_transitions")
+        .unwrap()
+        .1
+        .split_once("pub fn present_result_window")
+        .unwrap()
+        .0;
+    let disable = capture_show
+        .find("DWMWA_TRANSITIONS_FORCEDISABLED")
+        .unwrap();
+    let show = capture_show.find(".show()").unwrap();
+    assert!(disable < show);
+}
+
+#[test]
+fn capture_overlay_waits_for_frontend_frame_readiness() {
+    let commands = include_str!("../src/commands.rs");
+    let create_windows = commands
+        .split_once("fn create_capture_windows(")
+        .unwrap()
+        .1
+        .split_once("fn create_result_window(")
+        .unwrap()
+        .0;
+    assert!(!create_windows.contains("show_capture_window"));
+
+    let show_ready = commands
+        .split_once("pub fn show_capture_overlay(")
+        .unwrap()
+        .1
+        .split_once("pub fn update_capture_selection(")
+        .unwrap()
+        .0;
+    assert!(show_ready.contains("show_capture_window"));
+}
+
+#[test]
 fn shortcut_replacement_registers_new_before_removing_old_and_rolls_back_on_conflict() {
     let calls = RefCell::new(Vec::new());
     replace_shortcut(

@@ -215,6 +215,36 @@ pub fn get_capture_frame(
 }
 
 #[tauri::command]
+pub fn show_capture_overlay(
+    app: AppHandle,
+    session_id: String,
+    monitor_id: String,
+) -> Result<(), AppError> {
+    let label = {
+        let state = app.state::<AppState>();
+        let runtime = state
+            .runtime
+            .lock()
+            .map_err(|_| AppError::storage("运行状态不可用"))?;
+        let session = runtime
+            .capture
+            .as_ref()
+            .filter(|session| session.id == session_id)
+            .ok_or_else(|| AppError::new(ErrorCode::NotFound, "截图会话不存在", false, None))?;
+        let monitor = session
+            .monitors
+            .iter()
+            .find(|monitor| monitor.summary.id == monitor_id)
+            .ok_or_else(|| AppError::new(ErrorCode::NotFound, "截图帧不存在", false, None))?;
+        capture_label(&monitor.summary.id)
+    };
+    let window = app
+        .get_webview_window(&label)
+        .ok_or_else(|| AppError::new(ErrorCode::NotFound, "截图窗口不存在", false, None))?;
+    windowing::show_capture_window(&window)
+}
+
+#[tauri::command]
 pub fn update_capture_selection(
     app: AppHandle,
     session_id: String,
@@ -736,6 +766,7 @@ fn create_capture_windows(
         let window = WebviewWindowBuilder::new(app, label, WebviewUrl::App(url.into()))
             .title("See See Capture")
             .decorations(false)
+            .shadow(false)
             .always_on_top(true)
             .skip_taskbar(true)
             .resizable(false)
@@ -765,14 +796,6 @@ fn create_capture_windows(
                     Some("retry"),
                 )
             })?;
-        windowing::show_capture_window(&window).map_err(|_| {
-            AppError::new(
-                ErrorCode::CaptureFailed,
-                "无法显示截图遮罩",
-                false,
-                Some("retry"),
-            )
-        })?;
     }
     Ok(())
 }

@@ -112,6 +112,28 @@ fn native_window(window: &WebviewWindow) -> Result<usize, AppError> {
         .map_err(|_| AppError::invalid("无法访问 macOS 原生窗口"))
 }
 
+#[cfg(target_os = "windows")]
+fn disable_capture_window_transitions(window: &WebviewWindow) -> Result<(), AppError> {
+    use std::{ffi::c_void, mem::size_of_val};
+    use windows::{
+        Win32::Graphics::Dwm::{DWMWA_TRANSITIONS_FORCEDISABLED, DwmSetWindowAttribute},
+        core::BOOL,
+    };
+
+    let disabled = BOOL::from(true);
+    unsafe {
+        DwmSetWindowAttribute(
+            window
+                .hwnd()
+                .map_err(|_| AppError::invalid("无法访问 Windows 截图窗口"))?,
+            DWMWA_TRANSITIONS_FORCEDISABLED,
+            &disabled as *const BOOL as *const c_void,
+            size_of_val(&disabled) as u32,
+        )
+    }
+    .map_err(|_| AppError::invalid("无法关闭 Windows 截图窗口动画"))
+}
+
 pub fn show_capture_window(window: &WebviewWindow) -> Result<(), AppError> {
     #[cfg(target_os = "macos")]
     {
@@ -125,7 +147,14 @@ pub fn show_capture_window(window: &WebviewWindow) -> Result<(), AppError> {
             })
             .map_err(|_| AppError::invalid("无法配置 macOS 截图窗口"))
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    {
+        disable_capture_window_transitions(window)?;
+        window
+            .show()
+            .map_err(|_| AppError::invalid("无法显示截图窗口"))
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         window
             .show()

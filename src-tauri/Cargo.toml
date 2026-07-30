@@ -1,6 +1,6 @@
 [package]
 name = "see-see"
-version = "0.4.2"
+version = "0.4.3"
 description = "See See multimodal screenshot translator"
 authors = ["See See contributors"]
 edition = "2024"
@@ -46,6 +46,9 @@ objc2-app-kit = { version = "0.3", default-features = false, features = ["NSWind
 objc2-core-foundation = { version = "0.3", default-features = false, features = ["CFData", "CFCGTypes"] }
 objc2-core-graphics = { version = "0.3", default-features = false, features = ["CGDataProvider", "CGImage", "CGWindow"] }
 objc2-foundation = { version = "0.3", default-features = false, features = ["NSArray", "NSError", "NSString"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.61", features = ["Win32_Graphics_Dwm"] }
 
 [dev-dependencies]
 tempfile = "3"

@@ -60,22 +60,44 @@ export function CaptureOverlay({
 
   useEffect(() => {
     if (!sessionId || !monitorId) return;
+    let active = true;
     let url: string | undefined;
     void ipc
       .getCaptureFrame(sessionId, monitorId)
-      .then((buffer) => {
+      .then(async (buffer) => {
+        if (!active) return;
         url = URL.createObjectURL(new Blob([buffer], { type: "image/png" }));
+        const image = new Image();
+        image.src = url;
+        await image.decode();
+        if (!active) return;
         setFrameUrl(url);
       })
-      .catch((value: unknown) => notifications.error(getErrorMessage(value)));
+      .catch((value: unknown) => {
+        if (!active) return;
+        notifications.error(getErrorMessage(value));
+        void ipc
+          .showCaptureOverlay(sessionId, monitorId)
+          .catch((failure: unknown) =>
+            notifications.error(getErrorMessage(failure)),
+          );
+      });
     const unlisten = listen<PhysicalRect>("capture-selection", (event) =>
       setRemoteSelection(event.payload),
     );
     return () => {
+      active = false;
       void unlisten.then((stop) => stop());
       if (url) URL.revokeObjectURL(url);
     };
   }, [monitorId, notifications, sessionId]);
+
+  useEffect(() => {
+    if (!frameUrl || !sessionId || !monitorId) return;
+    void ipc
+      .showCaptureOverlay(sessionId, monitorId)
+      .catch((value: unknown) => notifications.error(getErrorMessage(value)));
+  }, [frameUrl, monitorId, notifications, sessionId]);
 
   useEffect(() => {
     const cancel = () => {

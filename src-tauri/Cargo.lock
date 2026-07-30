@@ -4530,7 +4530,7 @@ dependencies = [
 
 [[package]]
 name = "see-see"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "base64 0.22.1",
  "block2",
@@ -4564,6 +4564,7 @@ dependencies = [
  "tokio",
  "url",
  "uuid",
+ "windows 0.61.3",
  "wiremock",
  "xcap",
 ]

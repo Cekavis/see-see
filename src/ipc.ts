@@ -157,6 +157,8 @@ export const ipc = {
   beginCapture: () => invoke<void>("begin_capture"),
   getCaptureFrame: (sessionId: string, monitorId: string) =>
     invoke<ArrayBuffer>("get_capture_frame", { sessionId, monitorId }),
+  showCaptureOverlay: (sessionId: string, monitorId: string) =>
+    invoke<void>("show_capture_overlay", { sessionId, monitorId }),
   updateCaptureSelection: (sessionId: string, selection: PhysicalRect) =>
     invoke<void>("update_capture_selection", { sessionId, selection }),
   finishCapture: (sessionId: string, selection: PhysicalRect) =>

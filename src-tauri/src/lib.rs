@@ -140,6 +140,7 @@ pub fn run() {
             commands::get_app_snapshot,
             commands::begin_capture,
             commands::get_capture_frame,
+            commands::show_capture_overlay,
             commands::update_capture_selection,
             commands::finish_capture,
             commands::cancel_capture,
