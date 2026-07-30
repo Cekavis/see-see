@@ -245,7 +245,7 @@ pub fn update_capture_selection(
 }
 
 #[tauri::command]
-pub fn finish_capture(
+pub async fn finish_capture(
     app: AppHandle,
     session_id: String,
     selection: PhysicalRect,

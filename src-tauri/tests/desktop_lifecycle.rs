@@ -1,7 +1,9 @@
 use see_see_lib::{
     autostart::{SystemAutostartStatus, confirm_enabled},
+    capture::PhysicalRect,
+    commands::{AnalysisStarted, finish_capture},
     database::{DEFAULT_CAPTURE_SHORTCUT, Database},
-    error::ErrorCode,
+    error::{AppError, ErrorCode},
     settings::{
         load_app_snapshot, replace_shortcut, sanitize_log_line, set_autostart_with,
         set_capture_shortcut_value,
@@ -13,6 +15,20 @@ use see_see_lib::{
     },
 };
 use std::cell::RefCell;
+use std::future::Future;
+use tauri::AppHandle;
+
+#[test]
+fn result_window_creation_stays_out_of_synchronous_windows_commands() {
+    fn assert_async<F, Fut>(_: F)
+    where
+        F: Fn(AppHandle, String, PhysicalRect) -> Fut,
+        Fut: Future<Output = Result<AnalysisStarted, AppError>>,
+    {
+    }
+
+    assert_async(finish_capture);
+}
 
 #[test]
 fn shortcut_replacement_registers_new_before_removing_old_and_rolls_back_on_conflict() {
