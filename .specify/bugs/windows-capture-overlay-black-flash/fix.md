@@ -53,4 +53,4 @@ pub fn show_capture_overlay(...) -> Result<(), AppError> {
 
 ## Follow-ups
 
-- 在最终安装版触发一次截图，确认首次可见帧不再是黑色占位背景。
+- 无。
