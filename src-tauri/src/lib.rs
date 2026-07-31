@@ -18,7 +18,7 @@ use std::sync::Arc;
 use tauri::{
     AppHandle, Manager, WindowEvent,
     menu::{Menu, MenuItem},
-    tray::TrayIconBuilder,
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
 };
 use tauri_plugin_log::{Target, TargetKind};
 
@@ -32,6 +32,10 @@ fn show_main_window(app: &AppHandle) {
         let _ = window.show();
         let _ = window.set_focus();
     }
+}
+
+fn is_primary_tray_click(button: MouseButton, state: MouseButtonState) -> bool {
+    button == MouseButton::Left && state == MouseButtonState::Up
 }
 
 fn should_open_main_window(args: &[String], launched_as_login_item: bool) -> bool {
@@ -102,6 +106,18 @@ pub fn run() {
             let mut tray = TrayIconBuilder::new()
                 .tooltip("See See")
                 .menu(&menu)
+                .show_menu_on_left_click(false)
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button,
+                        button_state,
+                        ..
+                    } = event
+                        && is_primary_tray_click(button, button_state)
+                    {
+                        show_main_window(tray.app_handle());
+                    }
+                })
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "capture" => {
                         let app = app.clone();
@@ -198,7 +214,24 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{should_hide_on_close, should_open_main_window};
+    use super::{is_primary_tray_click, should_hide_on_close, should_open_main_window};
+    use tauri::tray::{MouseButton, MouseButtonState};
+
+    #[test]
+    fn only_left_button_release_opens_settings() {
+        assert!(is_primary_tray_click(
+            MouseButton::Left,
+            MouseButtonState::Up
+        ));
+        assert!(!is_primary_tray_click(
+            MouseButton::Left,
+            MouseButtonState::Down
+        ));
+        assert!(!is_primary_tray_click(
+            MouseButton::Right,
+            MouseButtonState::Up
+        ));
+    }
 
     #[test]
     fn autostart_launches_stay_silent() {
