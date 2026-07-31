@@ -2,6 +2,8 @@ use crate::error::{AppError, ErrorCode};
 use tauri::AppHandle;
 use tauri_plugin_autostart::ManagerExt as AutostartExt;
 
+pub const AUTOSTART_ARG: &str = "--autostart";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SystemAutostartStatus {
     NotRegistered,
@@ -44,7 +46,11 @@ pub fn confirm_enabled(status: SystemAutostartStatus) -> Result<(), AppError> {
 mod macos {
     use super::{AppError, SystemAutostartStatus, confirm_enabled};
     use objc2::{extern_class, extern_methods, rc::Retained};
-    use objc2_foundation::{NSError, NSObject};
+    use objc2_foundation::{NSAppleEventManager, NSError, NSObject};
+
+    const fn four_char_code(value: [u8; 4]) -> u32 {
+        u32::from_be_bytes(value)
+    }
 
     #[link(name = "ServiceManagement", kind = "framework")]
     unsafe extern "C" {}
@@ -104,6 +110,28 @@ mod macos {
 
     pub(super) fn open_settings() {
         SMAppService::open_system_settings_login_items();
+    }
+
+    pub(super) fn launched_as_login_item() -> bool {
+        let Some(event) = NSAppleEventManager::sharedAppleEventManager().currentAppleEvent() else {
+            return false;
+        };
+
+        event.eventID() == four_char_code(*b"oapp")
+            && event
+                .paramDescriptorForKeyword(four_char_code(*b"prdt"))
+                .is_some_and(|value| value.enumCodeValue() == four_char_code(*b"lgit"))
+    }
+}
+
+pub fn launched_as_login_item() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        macos::launched_as_login_item()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        false
     }
 }
 
@@ -170,8 +198,13 @@ pub fn reconcile_on_startup(app: &AppHandle, stored: bool) -> Result<bool, AppEr
     }
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = stored;
-        Ok(system_status(app)?.is_enabled())
+        let actual = system_status(app)?.is_enabled();
+        if stored && actual {
+            app.autolaunch()
+                .enable()
+                .map_err(|error| AppError::storage(error.to_string()))?;
+        }
+        Ok(actual)
     }
 }
 

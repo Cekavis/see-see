@@ -34,6 +34,10 @@ fn show_main_window(app: &AppHandle) {
     }
 }
 
+fn should_open_main_window(args: &[String], launched_as_login_item: bool) -> bool {
+    !launched_as_login_item && !args.iter().any(|arg| arg == autostart::AUTOSTART_ARG)
+}
+
 #[cfg(unix)]
 fn restrict_local_storage_permissions(directory: &std::path::Path, database: &std::path::Path) {
     use std::os::unix::fs::PermissionsExt;
@@ -48,11 +52,17 @@ fn restrict_local_storage_permissions(_: &std::path::Path, _: &std::path::Path) 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _, _| {
-            show_main_window(app);
+        .plugin(tauri_plugin_single_instance::init(|app, args, _| {
+            if should_open_main_window(&args, false) {
+                show_main_window(app);
+            }
         }))
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
-        .plugin(tauri_plugin_autostart::Builder::new().build())
+        .plugin(
+            tauri_plugin_autostart::Builder::new()
+                .arg(autostart::AUTOSTART_ARG)
+                .build(),
+        )
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -111,6 +121,10 @@ pub fn run() {
                 tray = tray.icon(icon.clone());
             }
             tray.build(app)?;
+            let args = std::env::args().collect::<Vec<_>>();
+            if should_open_main_window(&args, autostart::launched_as_login_item()) {
+                show_main_window(app.handle());
+            }
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -184,7 +198,17 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::should_hide_on_close;
+    use super::{should_hide_on_close, should_open_main_window};
+
+    #[test]
+    fn autostart_launches_stay_silent() {
+        assert!(should_open_main_window(&["see-see".into()], false));
+        assert!(!should_open_main_window(
+            &["see-see".into(), "--autostart".into()],
+            false
+        ));
+        assert!(!should_open_main_window(&["see-see".into()], true));
+    }
 
     #[test]
     fn only_the_main_management_window_hides_on_close() {
