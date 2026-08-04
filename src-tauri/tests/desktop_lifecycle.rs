@@ -62,6 +62,24 @@ fn windows_capture_overlay_disables_show_transitions() {
 }
 
 #[test]
+fn windows_capture_overlay_is_raised_after_show() {
+    let windowing = include_str!("../src/windowing.rs");
+    let capture_show = windowing
+        .split_once("fn raise_capture_window")
+        .unwrap()
+        .1
+        .split_once("pub fn present_result_window")
+        .unwrap()
+        .0;
+    assert!(capture_show.contains("SetWindowPos"));
+    assert!(capture_show.contains("HWND_TOPMOST"));
+
+    let show = capture_show.find(".show()").unwrap();
+    let raise = capture_show.find("raise_capture_window(window)").unwrap();
+    assert!(show < raise);
+}
+
+#[test]
 fn capture_overlay_waits_for_frontend_frame_readiness() {
     let commands = include_str!("../src/commands.rs");
     let create_windows = commands

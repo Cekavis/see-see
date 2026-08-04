@@ -134,6 +134,28 @@ fn disable_capture_window_transitions(window: &WebviewWindow) -> Result<(), AppE
     .map_err(|_| AppError::invalid("无法关闭 Windows 截图窗口动画"))
 }
 
+#[cfg(target_os = "windows")]
+fn raise_capture_window(window: &WebviewWindow) -> Result<(), AppError> {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        HWND_TOPMOST, SWP_NOMOVE, SWP_NOSIZE, SetWindowPos,
+    };
+
+    unsafe {
+        SetWindowPos(
+            window
+                .hwnd()
+                .map_err(|_| AppError::invalid("无法访问 Windows 截图窗口"))?,
+            Some(HWND_TOPMOST),
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE,
+        )
+    }
+    .map_err(|_| AppError::invalid("无法置顶 Windows 截图窗口"))
+}
+
 pub fn show_capture_window(window: &WebviewWindow) -> Result<(), AppError> {
     #[cfg(target_os = "macos")]
     {
@@ -152,7 +174,8 @@ pub fn show_capture_window(window: &WebviewWindow) -> Result<(), AppError> {
         disable_capture_window_transitions(window)?;
         window
             .show()
-            .map_err(|_| AppError::invalid("无法显示截图窗口"))
+            .map_err(|_| AppError::invalid("无法显示截图窗口"))?;
+        raise_capture_window(window)
     }
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
