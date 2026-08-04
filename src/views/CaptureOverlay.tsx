@@ -50,6 +50,7 @@ export function CaptureOverlay({
 }: Props) {
   const notifications = useNotifications();
   const start = useRef<Point | null>(null);
+  const cursor = useRef<HTMLDivElement>(null);
   const [localSelection, setLocalSelection] = useState<PhysicalRect | null>(
     null,
   );
@@ -118,6 +119,11 @@ export function CaptureOverlay({
 
   const selection = localSelection ?? remoteSelection;
   const handleMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (cursor.current) {
+      cursor.current.hidden = false;
+      cursor.current.style.left = `${event.clientX}px`;
+      cursor.current.style.top = `${event.clientY}px`;
+    }
     if (!start.current) return;
     const next = { x: event.clientX, y: event.clientY };
     const value = rect(start.current, next, origin, scaleFactor);
@@ -144,6 +150,9 @@ export function CaptureOverlay({
         setLocalSelection(null);
       }}
       onPointerMove={handleMove}
+      onPointerLeave={() => {
+        if (cursor.current) cursor.current.hidden = true;
+      }}
       onPointerUp={(event) => {
         if (!start.current) return;
         const value = rect(
@@ -171,6 +180,12 @@ export function CaptureOverlay({
             );
       }}
     >
+      <div
+        ref={cursor}
+        className="capture-overlay__cursor"
+        data-testid="capture-cursor"
+        hidden
+      />
       <div className="capture-overlay__hint">拖动选择区域 · Esc 取消</div>
       {selection && (
         <div

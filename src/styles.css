@@ -1124,12 +1124,25 @@ textarea {
   position: fixed;
   inset: 0;
   overflow: hidden;
-  cursor: crosshair;
+  cursor: none;
   user-select: none;
   background-color: #101114;
   background-position: center;
   background-repeat: no-repeat;
   background-size: 100% 100%;
+}
+
+.capture-overlay__cursor {
+  position: absolute;
+  z-index: 3;
+  width: 20px;
+  height: 20px;
+  translate: -50% -50%;
+  pointer-events: none;
+  background:
+    linear-gradient(#ffffff, #ffffff) center / 1px 100% no-repeat,
+    linear-gradient(#ffffff, #ffffff) center / 100% 1px no-repeat;
+  filter: drop-shadow(0 0 1px #000000);
 }
 
 .capture-overlay::after {

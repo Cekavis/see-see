@@ -42,6 +42,14 @@ describe("CaptureOverlay", () => {
       </NotificationProvider>,
     );
     const overlay = screen.getByTestId("capture-overlay");
+    const cursor = screen.getByTestId("capture-cursor");
+    expect(cursor).not.toBeVisible();
+    fireEvent.pointerMove(overlay, { clientX: 25, clientY: 30 });
+    expect(cursor).toBeVisible();
+    expect(cursor).toHaveStyle({ left: "25px", top: "30px" });
+    fireEvent.pointerLeave(overlay);
+    expect(cursor).not.toBeVisible();
+
     fireEvent.pointerDown(overlay, { pointerId: 7, clientX: 50, clientY: 40 });
     fireEvent.pointerMove(overlay, { pointerId: 7, clientX: 10, clientY: 5 });
     fireEvent.pointerUp(overlay, { pointerId: 7, clientX: 10, clientY: 5 });
