@@ -62,7 +62,7 @@ fn windows_capture_overlay_disables_show_transitions() {
 }
 
 #[test]
-fn windows_capture_overlay_is_raised_after_show() {
+fn windows_capture_overlay_is_raised_and_focused_after_show() {
     let windowing = include_str!("../src/windowing.rs");
     let capture_show = windowing
         .split_once("fn raise_capture_window")
@@ -76,7 +76,9 @@ fn windows_capture_overlay_is_raised_after_show() {
 
     let show = capture_show.find(".show()").unwrap();
     let raise = capture_show.find("raise_capture_window(window)").unwrap();
+    let focus = capture_show.find(".set_focus()").unwrap();
     assert!(show < raise);
+    assert!(raise < focus);
 }
 
 #[test]

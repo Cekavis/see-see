@@ -175,7 +175,10 @@ pub fn show_capture_window(window: &WebviewWindow) -> Result<(), AppError> {
         window
             .show()
             .map_err(|_| AppError::invalid("无法显示截图窗口"))?;
-        raise_capture_window(window)
+        raise_capture_window(window)?;
+        window
+            .set_focus()
+            .map_err(|_| AppError::invalid("无法聚焦 Windows 截图窗口"))
     }
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
