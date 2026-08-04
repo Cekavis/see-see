@@ -158,18 +158,24 @@ impl AnalysisRun {
 
 pub struct ActiveAnalysis {
     run: Mutex<AnalysisRun>,
+    image_png: Vec<u8>,
     listeners: Mutex<Vec<Channel<AnalysisEvent>>>,
     cancel: watch::Sender<bool>,
 }
 
 impl ActiveAnalysis {
-    pub fn new(run_id: impl Into<String>) -> Self {
+    pub fn new(run_id: impl Into<String>, image_png: Vec<u8>) -> Self {
         let (cancel, _) = watch::channel(false);
         Self {
             run: Mutex::new(AnalysisRun::new(run_id)),
+            image_png,
             listeners: Mutex::new(Vec::new()),
             cancel,
         }
+    }
+
+    pub fn image_png(&self) -> Vec<u8> {
+        self.image_png.clone()
     }
 
     pub fn snapshot(&self) -> Result<AnalysisSnapshot, AppError> {
@@ -221,6 +227,19 @@ impl ActiveAnalysis {
 
     pub fn cancel_receiver(&self) -> watch::Receiver<bool> {
         self.cancel.subscribe()
+    }
+
+    pub fn reset_for_retry(&self) -> Result<(), AppError> {
+        let mut run = self.lock_run()?;
+        let snapshot = run.snapshot();
+        if snapshot.state != AnalysisState::Failed
+            || !snapshot.error.is_some_and(|error| error.retryable)
+        {
+            return Err(AppError::invalid("当前分析不可重试"));
+        }
+        *run = AnalysisRun::new(snapshot.run_id);
+        let _ = self.cancel.send(false);
+        Ok(())
     }
 
     fn lock_run(&self) -> Result<std::sync::MutexGuard<'_, AnalysisRun>, AppError> {
@@ -313,7 +332,7 @@ pub fn start_network_analysis(app: AppHandle, active: Arc<ActiveAnalysis>, input
                     status: HistoryStatus::Failed,
                     result_text: None,
                     error_code: Some(error.code.as_str().into()),
-                    error_message: Some(error.message.clone()),
+                    error_message: Some(error.message_with_details()),
                     prompt_name: input.prompt.name,
                     prompt_body: input.prompt.body,
                     model_config_name: input.model.name,

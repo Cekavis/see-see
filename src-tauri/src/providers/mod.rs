@@ -286,13 +286,15 @@ pub fn connection_test_png() -> Vec<u8> {
 }
 
 fn map_reqwest_error(error: reqwest::Error) -> AppError {
-    if error.is_timeout() {
+    let details = error.to_string();
+    let error = if error.is_timeout() {
         AppError::provider(ErrorCode::Timeout, "模型请求超时", true)
     } else if error.is_connect() {
         AppError::provider(ErrorCode::NetworkUnavailable, "无法连接模型端点", true)
     } else {
         AppError::provider(ErrorCode::ProviderError, "模型请求失败", true)
-    }
+    };
+    error.with_details(details)
 }
 
 fn map_status(status: u16) -> AppError {
@@ -308,10 +310,10 @@ fn map_status(status: u16) -> AppError {
 }
 
 fn map_error_response(status: u16, body: &str) -> AppError {
-    let body = body.to_ascii_lowercase();
-    if status == 400
-        && body.contains("image")
-        && (body.contains("support") || body.contains("vision"))
+    let lowercase = body.to_ascii_lowercase();
+    let error = if status == 400
+        && lowercase.contains("image")
+        && (lowercase.contains("support") || lowercase.contains("vision"))
     {
         AppError::provider(
             ErrorCode::ImageNotSupported,
@@ -320,7 +322,98 @@ fn map_error_response(status: u16, body: &str) -> AppError {
         )
     } else {
         map_status(status)
+    };
+    error.with_details(provider_response_details(status, body))
+}
+
+fn provider_response_details(status: u16, body: &str) -> String {
+    const MAX_CHARS: usize = 4_096;
+
+    let body = body.trim();
+    let body = if body.is_empty() {
+        "（响应正文为空）".into()
+    } else {
+        sanitize_provider_response(body)
+    };
+    let mut chars = body.chars();
+    let mut body = chars.by_ref().take(MAX_CHARS).collect::<String>();
+    if chars.next().is_some() {
+        body.push_str("\n…（响应已截断）");
     }
+    format!("HTTP {status}\n{body}")
+}
+
+fn sanitize_provider_response(body: &str) -> String {
+    let Ok(mut value) = serde_json::from_str::<Value>(body) else {
+        if contains_sensitive_marker(body) {
+            return "[响应包含敏感信息，已隐藏]".into();
+        }
+        return body.into();
+    };
+    redact_sensitive_json(&mut value);
+    serde_json::to_string_pretty(&value).unwrap_or_else(|_| "[响应无法安全显示]".into())
+}
+
+fn redact_sensitive_json(value: &mut Value) {
+    match value {
+        Value::Object(object) => {
+            for (key, value) in object {
+                let key = key.to_ascii_lowercase().replace('-', "_");
+                if matches!(
+                    key.as_str(),
+                    "authorization"
+                        | "api_key"
+                        | "apikey"
+                        | "x_api_key"
+                        | "token"
+                        | "access_token"
+                        | "refresh_token"
+                        | "secret"
+                        | "client_secret"
+                        | "password"
+                        | "credential"
+                        | "credentials"
+                ) || key.ends_with("_token")
+                    || key.ends_with("_secret")
+                    || key.ends_with("_key")
+                {
+                    *value = Value::String("[REDACTED]".into());
+                } else {
+                    redact_sensitive_json(value);
+                }
+            }
+        }
+        Value::Array(values) => values.iter_mut().for_each(redact_sensitive_json),
+        Value::String(text) if contains_sensitive_marker(text) => {
+            *text = "[REDACTED]".into();
+        }
+        Value::String(text) if text.chars().count() > 2_048 => {
+            *text = format!(
+                "{}\n…（字段已截断）",
+                text.chars().take(2_048).collect::<String>()
+            );
+        }
+        _ => {}
+    }
+}
+
+fn contains_sensitive_marker(value: &str) -> bool {
+    let lowercase = value.to_ascii_lowercase();
+    [
+        "authorization",
+        "bearer ",
+        "api_key",
+        "api-key",
+        "x-api-key",
+        "access_token",
+        "refresh_token",
+        "client_secret",
+        "password",
+        "sk-",
+        "aiza",
+    ]
+    .iter()
+    .any(|marker| lowercase.contains(marker))
 }
 
 pub(crate) fn image_data(request: &ProviderRequest) -> String {

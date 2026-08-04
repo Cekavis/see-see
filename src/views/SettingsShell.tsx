@@ -1,5 +1,6 @@
 import { getVersion } from "@tauri-apps/api/app";
 import { useEffect, useState } from "react";
+import packageJson from "../../package.json";
 import { Icon, type IconName } from "../components/Icon";
 import { DesktopSettings } from "./DesktopSettings";
 import { History } from "./History";
@@ -40,7 +41,7 @@ function General({ onSelect }: { onSelect: (value: SettingsSection) => void }) {
 }
 
 function About() {
-  const [version, setVersion] = useState("0.2.0");
+  const [version, setVersion] = useState(packageJson.version);
 
   useEffect(() => {
     let active = true;

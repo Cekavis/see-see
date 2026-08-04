@@ -3,6 +3,7 @@ import { invoke, type Channel } from "@tauri-apps/api/core";
 export type AppError = {
   code: string;
   message: string;
+  details?: string;
   retryable: boolean;
   action?: string;
 };
@@ -168,6 +169,7 @@ export const ipc = {
   attachAnalysis: (runId: string, onEvent: Channel<AnalysisEvent>) =>
     invoke<AnalysisSnapshot>("attach_analysis", { runId, onEvent }),
   cancelAnalysis: (runId: string) => invoke<void>("cancel_analysis", { runId }),
+  retryAnalysis: (runId: string) => invoke<void>("retry_analysis", { runId }),
   closeResult: (runId: string) => invoke<void>("close_result", { runId }),
   setResultAlwaysOnTop: (value: boolean) =>
     invoke<void>("set_result_always_on_top", { value }),

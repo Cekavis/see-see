@@ -49,32 +49,7 @@ function ResultView() {
   useEffect(() => {
     const channel = new Channel<AnalysisEvent>();
     channel.onmessage = (event) => {
-      setSnapshot((current) => {
-        if (event.runId !== current.runId) return current;
-        if (event.type === "started")
-          return { ...current, state: "submitting" };
-        if (event.type === "delta")
-          return {
-            ...current,
-            state: "streaming",
-            text: current.text + event.text,
-          };
-        if (event.type === "completed")
-          return {
-            ...current,
-            state: "completed",
-            text: event.text,
-            savedToHistory: event.savedToHistory,
-          };
-        if (event.type === "failed")
-          return {
-            ...current,
-            state: "failed",
-            error: event.error,
-            savedToHistory: event.savedToHistory,
-          };
-        return { ...current, state: "cancelled", text: "" };
-      });
+      setSnapshot((current) => updateAnalysisSnapshot(current, event));
     };
     void ipc
       .attachAnalysis(runId, channel)
@@ -91,6 +66,7 @@ function ResultView() {
       snapshot={snapshot}
       alwaysOnTop={alwaysOnTop}
       onCancel={() => ipc.cancelAnalysis(runId)}
+      onRetry={() => ipc.retryAnalysis(runId)}
       onCopy={(text) => ipc.copyText(text)}
       onAlwaysOnTop={(value) => {
         setAlwaysOnTop(value);
@@ -98,6 +74,42 @@ function ResultView() {
       }}
     />
   );
+}
+
+export function updateAnalysisSnapshot(
+  current: AnalysisSnapshot,
+  event: AnalysisEvent,
+): AnalysisSnapshot {
+  if (event.runId !== current.runId) return current;
+  if (event.type === "started")
+    return {
+      ...current,
+      state: "submitting",
+      text: "",
+      savedToHistory: false,
+      error: null,
+    };
+  if (event.type === "delta")
+    return {
+      ...current,
+      state: "streaming",
+      text: current.text + event.text,
+    };
+  if (event.type === "completed")
+    return {
+      ...current,
+      state: "completed",
+      text: event.text,
+      savedToHistory: event.savedToHistory,
+    };
+  if (event.type === "failed")
+    return {
+      ...current,
+      state: "failed",
+      error: event.error,
+      savedToHistory: event.savedToHistory,
+    };
+  return { ...current, state: "cancelled", text: "", error: null };
 }
 
 function PlaceholderView({ label }: { label: string }) {

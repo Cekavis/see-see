@@ -156,7 +156,7 @@ mod tests {
 
     #[test]
     fn stale_result_window_cannot_take_current_analysis() {
-        let active = Arc::new(ActiveAnalysis::new("current"));
+        let active = Arc::new(ActiveAnalysis::new("current", vec![]));
         let mut runtime = RuntimeState {
             analysis: Some(active.clone()),
             ..RuntimeState::default()

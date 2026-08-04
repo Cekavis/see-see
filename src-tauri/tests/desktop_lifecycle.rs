@@ -1,7 +1,7 @@
 use see_see_lib::{
     autostart::{SystemAutostartStatus, confirm_enabled},
     capture::PhysicalRect,
-    commands::{AnalysisStarted, finish_capture},
+    commands::{AnalysisStarted, finish_capture, resubmit_history},
     database::{DEFAULT_CAPTURE_SHORTCUT, Database},
     error::{AppError, ErrorCode},
     settings::{
@@ -28,6 +28,15 @@ fn result_window_creation_stays_out_of_synchronous_windows_commands() {
     }
 
     assert_async(finish_capture);
+
+    fn assert_resubmit_async<F, Fut>(_: F)
+    where
+        F: Fn(AppHandle, String) -> Fut,
+        Fut: Future<Output = Result<AnalysisStarted, AppError>>,
+    {
+    }
+
+    assert_resubmit_async(resubmit_history);
 }
 
 #[test]

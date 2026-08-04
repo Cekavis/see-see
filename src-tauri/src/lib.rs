@@ -176,6 +176,7 @@ pub fn run() {
             commands::cancel_capture,
             commands::attach_analysis,
             commands::cancel_analysis,
+            commands::retry_analysis,
             commands::close_result,
             commands::set_result_always_on_top,
             commands::copy_text,

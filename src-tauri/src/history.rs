@@ -136,7 +136,19 @@ pub fn save_history(
             "INSERT INTO history_entries (
                 id, status, result_text, error_code, error_message, prompt_name, prompt_body,
                 model_config_name, protocol, model_id, started_at, completed_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+             ON CONFLICT(id) DO UPDATE SET
+                status = excluded.status,
+                result_text = excluded.result_text,
+                error_code = excluded.error_code,
+                error_message = excluded.error_message,
+                prompt_name = excluded.prompt_name,
+                prompt_body = excluded.prompt_body,
+                model_config_name = excluded.model_config_name,
+                protocol = excluded.protocol,
+                model_id = excluded.model_id,
+                started_at = excluded.started_at,
+                completed_at = excluded.completed_at",
             rusqlite::params![
                 input.id,
                 input.status.as_str(),
@@ -156,7 +168,12 @@ pub fn save_history(
             transaction.execute(
                 "INSERT INTO history_images (
                     history_id, mime_type, width, height, original_bytes, thumbnail_bytes
-                 ) VALUES (?1, 'image/png', ?2, ?3, ?4, ?5)",
+                 ) VALUES (?1, 'image/png', ?2, ?3, ?4, ?5)
+                 ON CONFLICT(history_id) DO UPDATE SET
+                    width = excluded.width,
+                    height = excluded.height,
+                    original_bytes = excluded.original_bytes,
+                    thumbnail_bytes = excluded.thumbnail_bytes",
                 rusqlite::params![input.id, *width, *height, image_png, thumbnail],
             )?;
         }

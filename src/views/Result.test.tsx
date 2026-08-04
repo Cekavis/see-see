@@ -66,6 +66,7 @@ describe("Result", () => {
   });
 
   it("renders completed and failed terminal states without unsafe rich text", () => {
+    const onRetry = vi.fn();
     const { rerender } = renderResult(
       <Result
         snapshot={snapshot({
@@ -82,11 +83,20 @@ describe("Result", () => {
           snapshot={snapshot({
             state: "failed",
             text: "",
-            error: { code: "timeout", message: "请求超时", retryable: true },
+            error: {
+              code: "timeout",
+              message: "请求超时",
+              details: "HTTP 504\nupstream timeout",
+              retryable: true,
+            },
           })}
+          onRetry={onRetry}
         />
       </NotificationProvider>,
     );
     expect(screen.getByRole("alert")).toHaveTextContent("请求超时");
+    expect(screen.getByText(/HTTP 504/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    expect(onRetry).toHaveBeenCalledOnce();
   });
 });

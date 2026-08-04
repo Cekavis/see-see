@@ -63,6 +63,8 @@ impl ErrorCode {
 pub struct AppError {
     pub code: ErrorCode,
     pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub details: Option<String>,
     pub retryable: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub action: Option<String>,
@@ -78,8 +80,21 @@ impl AppError {
         Self {
             code,
             message: message.into(),
+            details: None,
             retryable,
             action: action.map(str::to_owned),
+        }
+    }
+
+    pub fn with_details(mut self, details: impl Into<String>) -> Self {
+        self.details = Some(details.into());
+        self
+    }
+
+    pub fn message_with_details(&self) -> String {
+        match self.details.as_deref() {
+            Some(details) => format!("{}\n\n{details}", self.message),
+            None => self.message.clone(),
         }
     }
 

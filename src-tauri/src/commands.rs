@@ -305,13 +305,9 @@ fn start_analysis_with_image(
     image_png: Vec<u8>,
 ) -> Result<AnalysisStarted, AppError> {
     let state = app.state::<AppState>();
-    let (model, prompt) = require_active_configuration(&state)?;
-    let api_key = settings::load_model_api_key(&state.database, &model.id)?;
-    let save_history = settings::load_app_snapshot(&state.database)?
-        .settings
-        .save_history;
+    let input = analysis_input_for_image(&state, image_png)?;
     let run_id = Uuid::new_v4().to_string();
-    let active = Arc::new(ActiveAnalysis::new(run_id.clone()));
+    let active = Arc::new(ActiveAnalysis::new(run_id.clone(), input.image_png.clone()));
     {
         let mut runtime = state
             .runtime
@@ -334,19 +330,27 @@ fn start_analysis_with_image(
             .analysis = None;
         return Err(error);
     }
-    analysis::start_network_analysis(
-        app,
-        active,
-        AnalysisInput {
-            image_png,
-            prompt,
-            model,
-            api_key,
-            save_history,
-            started_at: analysis::now(),
-        },
-    );
+    analysis::start_network_analysis(app, active, input);
     Ok(AnalysisStarted { run_id })
+}
+
+fn analysis_input_for_image(
+    state: &AppState,
+    image_png: Vec<u8>,
+) -> Result<AnalysisInput, AppError> {
+    let (model, prompt) = require_active_configuration(&state)?;
+    let api_key = settings::load_model_api_key(&state.database, &model.id)?;
+    let save_history = settings::load_app_snapshot(&state.database)?
+        .settings
+        .save_history;
+    Ok(AnalysisInput {
+        image_png,
+        prompt,
+        model,
+        api_key,
+        save_history,
+        started_at: analysis::now(),
+    })
 }
 
 #[tauri::command]
@@ -375,6 +379,15 @@ pub fn attach_analysis(
 #[tauri::command]
 pub fn cancel_analysis(app: AppHandle, run_id: String) -> Result<(), AppError> {
     active_analysis(&app, &run_id)?.cancel()
+}
+
+#[tauri::command]
+pub fn retry_analysis(app: AppHandle, run_id: String) -> Result<(), AppError> {
+    let active = active_analysis(&app, &run_id)?;
+    let input = analysis_input_for_image(&app.state::<AppState>(), active.image_png())?;
+    active.reset_for_retry()?;
+    analysis::start_network_analysis(app, active, input);
+    Ok(())
 }
 
 #[tauri::command]
@@ -541,7 +554,7 @@ pub fn get_history_image(
 }
 
 #[tauri::command]
-pub fn resubmit_history(app: AppHandle, id: String) -> Result<AnalysisStarted, AppError> {
+pub async fn resubmit_history(app: AppHandle, id: String) -> Result<AnalysisStarted, AppError> {
     {
         let state = app.state::<AppState>();
         let runtime = state

@@ -118,6 +118,19 @@ fn detail_images_delete_and_clear_are_consistent() {
 }
 
 #[test]
+fn retry_replaces_the_failed_history_entry_for_the_same_run() {
+    let db = Database::open_in_memory().unwrap();
+    insert(&db, "1", "", "日语", HistoryStatus::Failed);
+    insert(&db, "1", "重试成功", "日语", HistoryStatus::Success);
+
+    let detail = get_history_detail(&db, "1").unwrap();
+    assert_eq!(detail.status, HistoryStatus::Success);
+    assert_eq!(detail.result_text.as_deref(), Some("重试成功"));
+    assert_eq!(db.count("history_entries").unwrap(), 1);
+    assert_eq!(db.count("history_images").unwrap(), 1);
+}
+
+#[test]
 fn corrupt_images_return_a_stable_error() {
     let db = Database::open_in_memory().unwrap();
     insert(&db, "1", "结果", "日语", HistoryStatus::Success);

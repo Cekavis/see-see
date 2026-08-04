@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import packageJson from "../../package.json";
 import { NotificationProvider } from "../components/Notifications";
 import { SettingsShell } from "./SettingsShell";
 
@@ -40,7 +41,7 @@ describe("SettingsShell", () => {
     mocks.listModelConfigs.mockResolvedValue([]);
     mocks.listPromptPresets.mockResolvedValue([]);
     mocks.queryHistory.mockResolvedValue({ items: [], nextCursor: null });
-    getVersion.mockResolvedValue("0.2.0");
+    getVersion.mockResolvedValue(packageJson.version);
   });
 
   it("switches all settings sections locally without a capture control", async () => {
@@ -86,12 +87,24 @@ describe("SettingsShell", () => {
       await screen.findByRole("heading", { name: "关于 See See" }),
     ).toBeInTheDocument();
     await waitFor(() => expect(getVersion).toHaveBeenCalled());
-    expect(screen.getByText("0.2.0")).toBeInTheDocument();
+    expect(screen.getByText(packageJson.version)).toBeInTheDocument();
     expect(
       screen.getByText(/API Key 与模型端点以明文保存在本机/),
     ).toBeInTheDocument();
     expect(
       screen.queryByText(/用全局快捷键截取屏幕区域/),
     ).not.toBeInTheDocument();
+  });
+
+  it("keeps the packaged version when the native version call fails", async () => {
+    getVersion.mockRejectedValue(new Error("unavailable"));
+    render(
+      <NotificationProvider>
+        <SettingsShell />
+      </NotificationProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "关于" }));
+    expect(await screen.findByText(packageJson.version)).toBeInTheDocument();
   });
 });

@@ -1,8 +1,9 @@
 use see_see_lib::{
-    analysis::{AnalysisEvent, AnalysisRun, AnalysisSnapshot},
+    analysis::{ActiveAnalysis, AnalysisEvent, AnalysisRun, AnalysisSnapshot},
     error::ErrorCode,
     state::AnalysisState,
 };
+use std::sync::Arc;
 
 #[test]
 fn analysis_has_one_active_run_and_one_terminal_event() {
@@ -73,4 +74,28 @@ fn failed_requests_are_not_retried_and_storage_failure_keeps_result_available() 
     completed.complete(false).unwrap();
     assert_eq!(completed.snapshot().text, "仍可复制");
     assert!(!completed.snapshot().saved_to_history);
+}
+
+#[test]
+fn retry_resets_only_retryable_failures_and_keeps_the_source_image() {
+    let active = Arc::new(ActiveAnalysis::new("run-5", vec![1, 2, 3]));
+    active
+        .fail(
+            see_see_lib::error::AppError::provider(ErrorCode::Timeout, "超时", true),
+            false,
+        )
+        .unwrap();
+
+    active.reset_for_retry().unwrap();
+    assert_eq!(active.snapshot().unwrap().state, AnalysisState::Submitting);
+    assert_eq!(active.image_png(), vec![1, 2, 3]);
+
+    let terminal = ActiveAnalysis::new("run-6", vec![]);
+    terminal
+        .fail(
+            see_see_lib::error::AppError::provider(ErrorCode::AuthFailed, "认证失败", false),
+            false,
+        )
+        .unwrap();
+    assert!(terminal.reset_for_retry().is_err());
 }

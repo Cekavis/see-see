@@ -155,5 +155,50 @@ async fn image_capability_errors_have_a_stable_code() {
         },
     )
     .await;
-    assert_eq!(result.error.unwrap().code.as_str(), "image_not_supported");
+    let error = result.error.unwrap();
+    assert_eq!(error.code.as_str(), "image_not_supported");
+    let details = error.details.unwrap();
+    assert!(details.contains("HTTP 400"));
+    assert!(details.contains("This model does not support image inputs"));
+}
+
+#[tokio::test]
+async fn provider_response_details_are_bounded_and_redact_sensitive_json() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(500).set_body_json(serde_json::json!({
+            "error": {
+                "message": "upstream failed",
+                "api_key": "sk-secret",
+                "echo": "credential sk-leaked",
+                "context": "x".repeat(5_000)
+            }
+        })))
+        .mount(&server)
+        .await;
+
+    let error = test_connection(
+        &see_see_lib::providers::client().unwrap(),
+        ProviderRequest {
+            protocol: ProviderProtocol::OpenAi,
+            base_url: format!("{}/v1", server.uri()),
+            model_id: "vision-model".into(),
+            api_key: None,
+            prompt: "OK".into(),
+            image_png: connection_test_png(),
+            stream: true,
+        },
+    )
+    .await
+    .error
+    .unwrap();
+
+    let details = error.details.unwrap();
+    assert!(details.contains("HTTP 500"));
+    assert!(details.contains("upstream failed"));
+    assert!(details.contains("[REDACTED]"));
+    assert!(!details.contains("sk-secret"));
+    assert!(!details.contains("sk-leaked"));
+    assert!(details.contains("已截断"));
 }

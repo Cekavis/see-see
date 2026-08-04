@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "../components/Button";
 import { useNotifications } from "../components/Notifications";
 import { getErrorMessage, type AppError } from "../ipc";
@@ -15,6 +15,7 @@ type Props = {
   snapshot: ResultSnapshot;
   alwaysOnTop?: boolean;
   onCancel?: () => void | Promise<unknown>;
+  onRetry?: () => void | Promise<unknown>;
   onCopy?: (text: string) => void | Promise<unknown>;
   onAlwaysOnTop?: (value: boolean) => void | Promise<unknown>;
 };
@@ -23,13 +24,22 @@ export function Result({
   snapshot,
   alwaysOnTop = false,
   onCancel,
+  onRetry,
   onCopy,
   onAlwaysOnTop,
 }: Props) {
   const notifications = useNotifications();
+  const [retrying, setRetrying] = useState(false);
   const publishedError = useRef<string | undefined>(undefined);
   const active =
     snapshot.state === "submitting" || snapshot.state === "streaming";
+  const displayText =
+    snapshot.text ||
+    (snapshot.state === "failed" && snapshot.error
+      ? `${snapshot.error.message}${snapshot.error.details ? `\n\n错误详情\n${snapshot.error.details}` : ""}`
+      : active
+        ? "等待模型返回文字…"
+        : "暂无结果");
 
   useEffect(() => {
     if (!snapshot.error) {
@@ -78,7 +88,7 @@ export function Result({
         </label>
       </header>
       <pre className="result-view__text" aria-live="polite">
-        {snapshot.text || (active ? "等待模型返回文字…" : "暂无结果")}
+        {displayText}
       </pre>
       <footer className="button-row">
         {active && (
@@ -99,6 +109,33 @@ export function Result({
             }}
           >
             取消分析
+          </Button>
+        )}
+        {snapshot.state === "failed" && snapshot.error?.retryable && (
+          <Button
+            variant="primary"
+            disabled={retrying}
+            onClick={() => {
+              if (!onRetry) return;
+              setRetrying(true);
+              try {
+                const result = onRetry();
+                if (result instanceof Promise) {
+                  void result
+                    .catch((value: unknown) =>
+                      notifications.error(getErrorMessage(value)),
+                    )
+                    .finally(() => setRetrying(false));
+                } else {
+                  setRetrying(false);
+                }
+              } catch (value) {
+                setRetrying(false);
+                notifications.error(getErrorMessage(value));
+              }
+            }}
+          >
+            {retrying ? "正在重试…" : "重试"}
           </Button>
         )}
         <Button
