@@ -62,8 +62,112 @@ pub struct PreparedRequest {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProviderEvent {
+    ThinkingDelta(String),
     TextDelta(String),
     Completed,
+}
+
+#[derive(Default)]
+struct ThinkTagParser {
+    state: ThinkTagState,
+    buffer: String,
+    trim_answer_newlines: bool,
+}
+
+#[derive(Default)]
+enum ThinkTagState {
+    #[default]
+    Start,
+    Thinking,
+    Text,
+}
+
+impl ThinkTagParser {
+    fn push(&mut self, text: &str) -> Vec<ProviderEvent> {
+        const OPEN: &str = "<think>";
+        match self.state {
+            ThinkTagState::Start => {
+                self.buffer.push_str(text);
+                let trimmed = self.buffer.trim_start();
+                if OPEN.starts_with(trimmed) {
+                    return Vec::new();
+                }
+                if trimmed.starts_with(OPEN) {
+                    let prefix_len = self.buffer.len() - trimmed.len() + OPEN.len();
+                    self.buffer.drain(..prefix_len);
+                    self.state = ThinkTagState::Thinking;
+                    self.drain_thinking()
+                } else {
+                    self.state = ThinkTagState::Text;
+                    text_event(std::mem::take(&mut self.buffer))
+                        .into_iter()
+                        .collect()
+                }
+            }
+            ThinkTagState::Thinking => {
+                self.buffer.push_str(text);
+                self.drain_thinking()
+            }
+            ThinkTagState::Text => self.drain_text(text),
+        }
+    }
+
+    fn flush(&mut self) -> Vec<ProviderEvent> {
+        let event = match self.state {
+            ThinkTagState::Thinking => thinking_event(std::mem::take(&mut self.buffer)),
+            ThinkTagState::Start => text_event(std::mem::take(&mut self.buffer)),
+            ThinkTagState::Text => None,
+        };
+        self.state = ThinkTagState::Text;
+        event.into_iter().collect()
+    }
+
+    fn drain_thinking(&mut self) -> Vec<ProviderEvent> {
+        const CLOSE: &str = "</think>";
+        if let Some(index) = self.buffer.find(CLOSE) {
+            let answer = self.buffer.split_off(index + CLOSE.len());
+            self.buffer.truncate(index);
+            let thinking = std::mem::take(&mut self.buffer);
+            self.state = ThinkTagState::Text;
+            self.trim_answer_newlines = true;
+            let mut events: Vec<_> = thinking_event(thinking).into_iter().collect();
+            events.extend(self.drain_text(&answer));
+            events
+        } else {
+            let held = partial_suffix_len(&self.buffer, CLOSE);
+            let held_text = self.buffer.split_off(self.buffer.len() - held);
+            let thinking = std::mem::replace(&mut self.buffer, held_text);
+            thinking_event(thinking).into_iter().collect()
+        }
+    }
+
+    fn drain_text(&mut self, text: &str) -> Vec<ProviderEvent> {
+        let text = if self.trim_answer_newlines {
+            let trimmed = text.trim_start_matches(['\r', '\n']);
+            if !trimmed.is_empty() {
+                self.trim_answer_newlines = false;
+            }
+            trimmed
+        } else {
+            text
+        };
+        text_event(text.to_owned()).into_iter().collect()
+    }
+}
+
+fn partial_suffix_len(value: &str, pattern: &str) -> usize {
+    (1..pattern.len())
+        .rev()
+        .find(|&length| value.ends_with(&pattern[..length]))
+        .unwrap_or(0)
+}
+
+fn thinking_event(text: String) -> Option<ProviderEvent> {
+    (!text.is_empty()).then_some(ProviderEvent::ThinkingDelta(text))
+}
+
+fn text_event(text: String) -> Option<ProviderEvent> {
+    (!text.is_empty()).then_some(ProviderEvent::TextDelta(text))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -234,6 +338,7 @@ pub async fn stream_text(
     }
 
     let mut output = String::new();
+    let mut tag_parser = ThinkTagParser::default();
     let mut stream = response.bytes_stream().eventsource();
     while let Some(event) = stream.next().await {
         let event = event
@@ -243,11 +348,28 @@ pub async fn stream_text(
             (!event.event.is_empty()).then_some(event.event.as_str()),
             &event.data,
         )? {
-            if let ProviderEvent::TextDelta(delta) = &normalized {
-                output.push_str(delta);
+            let events = match normalized {
+                ProviderEvent::TextDelta(text) => tag_parser.push(&text),
+                ProviderEvent::Completed => {
+                    let mut events = tag_parser.flush();
+                    events.push(ProviderEvent::Completed);
+                    events
+                }
+                event => vec![event],
+            };
+            for event in events {
+                if let ProviderEvent::TextDelta(delta) = &event {
+                    output.push_str(delta);
+                }
+                on_event(event);
             }
-            on_event(normalized);
         }
+    }
+    for event in tag_parser.flush() {
+        if let ProviderEvent::TextDelta(delta) = &event {
+            output.push_str(delta);
+        }
+        on_event(event);
     }
     if output.trim().is_empty() {
         return Err(AppError::provider(

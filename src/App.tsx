@@ -40,6 +40,7 @@ function ResultView() {
   const [snapshot, setSnapshot] = useState<AnalysisSnapshot>({
     runId,
     state: "submitting",
+    thinking: "",
     text: "",
     savedToHistory: false,
     error: null,
@@ -85,6 +86,7 @@ export function updateAnalysisSnapshot(
     return {
       ...current,
       state: "submitting",
+      thinking: "",
       text: "",
       savedToHistory: false,
       error: null,
@@ -95,10 +97,17 @@ export function updateAnalysisSnapshot(
       state: "streaming",
       text: current.text + event.text,
     };
+  if (event.type === "thinkingDelta")
+    return {
+      ...current,
+      state: "streaming",
+      thinking: current.thinking + event.text,
+    };
   if (event.type === "completed")
     return {
       ...current,
       state: "completed",
+      thinking: event.thinking,
       text: event.text,
       savedToHistory: event.savedToHistory,
     };
@@ -109,7 +118,13 @@ export function updateAnalysisSnapshot(
       error: event.error,
       savedToHistory: event.savedToHistory,
     };
-  return { ...current, state: "cancelled", text: "", error: null };
+  return {
+    ...current,
+    state: "cancelled",
+    thinking: "",
+    text: "",
+    error: null,
+  };
 }
 
 function PlaceholderView({ label }: { label: string }) {

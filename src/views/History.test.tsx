@@ -24,6 +24,7 @@ const item = {
 
 const detail = {
   ...item,
+  thinkingText: "先识别文字，再翻译",
   resultText: "旅行（りょこう）：旅行",
   errorCode: null,
   promptBody: "解释",
@@ -78,6 +79,9 @@ describe("History", () => {
     expect(
       await screen.findByText("旅行（りょこう）：旅行"),
     ).toBeInTheDocument();
+    const thinking = screen.getByText("思考过程").closest("details");
+    expect(thinking).not.toHaveAttribute("open");
+    expect(screen.getByText("先识别文字，再翻译")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "返回历史记录" }),
     ).toBeInTheDocument();

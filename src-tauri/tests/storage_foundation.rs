@@ -24,7 +24,7 @@ fn database_defaults_and_pragmas_match_the_plan() {
     assert!(snapshot.active_prompt_id.is_some());
     assert_eq!(db.pragma_i64("foreign_keys").unwrap(), 1);
     assert_eq!(db.pragma_i64("secure_delete").unwrap(), 1);
-    assert_eq!(db.pragma_i64("user_version").unwrap(), 4);
+    assert_eq!(db.pragma_i64("user_version").unwrap(), 5);
 }
 
 #[test]
@@ -33,6 +33,7 @@ fn history_save_is_atomic_and_respects_the_setting() {
     let input = HistoryInput {
         id: "run-1".into(),
         status: HistoryStatus::Success,
+        thinking_text: Some("分析".into()),
         result_text: Some("结果".into()),
         error_code: None,
         error_message: None,
@@ -60,6 +61,7 @@ fn invalid_success_history_rolls_back() {
     let invalid = HistoryInput {
         id: "run-2".into(),
         status: HistoryStatus::Success,
+        thinking_text: None,
         result_text: None,
         error_code: None,
         error_message: None,

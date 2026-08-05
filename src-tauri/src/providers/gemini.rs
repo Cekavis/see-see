@@ -25,6 +25,9 @@ pub fn prepare(request: &ProviderRequest) -> Result<PreparedRequest, AppError> {
         url,
         headers,
         body: json!({
+            "generationConfig": {
+                "thinkingConfig": {"includeThoughts": true}
+            },
             "contents": [{
                 "role": "user",
                 "parts": [
@@ -49,9 +52,15 @@ pub fn parse(_event_name: Option<&str>, data: &str) -> Result<Vec<ProviderEvent>
                 .into_iter()
                 .flatten()
         })
-        .filter_map(|part| part["text"].as_str())
-        .filter(|text| !text.is_empty())
-        .map(|text| ProviderEvent::TextDelta(text.to_owned()))
+        .filter(|part| part["text"].as_str().is_some_and(|text| !text.is_empty()))
+        .map(|part| {
+            let text = part["text"].as_str().unwrap().to_owned();
+            if part["thought"].as_bool() == Some(true) {
+                ProviderEvent::ThinkingDelta(text)
+            } else {
+                ProviderEvent::TextDelta(text)
+            }
+        })
         .collect())
 }
 

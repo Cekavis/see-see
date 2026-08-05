@@ -4,6 +4,7 @@ use std::{path::Path, sync::Mutex};
 
 const INITIAL_SCHEMA: &str = include_str!("../migrations/0001_init.sql");
 const PLAINTEXT_KEY_MIGRATION: &str = include_str!("../migrations/0002_plaintext_model_keys.sql");
+const HISTORY_THINKING_MIGRATION: &str = include_str!("../migrations/0003_history_thinking.sql");
 const LEGACY_DEFAULT_CAPTURE_SHORTCUT: &str = "Alt+Shift+A";
 pub const WINDOWS_DEFAULT_CAPTURE_SHORTCUT: &str = "Ctrl+Shift+X";
 pub const MACOS_DEFAULT_CAPTURE_SHORTCUT: &str = "Command+Shift+X";
@@ -87,6 +88,22 @@ impl Database {
                 )
                 .map_err(|_| AppError::storage("无法清理旧模型测试结果"))?;
         }
+        let has_history_thinking = {
+            let mut statement = connection
+                .prepare("PRAGMA table_info(history_entries)")
+                .map_err(|_| AppError::storage("无法检查历史数据库版本"))?;
+            let columns = statement
+                .query_map([], |row| row.get::<_, String>(1))
+                .map_err(|_| AppError::storage("无法检查历史数据库版本"))?;
+            columns
+                .filter_map(Result::ok)
+                .any(|column| column == "thinking_text")
+        };
+        if !has_history_thinking {
+            connection
+                .execute_batch(HISTORY_THINKING_MIGRATION)
+                .map_err(|_| AppError::storage("无法升级历史记录存储"))?;
+        }
         if previous_version < 4 {
             connection
                 .execute(
@@ -96,7 +113,7 @@ impl Database {
                 .map_err(|_| AppError::storage("无法升级默认截图快捷键"))?;
         }
         connection
-            .pragma_update(None, "user_version", 4)
+            .pragma_update(None, "user_version", 5)
             .map_err(|_| AppError::storage("无法记录数据库版本"))?;
         Ok(Self {
             connection: Mutex::new(connection),
@@ -209,5 +226,22 @@ mod tests {
             .unwrap();
 
         assert_eq!(shortcut, "Ctrl+Alt+P");
+    }
+
+    #[test]
+    fn legacy_history_schema_adds_the_thinking_column() {
+        let database = legacy_database(DEFAULT_CAPTURE_SHORTCUT);
+        let has_thinking = database
+            .read(|connection| {
+                let mut statement = connection.prepare("PRAGMA table_info(history_entries)")?;
+                let columns = statement.query_map([], |row| row.get::<_, String>(1))?;
+                Ok(columns
+                    .filter_map(Result::ok)
+                    .any(|column| column == "thinking_text"))
+            })
+            .unwrap();
+
+        assert!(has_thinking);
+        assert_eq!(database.pragma_i64("user_version").unwrap(), 5);
     }
 }

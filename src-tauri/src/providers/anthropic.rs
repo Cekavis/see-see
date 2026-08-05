@@ -39,11 +39,19 @@ pub fn parse(event_name: Option<&str>, data: &str) -> Result<Vec<ProviderEvent>,
     }
     let value: serde_json::Value = serde_json::from_str(data)
         .map_err(|_| AppError::provider(ErrorCode::ProviderError, "Anthropic 流格式无效", true))?;
-    Ok(value["delta"]["text"]
-        .as_str()
-        .filter(|text| !text.is_empty())
-        .map(|text| vec![ProviderEvent::TextDelta(text.to_owned())])
-        .unwrap_or_default())
+    let delta = &value["delta"];
+    let event = match delta["type"].as_str() {
+        Some("thinking_delta") => delta["thinking"]
+            .as_str()
+            .filter(|text| !text.is_empty())
+            .map(|text| ProviderEvent::ThinkingDelta(text.to_owned())),
+        Some("text_delta") => delta["text"]
+            .as_str()
+            .filter(|text| !text.is_empty())
+            .map(|text| ProviderEvent::TextDelta(text.to_owned())),
+        _ => None,
+    };
+    Ok(event.into_iter().collect())
 }
 
 pub fn parse_models(data: &str) -> Result<Vec<RemoteModel>, AppError> {

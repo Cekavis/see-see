@@ -13,11 +13,15 @@ fn analysis_has_one_active_run_and_one_terminal_event() {
         AnalysisSnapshot::new("run-1", AnalysisState::Submitting)
     );
     assert!(matches!(
-        run.push_delta("你"),
+        run.push_thinking("先判断"),
+        Ok(AnalysisEvent::ThinkingDelta { .. })
+    ));
+    assert!(matches!(
+        run.push_text("你"),
         Ok(AnalysisEvent::Delta { .. })
     ));
     assert!(matches!(
-        run.push_delta("好"),
+        run.push_text("好"),
         Ok(AnalysisEvent::Delta { .. })
     ));
     let completed = run.complete(false).unwrap();
@@ -25,10 +29,12 @@ fn analysis_has_one_active_run_and_one_terminal_event() {
         completed,
         AnalysisEvent::Completed {
             run_id: "run-1".into(),
+            thinking: "先判断".into(),
             text: "你好".into(),
             saved_to_history: false
         }
     );
+    assert_eq!(run.snapshot().thinking, "先判断");
     assert_eq!(run.snapshot().text, "你好");
     assert_eq!(run.snapshot().state, AnalysisState::Completed);
     assert_eq!(run.cancel().unwrap_err().code, ErrorCode::AlreadyRunning);
@@ -70,8 +76,10 @@ fn failed_requests_are_not_retried_and_storage_failure_keeps_result_available() 
     ));
 
     let mut completed = AnalysisRun::new("run-4");
-    completed.push_delta("仍可复制").unwrap();
+    completed.push_thinking("内部分析").unwrap();
+    completed.push_text("仍可复制").unwrap();
     completed.complete(false).unwrap();
+    assert_eq!(completed.snapshot().thinking, "内部分析");
     assert_eq!(completed.snapshot().text, "仍可复制");
     assert!(!completed.snapshot().saved_to_history);
 }
@@ -87,7 +95,10 @@ fn retry_resets_only_retryable_failures_and_keeps_the_source_image() {
         .unwrap();
 
     active.reset_for_retry().unwrap();
-    assert_eq!(active.snapshot().unwrap().state, AnalysisState::Submitting);
+    let snapshot = active.snapshot().unwrap();
+    assert_eq!(snapshot.state, AnalysisState::Submitting);
+    assert!(snapshot.thinking.is_empty());
+    assert!(snapshot.text.is_empty());
     assert_eq!(active.image_png(), vec![1, 2, 3]);
 
     let terminal = ActiveAnalysis::new("run-6", vec![]);

@@ -35,14 +35,24 @@ pub fn parse(_event_name: Option<&str>, data: &str) -> Result<Vec<ProviderEvent>
     }
     let value: serde_json::Value = serde_json::from_str(data)
         .map_err(|_| AppError::provider(ErrorCode::ProviderError, "OpenAI 流格式无效", true))?;
-    Ok(value["choices"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(|choice| choice["delta"]["content"].as_str())
-        .filter(|text| !text.is_empty())
-        .map(|text| ProviderEvent::TextDelta(text.to_owned()))
-        .collect())
+    let mut events = Vec::new();
+    for choice in value["choices"].as_array().into_iter().flatten() {
+        let delta = &choice["delta"];
+        for key in ["reasoning_content", "reasoning"] {
+            if let Some(text) = delta[key].as_str().filter(|text| !text.is_empty()) {
+                events.push(ProviderEvent::ThinkingDelta(text.to_owned()));
+            }
+        }
+        for detail in delta["reasoning_details"].as_array().into_iter().flatten() {
+            if let Some(text) = detail["text"].as_str().filter(|text| !text.is_empty()) {
+                events.push(ProviderEvent::ThinkingDelta(text.to_owned()));
+            }
+        }
+        if let Some(text) = delta["content"].as_str().filter(|text| !text.is_empty()) {
+            events.push(ProviderEvent::TextDelta(text.to_owned()));
+        }
+    }
+    Ok(events)
 }
 
 pub fn parse_models(data: &str) -> Result<Vec<RemoteModel>, AppError> {

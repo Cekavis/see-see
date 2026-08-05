@@ -24,6 +24,7 @@ fn insert(db: &Database, id: &str, result: &str, prompt: &str, status: HistorySt
         &HistoryInput {
             id: id.into(),
             status,
+            thinking_text: Some(format!("思考 {id}")),
             result_text: (!failed).then(|| result.into()),
             error_code: failed.then(|| "timeout".into()),
             error_message: failed.then(|| "请求超时".into()),
@@ -87,6 +88,13 @@ fn history_query_supports_cursor_escaped_search_and_filters() {
     )
     .unwrap();
     assert_eq!(filtered.items.len(), 1);
+    assert_eq!(
+        get_history_detail(&db, "3")
+            .unwrap()
+            .thinking_text
+            .as_deref(),
+        Some("思考 3")
+    );
 }
 
 #[test]
@@ -96,6 +104,13 @@ fn detail_images_delete_and_clear_are_consistent() {
     assert_eq!(
         get_history_detail(&db, "1").unwrap().result_text.as_deref(),
         Some("结果")
+    );
+    assert_eq!(
+        get_history_detail(&db, "1")
+            .unwrap()
+            .thinking_text
+            .as_deref(),
+        Some("思考 1")
     );
     assert!(
         !get_history_image(&db, "1", HistoryImageVariant::Original)
@@ -125,6 +140,7 @@ fn retry_replaces_the_failed_history_entry_for_the_same_run() {
 
     let detail = get_history_detail(&db, "1").unwrap();
     assert_eq!(detail.status, HistoryStatus::Success);
+    assert_eq!(detail.thinking_text.as_deref(), Some("思考 1"));
     assert_eq!(detail.result_text.as_deref(), Some("重试成功"));
     assert_eq!(db.count("history_entries").unwrap(), 1);
     assert_eq!(db.count("history_images").unwrap(), 1);
@@ -153,6 +169,7 @@ fn history_setting_persists_and_disables_new_writes() {
     let input = HistoryInput {
         id: "disabled".into(),
         status: HistoryStatus::Success,
+        thinking_text: Some("分析".into()),
         result_text: Some("结果".into()),
         error_code: None,
         error_message: None,

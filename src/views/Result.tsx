@@ -6,6 +6,7 @@ import { getErrorMessage, type AppError } from "../ipc";
 export type ResultSnapshot = {
   runId: string;
   state: "submitting" | "streaming" | "completed" | "failed" | "cancelled";
+  thinking: string;
   text: string;
   savedToHistory: boolean;
   error: AppError | null;
@@ -20,6 +21,24 @@ type Props = {
   onAlwaysOnTop?: (value: boolean) => void | Promise<unknown>;
 };
 
+export function ThinkingDisclosure({
+  text,
+  initialOpen = false,
+  live = false,
+}: {
+  text: string | null | undefined;
+  initialOpen?: boolean;
+  live?: boolean;
+}) {
+  if (!text) return null;
+  return (
+    <details className="result-view__thinking" open={initialOpen || undefined}>
+      <summary>思考过程</summary>
+      <pre aria-live={live ? "polite" : undefined}>{text}</pre>
+    </details>
+  );
+}
+
 export function Result({
   snapshot,
   alwaysOnTop = false,
@@ -33,12 +52,15 @@ export function Result({
   const publishedError = useRef<string | undefined>(undefined);
   const active =
     snapshot.state === "submitting" || snapshot.state === "streaming";
+  const hasAnswer = Boolean(snapshot.text);
   const displayText =
     snapshot.text ||
     (snapshot.state === "failed" && snapshot.error
       ? `${snapshot.error.message}${snapshot.error.details ? `\n\n错误详情\n${snapshot.error.details}` : ""}`
       : active
-        ? "等待模型返回文字…"
+        ? snapshot.thinking
+          ? "等待正式回答…"
+          : "等待模型返回文字…"
         : "暂无结果");
 
   useEffect(() => {
@@ -87,9 +109,17 @@ export function Result({
           窗口置顶
         </label>
       </header>
-      <pre className="result-view__text" aria-live="polite">
-        {displayText}
-      </pre>
+      <div className="result-view__content">
+        <ThinkingDisclosure
+          key={`${snapshot.runId}:${active && !hasAnswer ? "thinking" : "answer"}`}
+          text={snapshot.thinking}
+          initialOpen={active && !hasAnswer}
+          live={active && !snapshot.text}
+        />
+        <pre className="result-view__text" aria-live="polite">
+          {displayText}
+        </pre>
+      </div>
       <footer className="button-row">
         {active && (
           <Button

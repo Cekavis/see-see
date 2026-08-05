@@ -4554,7 +4554,7 @@ dependencies = [
 
 [[package]]
 name = "see-see"
-version = "0.5.2"
+version = "0.6.0"
 dependencies = [
  "base64 0.22.1",
  "block2",

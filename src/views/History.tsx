@@ -10,6 +10,7 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorNotice } from "../components/ErrorNotice";
 import { useNotifications } from "../components/Notifications";
+import { ThinkingDisclosure } from "./Result";
 import {
   getErrorMessage,
   ipc,
@@ -177,6 +178,7 @@ export function History({ api = ipc }: { api?: HistoryApi }) {
                 {detail.modelConfigName} · {detail.modelId}
               </dd>
             </dl>
+            <ThinkingDisclosure text={detail.thinkingText} />
             {detail.status === "success" ? (
               <pre className="result-view__text">{detail.resultText}</pre>
             ) : (

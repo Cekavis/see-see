@@ -1,7 +1,7 @@
 use secrecy::SecretString;
 use see_see_lib::providers::{
     ProviderEvent, ProviderProtocol, ProviderRequest, build_http_request, connection_test_png,
-    parse_model_list, parse_stream_event, test_connection,
+    parse_model_list, parse_stream_event, stream_text, test_connection,
 };
 use wiremock::{
     Mock, MockServer, ResponseTemplate,
@@ -44,6 +44,12 @@ fn provider_requests_match_contracts_without_exposing_keys_in_json() {
                 .any(|value| value.contains("test-key"))
         );
     }
+
+    let gemini = build_http_request(&request(ProviderProtocol::Gemini)).unwrap();
+    assert_eq!(
+        gemini.body["generationConfig"]["thinkingConfig"]["includeThoughts"],
+        true
+    );
 }
 
 #[test]
@@ -71,6 +77,93 @@ fn stream_events_are_normalized_to_text_deltas() {
     )
     .unwrap();
     assert_eq!(gemini, vec![ProviderEvent::TextDelta("旅行".into())]);
+}
+
+#[test]
+fn provider_thinking_events_are_normalized_separately() {
+    let openai = parse_stream_event(
+        ProviderProtocol::OpenAi,
+        None,
+        r#"{"choices":[{"delta":{"reasoning_content":"先分析","reasoning_details":[{"text":"再确认"}],"content":"答案"}}]}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        openai,
+        vec![
+            ProviderEvent::ThinkingDelta("先分析".into()),
+            ProviderEvent::ThinkingDelta("再确认".into()),
+            ProviderEvent::TextDelta("答案".into()),
+        ]
+    );
+
+    let anthropic = parse_stream_event(
+        ProviderProtocol::Anthropic,
+        Some("content_block_delta"),
+        r#"{"delta":{"type":"thinking_delta","thinking":"分析"}}"#,
+    )
+    .unwrap();
+    assert_eq!(anthropic, vec![ProviderEvent::ThinkingDelta("分析".into())]);
+
+    let gemini = parse_stream_event(
+        ProviderProtocol::Gemini,
+        None,
+        r#"{"candidates":[{"content":{"parts":[{"thought":true,"text":"分析"},{"text":"答案"}]}}]}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        gemini,
+        vec![
+            ProviderEvent::ThinkingDelta("分析".into()),
+            ProviderEvent::TextDelta("答案".into()),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn leading_think_tags_are_split_across_stream_chunks() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(concat!(
+                    "data: {\"choices\":[{\"delta\":{\"content\":\" \\n<thi\"}}]}\n\n",
+                    "data: {\"choices\":[{\"delta\":{\"content\":\"nk>先分析</th\"}}]}\n\n",
+                    "data: {\"choices\":[{\"delta\":{\"content\":\"ink>\"}}]}\n\n",
+                    "data: {\"choices\":[{\"delta\":{\"content\":\"\\r\\n\\n最终答案\"}}]}\n\n",
+                    "data: [DONE]\n\n",
+                )),
+        )
+        .mount(&server)
+        .await;
+
+    let mut events = Vec::new();
+    let answer = stream_text(
+        &see_see_lib::providers::client().unwrap(),
+        &ProviderRequest {
+            protocol: ProviderProtocol::OpenAi,
+            base_url: format!("{}/v1", server.uri()),
+            model_id: "vision-model".into(),
+            api_key: None,
+            prompt: "OK".into(),
+            image_png: connection_test_png(),
+            stream: true,
+        },
+        |event| events.push(event),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(answer, "最终答案");
+    assert_eq!(
+        events,
+        vec![
+            ProviderEvent::ThinkingDelta("先分析".into()),
+            ProviderEvent::TextDelta("最终答案".into()),
+            ProviderEvent::Completed,
+        ]
+    );
 }
 
 #[test]

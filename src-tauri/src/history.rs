@@ -37,6 +37,7 @@ impl HistoryStatus {
 pub struct HistoryInput {
     pub id: String,
     pub status: HistoryStatus,
+    pub thinking_text: Option<String>,
     pub result_text: Option<String>,
     pub error_code: Option<String>,
     pub error_message: Option<String>,
@@ -86,6 +87,7 @@ pub struct HistoryPage {
 pub struct HistoryEntryDetail {
     pub id: String,
     pub status: HistoryStatus,
+    pub thinking_text: Option<String>,
     pub result_text: Option<String>,
     pub error_code: Option<String>,
     pub error_message: Option<String>,
@@ -134,11 +136,12 @@ pub fn save_history(
     database.transaction(|transaction| {
         transaction.execute(
             "INSERT INTO history_entries (
-                id, status, result_text, error_code, error_message, prompt_name, prompt_body,
-                model_config_name, protocol, model_id, started_at, completed_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+                id, status, thinking_text, result_text, error_code, error_message, prompt_name,
+                prompt_body, model_config_name, protocol, model_id, started_at, completed_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
              ON CONFLICT(id) DO UPDATE SET
                 status = excluded.status,
+                thinking_text = excluded.thinking_text,
                 result_text = excluded.result_text,
                 error_code = excluded.error_code,
                 error_message = excluded.error_message,
@@ -152,6 +155,7 @@ pub fn save_history(
             rusqlite::params![
                 input.id,
                 input.status.as_str(),
+                input.thinking_text,
                 input.result_text,
                 input.error_code,
                 input.error_message,
@@ -300,8 +304,8 @@ pub fn get_history_detail(database: &Database, id: &str) -> Result<HistoryEntryD
             connection
                 .query_row(
                     "SELECT h.id, h.status, h.result_text, h.error_code, h.error_message,
-                        h.prompt_name, h.prompt_body, h.model_config_name, h.protocol, h.model_id,
-                        h.started_at, h.completed_at,
+                        h.thinking_text, h.prompt_name, h.prompt_body, h.model_config_name, h.protocol,
+                        h.model_id, h.started_at, h.completed_at,
                         EXISTS(SELECT 1 FROM history_images i WHERE i.history_id = h.id)
                  FROM history_entries h WHERE h.id = ?1",
                     [id],
@@ -313,14 +317,15 @@ pub fn get_history_detail(database: &Database, id: &str) -> Result<HistoryEntryD
                             row.get::<_, Option<String>>(2)?,
                             row.get::<_, Option<String>>(3)?,
                             row.get::<_, Option<String>>(4)?,
-                            row.get::<_, String>(5)?,
+                            row.get::<_, Option<String>>(5)?,
                             row.get::<_, String>(6)?,
                             row.get::<_, String>(7)?,
                             row.get::<_, String>(8)?,
                             row.get::<_, String>(9)?,
                             row.get::<_, String>(10)?,
                             row.get::<_, String>(11)?,
-                            row.get::<_, bool>(12)?,
+                            row.get::<_, String>(12)?,
+                            row.get::<_, bool>(13)?,
                         ))
                     },
                 )
@@ -333,6 +338,7 @@ pub fn get_history_detail(database: &Database, id: &str) -> Result<HistoryEntryD
                 result_text,
                 error_code,
                 error_message,
+                thinking_text,
                 prompt_name,
                 prompt_body,
                 model_config_name,
@@ -345,6 +351,7 @@ pub fn get_history_detail(database: &Database, id: &str) -> Result<HistoryEntryD
                 Ok(HistoryEntryDetail {
                     id,
                     status: HistoryStatus::try_from(status.as_str())?,
+                    thinking_text,
                     result_text,
                     error_code,
                     error_message,

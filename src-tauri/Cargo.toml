@@ -1,6 +1,6 @@
 [package]
 name = "see-see"
-version = "0.5.2"
+version = "0.6.0"
 description = "See See multimodal screenshot translator"
 authors = ["See See contributors"]
 edition = "2024"

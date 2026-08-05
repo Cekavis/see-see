@@ -17,6 +17,7 @@ const nodeProcess = (
 const snapshot = (overrides: Partial<ResultSnapshot> = {}): ResultSnapshot => ({
   runId: "run-1",
   state: "streaming",
+  thinking: "",
   text: "逐步输出",
   savedToHistory: false,
   error: null,
@@ -33,12 +34,23 @@ describe("Result", () => {
       .getBuiltinModule("node:fs")
       .readFileSync(`${nodeProcess.cwd()}/src/styles.css`, "utf8");
     const resultViewRule = styles.match(/\.result-view\s*\{([^}]*)\}/)?.[1];
+    const contentRule = styles.match(
+      /\.result-view__content\s*\{([^}]*)\}/,
+    )?.[1];
+    const textRule = styles.match(/\.result-view__text\s*\{([^}]*)\}/)?.[1];
 
     expect(resultViewRule).toMatch(
       /grid-template-rows:\s*auto minmax\(0, 1fr\) auto;/,
     );
     expect(resultViewRule).not.toMatch(
       /grid-template-rows:\s*auto auto minmax\(0, 1fr\) auto;/,
+    );
+    expect(contentRule).toMatch(/display:\s*flex;/);
+    expect(contentRule).toMatch(/flex-direction:\s*column;/);
+    expect(contentRule).toMatch(/overflow:\s*hidden;/);
+    expect(textRule).toMatch(/overflow:\s*auto;/);
+    expect(styles).not.toMatch(
+      /\.result-view__content\s*>\s*\.result-view__text\s*\{[^}]*overflow:\s*visible;/,
     );
   });
 
@@ -65,16 +77,57 @@ describe("Result", () => {
     expect(onAlwaysOnTop).toHaveBeenCalledWith(false);
   });
 
+  it("keeps thinking open until answer text arrives, then defaults it closed", () => {
+    const { rerender } = renderResult(
+      <Result snapshot={snapshot({ thinking: "正在分析", text: "" })} />,
+    );
+    const disclosure = screen.getByText("思考过程").closest("details");
+    expect(disclosure).toHaveAttribute("open");
+    expect(screen.getByText("正在分析")).toBeInTheDocument();
+
+    rerender(
+      <NotificationProvider>
+        <Result
+          snapshot={snapshot({ thinking: "分析完成", text: "正式回答" })}
+        />
+      </NotificationProvider>,
+    );
+    expect(screen.getByText("思考过程").closest("details")).not.toHaveAttribute(
+      "open",
+    );
+    expect(screen.getByText("正式回答")).toBeInTheDocument();
+  });
+
+  it("omits empty thinking and copies only the final answer", () => {
+    const onCopy = vi.fn();
+    const { unmount } = renderResult(
+      <Result
+        snapshot={snapshot({ thinking: "内部分析", text: "正式回答" })}
+        onCopy={onCopy}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "复制全文" }));
+    expect(onCopy).toHaveBeenCalledWith("正式回答");
+    unmount();
+
+    const { queryByText } = renderResult(
+      <Result snapshot={snapshot({ thinking: "", text: "普通回答" })} />,
+    );
+    expect(queryByText("思考过程")).not.toBeInTheDocument();
+  });
+
   it("renders completed and failed terminal states without unsafe rich text", () => {
     const onRetry = vi.fn();
     const { rerender } = renderResult(
       <Result
         snapshot={snapshot({
           state: "completed",
+          thinking: "<script>分析</script>",
           text: "<script>纯文本</script>",
         })}
       />,
     );
+    expect(screen.getByText("<script>分析</script>")).toBeInTheDocument();
     expect(screen.getByText("<script>纯文本</script>")).toBeInTheDocument();
     expect(document.querySelector("script")).toBeNull();
     rerender(

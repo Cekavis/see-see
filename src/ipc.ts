@@ -64,6 +64,7 @@ export type CaptureSessionSummary = {
 export type AnalysisSnapshot = {
   runId: string;
   state: "submitting" | "streaming" | "completed" | "failed" | "cancelled";
+  thinking: string;
   text: string;
   savedToHistory: boolean;
   error: AppError | null;
@@ -71,8 +72,15 @@ export type AnalysisSnapshot = {
 
 export type AnalysisEvent =
   | { type: "started"; runId: string }
+  | { type: "thinkingDelta"; runId: string; text: string }
   | { type: "delta"; runId: string; text: string }
-  | { type: "completed"; runId: string; text: string; savedToHistory: boolean }
+  | {
+      type: "completed";
+      runId: string;
+      thinking: string;
+      text: string;
+      savedToHistory: boolean;
+    }
   | { type: "failed"; runId: string; error: AppError; savedToHistory: boolean }
   | { type: "cancelled"; runId: string };
 
@@ -147,6 +155,7 @@ export type HistoryPage = {
   nextCursor: string | null;
 };
 export type HistoryEntryDetail = HistoryListItem & {
+  thinkingText: string | null;
   resultText: string | null;
   errorCode: string | null;
   promptBody: string;

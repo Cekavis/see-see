@@ -23,9 +23,15 @@ pub enum AnalysisEvent {
         run_id: String,
         text: String,
     },
+    ThinkingDelta {
+        #[serde(rename = "runId")]
+        run_id: String,
+        text: String,
+    },
     Completed {
         #[serde(rename = "runId")]
         run_id: String,
+        thinking: String,
         text: String,
         #[serde(rename = "savedToHistory")]
         saved_to_history: bool,
@@ -48,6 +54,7 @@ pub enum AnalysisEvent {
 pub struct AnalysisSnapshot {
     pub run_id: String,
     pub state: AnalysisState,
+    pub thinking: String,
     pub text: String,
     pub saved_to_history: bool,
     pub error: Option<AppError>,
@@ -58,6 +65,7 @@ impl AnalysisSnapshot {
         Self {
             run_id: run_id.into(),
             state,
+            thinking: String::new(),
             text: String::new(),
             saved_to_history: false,
             error: None,
@@ -88,7 +96,18 @@ impl AnalysisRun {
         }
     }
 
-    pub fn push_delta(&mut self, text: impl Into<String>) -> Result<AnalysisEvent, AppError> {
+    pub fn push_thinking(&mut self, text: impl Into<String>) -> Result<AnalysisEvent, AppError> {
+        self.ensure_active()?;
+        let text = text.into();
+        self.snapshot.state = AnalysisState::Streaming;
+        self.snapshot.thinking.push_str(&text);
+        Ok(AnalysisEvent::ThinkingDelta {
+            run_id: self.snapshot.run_id.clone(),
+            text,
+        })
+    }
+
+    pub fn push_text(&mut self, text: impl Into<String>) -> Result<AnalysisEvent, AppError> {
         self.ensure_active()?;
         let text = text.into();
         self.snapshot.state = AnalysisState::Streaming;
@@ -106,6 +125,7 @@ impl AnalysisRun {
         self.snapshot.saved_to_history = saved_to_history;
         Ok(AnalysisEvent::Completed {
             run_id: self.snapshot.run_id.clone(),
+            thinking: self.snapshot.thinking.clone(),
             text: self.snapshot.text.clone(),
             saved_to_history,
         })
@@ -132,6 +152,7 @@ impl AnalysisRun {
         self.ensure_active()?;
         self.terminal = true;
         self.snapshot.state = AnalysisState::Cancelled;
+        self.snapshot.thinking.clear();
         self.snapshot.text.clear();
         Ok(AnalysisEvent::Cancelled {
             run_id: self.snapshot.run_id.clone(),
@@ -201,8 +222,13 @@ impl ActiveAnalysis {
         self.emit(event)
     }
 
-    pub fn push_delta(&self, text: impl Into<String>) -> Result<(), AppError> {
-        let event = self.lock_run()?.push_delta(text)?;
+    pub fn push_thinking(&self, text: impl Into<String>) -> Result<(), AppError> {
+        let event = self.lock_run()?.push_thinking(text)?;
+        self.emit(event)
+    }
+
+    pub fn push_text(&self, text: impl Into<String>) -> Result<(), AppError> {
+        let event = self.lock_run()?.push_text(text)?;
         self.emit(event)
     }
 
@@ -280,10 +306,14 @@ pub fn start_network_analysis(app: AppHandle, active: Arc<ActiveAnalysis>, input
         };
         let state = app.state::<AppState>();
         let mut cancelled = active.cancel_receiver();
-        let stream = stream_text(&state.http, &request, |event| {
-            if let ProviderEvent::TextDelta(text) = event {
-                let _ = active.push_delta(text);
+        let stream = stream_text(&state.http, &request, |event| match event {
+            ProviderEvent::ThinkingDelta(text) => {
+                let _ = active.push_thinking(text);
             }
+            ProviderEvent::TextDelta(text) => {
+                let _ = active.push_text(text);
+            }
+            ProviderEvent::Completed => {}
         });
         tokio::pin!(stream);
         let result = tokio::select! {
@@ -297,12 +327,18 @@ pub fn start_network_analysis(app: AppHandle, active: Arc<ActiveAnalysis>, input
         let completed_at = now();
         match result {
             Ok(text) => {
+                let thinking_text = active
+                    .snapshot()
+                    .ok()
+                    .map(|snapshot| snapshot.thinking)
+                    .filter(|thinking| !thinking.is_empty());
                 let history = HistoryInput {
                     id: active
                         .snapshot()
                         .map(|snapshot| snapshot.run_id)
                         .unwrap_or_default(),
                     status: HistoryStatus::Success,
+                    thinking_text,
                     result_text: Some(text),
                     error_code: None,
                     error_message: None,
@@ -324,12 +360,18 @@ pub fn start_network_analysis(app: AppHandle, active: Arc<ActiveAnalysis>, input
                 let _ = active.complete(saved);
             }
             Err(error) => {
+                let thinking_text = active
+                    .snapshot()
+                    .ok()
+                    .map(|snapshot| snapshot.thinking)
+                    .filter(|thinking| !thinking.is_empty());
                 let history = HistoryInput {
                     id: active
                         .snapshot()
                         .map(|snapshot| snapshot.run_id)
                         .unwrap_or_default(),
                     status: HistoryStatus::Failed,
+                    thinking_text,
                     result_text: None,
                     error_code: Some(error.code.as_str().into()),
                     error_message: Some(error.message_with_details()),
