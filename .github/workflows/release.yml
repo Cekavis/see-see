@@ -71,10 +71,10 @@ jobs:
             args: "--bundles nsis,msi"
           - platform: macos-latest
             targets: aarch64-apple-darwin,x86_64-apple-darwin
-            args: "--target aarch64-apple-darwin --bundles dmg"
+            args: "--target aarch64-apple-darwin --bundles app,dmg"
           - platform: macos-latest
             targets: aarch64-apple-darwin,x86_64-apple-darwin
-            args: "--target x86_64-apple-darwin --bundles dmg"
+            args: "--target x86_64-apple-darwin --bundles app,dmg"
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v7
@@ -173,6 +173,8 @@ jobs:
           test "$(grep -c '\.dmg$' <<< "$assets")" -eq 2
           test "$(grep -c '\.msi$' <<< "$assets")" -eq 1
           test "$(grep -c -- '-setup\.exe$' <<< "$assets")" -eq 1
+          test "$(grep -c '\.app\.tar\.gz$' <<< "$assets")" -eq 2
+          test "$(grep -c '\.app\.tar\.gz\.sig$' <<< "$assets")" -eq 2
           test "$(grep -c 'latest\.json$' <<< "$assets")" -eq 1
 
           mkdir -p "$RUNNER_TEMP/release"

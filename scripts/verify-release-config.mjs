@@ -31,6 +31,9 @@ for (const required of [
   'security import "$certificate_path"',
   "security find-key",
   "Remove macOS signing keychain",
+  "--bundles app,dmg",
+  "\\.app\\.tar\\.gz$",
+  "\\.app\\.tar\\.gz\\.sig$",
   'APPLE_SIGNING_IDENTITY: "See See Local Release"',
   "uploadUpdaterJson: true",
   "updaterJsonPreferNsis: true",
@@ -56,6 +59,11 @@ assert.doesNotMatch(
   workflow,
   /security add-trusted-cert/,
   "the headless release workflow must not mutate certificate trust",
+);
+assert.equal(
+  workflow.match(/--bundles app,dmg/g)?.length,
+  2,
+  "both macOS architectures must build app updater artifacts and DMGs",
 );
 
 process.stdout.write("release updater configuration is complete\n");
