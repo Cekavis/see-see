@@ -37,6 +37,7 @@ for (const required of [
   'APPLE_SIGNING_IDENTITY: "See See Local Release"',
   "uploadUpdaterJson: true",
   "updaterJsonPreferNsis: true",
+  'releaseAssetNamePattern: "See-See_[version]_[platform]_[arch][setup][ext]"',
   'gh release download "$GITHUB_REF_NAME" --pattern latest.json',
   '"windows-x86_64"',
   '"darwin-aarch64"',
@@ -59,6 +60,16 @@ assert.doesNotMatch(
   workflow,
   /security add-trusted-cert/,
   "the headless release workflow must not mutate certificate trust",
+);
+assert.doesNotMatch(
+  workflow,
+  /--notes\b|## 安装包/,
+  "release notes must contain only GitHub's generated changelog",
+);
+assert.doesNotMatch(
+  workflow,
+  /releaseAssetNamePattern:.*\[name\]|releaseAssetNamePattern:.*\.\[ext\]/,
+  "release asset names must not rely on a spaced product name or duplicate the extension separator",
 );
 assert.equal(
   workflow.match(/--bundles app,dmg/g)?.length,

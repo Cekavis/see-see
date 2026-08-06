@@ -56,8 +56,7 @@ jobs:
               --draft \
               --verify-tag \
               --generate-notes \
-              --title "See See v${{ steps.version.outputs.version }}" \
-              --notes $'## 安装包\n\n- Windows x64：选择 MSI 或 setup.exe。\n- macOS Apple Silicon：选择 aarch64 DMG。\n- macOS Intel：选择 x86_64 DMG。'
+              --title "See See v${{ steps.version.outputs.version }}"
           fi
 
   build:
@@ -145,7 +144,7 @@ jobs:
           releaseDraft: true
           prerelease: false
           retryAttempts: 2
-          releaseAssetNamePattern: "[name]_[version]_[platform]_[arch][setup].[ext]"
+          releaseAssetNamePattern: "See-See_[version]_[platform]_[arch][setup][ext]"
           uploadUpdaterJson: true
           updaterJsonPreferNsis: true
           args: ${{ matrix.args }}
@@ -169,6 +168,25 @@ jobs:
         run: |
           set -euo pipefail
           assets="$(gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name')"
+          version="${{ needs.prepare.outputs.version }}"
+
+          expected_assets="$(cat <<EOF
+          See-See_${version}_darwin_aarch64.app.tar.gz
+          See-See_${version}_darwin_aarch64.app.tar.gz.sig
+          See-See_${version}_darwin_aarch64.dmg
+          See-See_${version}_darwin_x64.app.tar.gz
+          See-See_${version}_darwin_x64.app.tar.gz.sig
+          See-See_${version}_darwin_x64.dmg
+          See-See_${version}_windows_x64-setup.exe
+          See-See_${version}_windows_x64-setup.exe.sig
+          See-See_${version}_windows_x64.msi
+          See-See_${version}_windows_x64.msi.sig
+          latest.json
+          EOF
+          )"
+          diff \
+            <(sort <<< "$expected_assets") \
+            <(sort <<< "$assets")
 
           test "$(grep -c '\.dmg$' <<< "$assets")" -eq 2
           test "$(grep -c '\.msi$' <<< "$assets")" -eq 1
