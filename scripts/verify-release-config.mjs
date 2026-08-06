@@ -24,6 +24,7 @@ assert.match(cargo, /^tauri-plugin-process = "2"$/m);
 for (const required of [
   "TAURI_SIGNING_PRIVATE_KEY",
   "TAURI_SIGNING_PRIVATE_KEY_PASSWORD",
+  'APPLE_SIGNING_IDENTITY: "See See Local Release"',
   "uploadUpdaterJson: true",
   "updaterJsonPreferNsis: true",
   'gh release download "$GITHUB_REF_NAME" --pattern latest.json',
