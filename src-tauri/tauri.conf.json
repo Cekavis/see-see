@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "See See",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "identifier": "app.seesee.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -27,6 +27,7 @@
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": "all",
     "macOS": {
       "minimumSystemVersion": "26.0"
@@ -38,5 +39,16 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDlEQTBEMjMwMTQxQ0U2NDYKUldSRzVod1VNTktnbmR3ZTBkclFRL0Q1M25tZjRydzhoTU0rd0tPaUtaUWlJcktJNFhiUDhIWTUK",
+      "endpoints": [
+        "https://github.com/Cekavis/see-see/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

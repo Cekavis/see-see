@@ -1054,7 +1054,24 @@ textarea {
 }
 
 .about-view .settings-group {
+  padding: 0;
+}
+
+.about-view .settings-group > dl {
+  margin: 0;
   padding: 18px;
+}
+
+.about-update__notes {
+  max-height: 12em;
+  margin: 4px 0 0;
+  overflow: auto;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .confirm-dialog {

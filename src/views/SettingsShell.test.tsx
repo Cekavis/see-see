@@ -12,9 +12,16 @@ const mocks = vi.hoisted(() => ({
   queryHistory: vi.fn(),
 }));
 const getVersion = vi.hoisted(() => vi.fn());
+const check = vi.hoisted(() => vi.fn());
+const relaunch = vi.hoisted(() => vi.fn());
 
-vi.mock("../ipc", () => ({ ipc: mocks }));
+vi.mock("../ipc", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../ipc")>()),
+  ipc: mocks,
+}));
 vi.mock("@tauri-apps/api/app", () => ({ getVersion }));
+vi.mock("@tauri-apps/plugin-updater", () => ({ check }));
+vi.mock("@tauri-apps/plugin-process", () => ({ relaunch }));
 
 const settings = {
   activeModelConfigId: "m1",
@@ -42,6 +49,8 @@ describe("SettingsShell", () => {
     mocks.listPromptPresets.mockResolvedValue([]);
     mocks.queryHistory.mockResolvedValue({ items: [], nextCursor: null });
     getVersion.mockResolvedValue(packageJson.version);
+    check.mockResolvedValue(null);
+    relaunch.mockResolvedValue(undefined);
   });
 
   it("switches all settings sections locally without a capture control", async () => {
@@ -106,5 +115,92 @@ describe("SettingsShell", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "关于" }));
     expect(await screen.findByText(packageJson.version)).toBeInTheDocument();
+  });
+
+  it("checks for updates and shows current or available release details", async () => {
+    const downloadAndInstall = vi.fn().mockResolvedValue(undefined);
+    check.mockResolvedValueOnce(null).mockResolvedValueOnce({
+      version: "0.8.0",
+      body: "新增一键更新\n修复发布流程",
+      downloadAndInstall,
+    });
+    render(
+      <NotificationProvider>
+        <SettingsShell />
+      </NotificationProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "关于" }));
+    const button = screen.getByRole("button", { name: "检查更新" });
+    fireEvent.click(button);
+    expect(await screen.findByText("已是最新版本")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "再次检查" }));
+    expect(
+      await screen.findByRole("button", { name: "安装 0.8.0" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/新增一键更新/)).toHaveTextContent(
+      "新增一键更新 修复发布流程",
+    );
+    expect(downloadAndInstall).not.toHaveBeenCalled();
+  });
+
+  it("reports install progress, blocks duplicate actions, and relaunches", async () => {
+    let finishInstall: (() => void) | undefined;
+    const downloadAndInstall = vi.fn(
+      (onEvent: (event: unknown) => void) =>
+        new Promise<void>((resolve) => {
+          finishInstall = resolve;
+          onEvent({ event: "Started", data: { contentLength: 100 } });
+          onEvent({ event: "Progress", data: { chunkLength: 40 } });
+        }),
+    );
+    check.mockResolvedValue({
+      version: "0.8.0",
+      body: "更新说明",
+      downloadAndInstall,
+    });
+    render(
+      <NotificationProvider>
+        <SettingsShell />
+      </NotificationProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "关于" }));
+    fireEvent.click(screen.getByRole("button", { name: "检查更新" }));
+    const install = await screen.findByRole("button", { name: "安装 0.8.0" });
+    fireEvent.click(install);
+
+    expect(await screen.findByText("正在下载 40%…")).toBeInTheDocument();
+    expect(install).toBeDisabled();
+    fireEvent.click(install);
+    expect(downloadAndInstall).toHaveBeenCalledOnce();
+
+    finishInstall?.();
+    await waitFor(() => expect(relaunch).toHaveBeenCalledOnce());
+  });
+
+  it("keeps the current app usable when update checks or installs fail", async () => {
+    const downloadAndInstall = vi.fn().mockRejectedValue(new Error("安装失败"));
+    check.mockRejectedValueOnce(new Error("网络不可用")).mockResolvedValueOnce({
+      version: "0.8.0",
+      body: null,
+      downloadAndInstall,
+    });
+    render(
+      <NotificationProvider>
+        <SettingsShell />
+      </NotificationProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "关于" }));
+    fireEvent.click(screen.getByRole("button", { name: "检查更新" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("网络不可用");
+
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    fireEvent.click(await screen.findByRole("button", { name: "安装 0.8.0" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("安装失败");
+    expect(screen.getByRole("button", { name: "安装 0.8.0" })).toBeEnabled();
+    expect(relaunch).not.toHaveBeenCalled();
   });
 });
