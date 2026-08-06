@@ -33,8 +33,9 @@ The workflow now imports and trusts the stable self-signed certificate in a temp
 
 ## Deviations from Assessment
 
-The workflow also adds explicit user-domain code-signing trust before checking the imported identity. This is necessary because the PKCS#12 contains a self-signed certificate and GitHub runners do not inherit the local workstation's trust settings.
+The first implementation added explicit user-domain code-signing trust, but GitHub Actions verification showed that trust mutation stalls on headless runners. A fresh untrusted-certificate experiment proved that codesign can use the imported identity without trust even though `security find-identity` reports zero valid identities. The non-interactive correction is tracked under `macos-release-headless-trust`.
 
 ## Follow-ups
 
 - Recreate the unpublished `v0.7.0` tag on the pushed fix commit and verify the full release workflow.
+- Remove the headless trust mutation and validate certificate/private-key presence instead.

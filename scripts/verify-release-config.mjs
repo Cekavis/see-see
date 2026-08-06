@@ -29,7 +29,7 @@ for (const required of [
   "TAURI_SIGNING_PRIVATE_KEY_PASSWORD",
   "Import macOS signing certificate",
   'security import "$certificate_path"',
-  "security add-trusted-cert",
+  "security find-key",
   "Remove macOS signing keychain",
   'APPLE_SIGNING_IDENTITY: "See See Local Release"',
   "uploadUpdaterJson: true",
@@ -51,6 +51,11 @@ assert.doesNotMatch(
   tauriActionBlock,
   /APPLE_CERTIFICATE(?:_PASSWORD)?:/,
   "the Tauri action must use the manually imported custom certificate",
+);
+assert.doesNotMatch(
+  workflow,
+  /security add-trusted-cert/,
+  "the headless release workflow must not mutate certificate trust",
 );
 
 process.stdout.write("release updater configuration is complete\n");

@@ -100,7 +100,6 @@ jobs:
         run: |
           set -euo pipefail
           certificate_path="$RUNNER_TEMP/see-see-certificate.p12"
-          certificate_pem="$RUNNER_TEMP/see-see-certificate.pem"
           keychain_path="$RUNNER_TEMP/see-see-signing.keychain-db"
           keychain_password="$(openssl rand -base64 32)"
 
@@ -119,15 +118,6 @@ jobs:
             -s \
             -k "$keychain_password" \
             "$keychain_path"
-          security find-certificate \
-            -c "$APPLE_SIGNING_IDENTITY" \
-            -p "$keychain_path" > "$certificate_pem"
-          security add-trusted-cert \
-            -r trustRoot \
-            -p codeSign \
-            -k "$keychain_path" \
-            "$certificate_pem"
-
           keychains=()
           while IFS= read -r keychain; do
             keychain="${keychain#*\"}"
@@ -135,8 +125,14 @@ jobs:
             keychains+=("$keychain")
           done < <(security list-keychains -d user)
           security list-keychains -d user -s "${keychains[@]}" "$keychain_path"
-          security find-identity -v -p codesigning "$keychain_path" |
-            grep -F "\"$APPLE_SIGNING_IDENTITY\""
+          security find-certificate \
+            -c "$APPLE_SIGNING_IDENTITY" \
+            "$keychain_path" > /dev/null
+          security find-key \
+            -t private \
+            -s \
+            -l "$APPLE_SIGNING_IDENTITY" \
+            "$keychain_path" > /dev/null
 
       - uses: tauri-apps/tauri-action@v1
         env:
@@ -159,9 +155,7 @@ jobs:
         shell: bash
         run: |
           security delete-keychain "$RUNNER_TEMP/see-see-signing.keychain-db" || true
-          rm -f \
-            "$RUNNER_TEMP/see-see-certificate.p12" \
-            "$RUNNER_TEMP/see-see-certificate.pem"
+          rm -f "$RUNNER_TEMP/see-see-certificate.p12"
 
   publish:
     needs: [prepare, build]
