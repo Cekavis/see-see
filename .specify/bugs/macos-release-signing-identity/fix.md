@@ -30,8 +30,9 @@ The release workflow now tells Tauri to use the imported `See See Local Release`
 
 ## Deviations from Assessment
 
-None.
+GitHub Actions verification showed that this remediation is insufficient. When `APPLE_CERTIFICATE` is present, Tauri imports the PKCS#12 itself and resolves identities only from Apple-standard certificate prefixes with an organizational unit; it does not use `APPLE_SIGNING_IDENTITY` to override that import path. The stable `See See Local Release` self-signed certificate therefore still fails resolution. Follow-up remediation is tracked under `macos-release-custom-cert-import`.
 
 ## Follow-ups
 
 - Recreate the unpublished `v0.7.0` tag on the pushed fix commit and verify the full release workflow.
+- Apply and verify the manual keychain import workflow in `macos-release-custom-cert-import`.

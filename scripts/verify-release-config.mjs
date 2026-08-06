@@ -8,6 +8,9 @@ const tauri = JSON.parse(read("src-tauri/tauri.conf.json"));
 const capability = JSON.parse(read("src-tauri/capabilities/default.json"));
 const packageJson = JSON.parse(read("package.json"));
 const cargo = read("src-tauri/Cargo.toml");
+const tauriActionBlock = workflow
+  .split("- uses: tauri-apps/tauri-action@v1")[1]
+  ?.split("        with:")[0];
 
 assert.equal(tauri.bundle.createUpdaterArtifacts, true);
 assert.deepEqual(tauri.plugins.updater.endpoints, [
@@ -24,6 +27,10 @@ assert.match(cargo, /^tauri-plugin-process = "2"$/m);
 for (const required of [
   "TAURI_SIGNING_PRIVATE_KEY",
   "TAURI_SIGNING_PRIVATE_KEY_PASSWORD",
+  "Import macOS signing certificate",
+  'security import "$certificate_path"',
+  "security add-trusted-cert",
+  "Remove macOS signing keychain",
   'APPLE_SIGNING_IDENTITY: "See See Local Release"',
   "uploadUpdaterJson: true",
   "updaterJsonPreferNsis: true",
@@ -38,5 +45,12 @@ for (const required of [
     `release workflow is missing ${required}`,
   );
 }
+
+assert.ok(tauriActionBlock, "release workflow is missing the Tauri action");
+assert.doesNotMatch(
+  tauriActionBlock,
+  /APPLE_CERTIFICATE(?:_PASSWORD)?:/,
+  "the Tauri action must use the manually imported custom certificate",
+);
 
 process.stdout.write("release updater configuration is complete\n");
