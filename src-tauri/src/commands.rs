@@ -84,7 +84,7 @@ pub async fn begin_capture_action(app: AppHandle) -> Result<(), AppError> {
         require_active_configuration(&state)?;
     }
     if let Err(error) = capture::require_screen_permission(capture::screen_permission_status()) {
-        focus_main(&app);
+        let _ = focus_main(&app);
         return Err(error);
     }
 
@@ -168,7 +168,7 @@ async fn begin_overlay_capture(app: AppHandle) -> Result<(), AppError> {
     let session = match session_result {
         Ok(session) => session,
         Err(error) => {
-            focus_main(&app);
+            let _ = focus_main(&app);
             return Err(error);
         }
     };
@@ -431,6 +431,22 @@ pub fn close_result(app: AppHandle, run_id: String) -> Result<(), AppError> {
         .lock()
         .map_err(|_| AppError::storage("运行状态不可用"))?;
     runtime.take_analysis(&run_id);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn open_main_window(app: AppHandle, run_id: String) -> Result<(), AppError> {
+    focus_main(&app)?;
+    if active_analysis(&app, &run_id)?
+        .snapshot()?
+        .state
+        .is_terminal()
+    {
+        app.get_webview_window(&windowing::result_window_label(&run_id))
+            .ok_or_else(|| AppError::invalid("结果窗口不存在"))?
+            .close()
+            .map_err(|_| AppError::invalid("无法关闭结果窗口"))?;
+    }
     Ok(())
 }
 
@@ -892,12 +908,15 @@ fn focus_result(app: &AppHandle, run_id: &str) {
     }
 }
 
-fn focus_main(app: &AppHandle) {
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.unminimize();
-        let _ = window.show();
-        let _ = window.set_focus();
-    }
+fn focus_main(app: &AppHandle) -> Result<(), AppError> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| AppError::invalid("主窗口不存在"))?;
+    window
+        .unminimize()
+        .and_then(|_| window.show())
+        .and_then(|_| window.set_focus())
+        .map_err(|_| AppError::invalid("无法打开主窗口"))
 }
 
 pub fn report_capture_failure(app: &AppHandle, source: &'static str, error: &AppError) {
@@ -905,7 +924,7 @@ pub fn report_capture_failure(app: &AppHandle, source: &'static str, error: &App
     if error.code == ErrorCode::AlreadyRunning {
         return;
     }
-    focus_main(app);
+    let _ = focus_main(app);
     app.dialog()
         .message(error.message.clone())
         .title("截图失败")

@@ -69,6 +69,7 @@ function ResultView() {
       onCancel={() => ipc.cancelAnalysis(runId)}
       onRetry={() => ipc.retryAnalysis(runId)}
       onCopy={(text) => ipc.copyText(text)}
+      onOpenMain={() => ipc.openMainWindow(runId)}
       onAlwaysOnTop={(value) => {
         setAlwaysOnTop(value);
         return ipc.setResultAlwaysOnTop(value);

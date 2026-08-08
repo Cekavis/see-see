@@ -116,7 +116,7 @@ impl AppState {
 
 #[cfg(test)]
 mod tests {
-    use super::RuntimeState;
+    use super::{AnalysisState, RuntimeState};
     use crate::{analysis::ActiveAnalysis, capture::CaptureSession};
     use std::sync::Arc;
 
@@ -171,5 +171,14 @@ mod tests {
         );
         assert!(runtime.take_analysis("current").is_some());
         assert!(runtime.analysis.is_none());
+    }
+
+    #[test]
+    fn terminal_analysis_states_close_finished_result_windows() {
+        assert!(!AnalysisState::Submitting.is_terminal());
+        assert!(!AnalysisState::Streaming.is_terminal());
+        assert!(AnalysisState::Completed.is_terminal());
+        assert!(AnalysisState::Failed.is_terminal());
+        assert!(AnalysisState::Cancelled.is_terminal());
     }
 }

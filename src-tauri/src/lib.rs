@@ -180,6 +180,7 @@ pub fn run() {
             commands::cancel_analysis,
             commands::retry_analysis,
             commands::close_result,
+            commands::open_main_window,
             commands::set_result_always_on_top,
             commands::copy_text,
             commands::list_model_configs,

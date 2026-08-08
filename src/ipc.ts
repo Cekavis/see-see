@@ -182,6 +182,8 @@ export const ipc = {
   cancelAnalysis: (runId: string) => invoke<void>("cancel_analysis", { runId }),
   retryAnalysis: (runId: string) => invoke<void>("retry_analysis", { runId }),
   closeResult: (runId: string) => invoke<void>("close_result", { runId }),
+  openMainWindow: (runId: string) =>
+    invoke<void>("open_main_window", { runId }),
   setResultAlwaysOnTop: (value: boolean) =>
     invoke<void>("set_result_always_on_top", { value }),
   copyText: (text: string) => invoke<void>("copy_text", { text }),

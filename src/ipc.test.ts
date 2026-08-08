@@ -35,3 +35,13 @@ describe("IPC history resubmission", () => {
     });
   });
 });
+
+describe("IPC result navigation", () => {
+  it("passes the current analysis identity when opening the main window", async () => {
+    invoke.mockResolvedValue(undefined);
+
+    await ipc.openMainWindow("run-1");
+
+    expect(invoke).toHaveBeenCalledWith("open_main_window", { runId: "run-1" });
+  });
+});

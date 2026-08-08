@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { NotificationProvider } from "../components/Notifications";
 import { Result, type ResultSnapshot } from "./Result";
@@ -75,6 +75,43 @@ describe("Result", () => {
     expect(onCopy).toHaveBeenCalledWith("逐步输出");
     expect(screen.getByRole("status")).toHaveTextContent("结果已复制");
     expect(onAlwaysOnTop).toHaveBeenCalledWith(false);
+  });
+
+  it("keeps the main-window action available in active and terminal states", () => {
+    const onOpenMain = vi.fn();
+    const { rerender } = renderResult(
+      <Result snapshot={snapshot()} onOpenMain={onOpenMain} />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "打开主窗口" }));
+    expect(onOpenMain).toHaveBeenCalledOnce();
+
+    rerender(
+      <NotificationProvider>
+        <Result
+          snapshot={snapshot({ state: "completed" })}
+          onOpenMain={onOpenMain}
+        />
+      </NotificationProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "打开主窗口" }));
+    expect(onOpenMain).toHaveBeenCalledTimes(2);
+  });
+
+  it("reports a main-window navigation failure without removing the result", async () => {
+    renderResult(
+      <Result
+        snapshot={snapshot()}
+        onOpenMain={() => Promise.reject(new Error("无法打开主窗口"))}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "打开主窗口" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent("无法打开主窗口"),
+    );
+    expect(screen.getByText("逐步输出")).toBeInTheDocument();
   });
 
   it("keeps thinking open until answer text arrives, then defaults it closed", () => {

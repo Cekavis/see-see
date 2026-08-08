@@ -1,7 +1,7 @@
 use see_see_lib::{
     autostart::{SystemAutostartStatus, confirm_enabled},
     capture::PhysicalRect,
-    commands::{AnalysisStarted, finish_capture, resubmit_history},
+    commands::{AnalysisStarted, finish_capture, open_main_window, resubmit_history},
     database::{DEFAULT_CAPTURE_SHORTCUT, Database},
     error::{AppError, ErrorCode},
     settings::{
@@ -37,6 +37,35 @@ fn result_window_creation_stays_out_of_synchronous_windows_commands() {
     }
 
     assert_resubmit_async(resubmit_history);
+}
+
+#[test]
+fn result_navigation_uses_the_run_specific_window_command() {
+    fn assert_command<F>(_: F)
+    where
+        F: Fn(AppHandle, String) -> Result<(), AppError>,
+    {
+    }
+
+    assert_command(open_main_window);
+}
+
+#[test]
+fn result_navigation_closes_only_after_a_terminal_state_check() {
+    let commands = include_str!("../src/commands.rs");
+    let navigation = commands
+        .split_once("pub fn open_main_window(")
+        .unwrap()
+        .1
+        .split_once("pub fn set_result_always_on_top(")
+        .unwrap()
+        .0;
+    let focus = navigation.find("focus_main(&app)?").unwrap();
+    let terminal = navigation.find(".is_terminal()").unwrap();
+    let close = navigation.find(".close()").unwrap();
+
+    assert!(focus < terminal);
+    assert!(terminal < close);
 }
 
 #[test]

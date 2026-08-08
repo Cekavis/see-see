@@ -18,6 +18,7 @@ type Props = {
   onCancel?: () => void | Promise<unknown>;
   onRetry?: () => void | Promise<unknown>;
   onCopy?: (text: string) => void | Promise<unknown>;
+  onOpenMain?: () => void | Promise<unknown>;
   onAlwaysOnTop?: (value: boolean) => void | Promise<unknown>;
 };
 
@@ -45,6 +46,7 @@ export function Result({
   onCancel,
   onRetry,
   onCopy,
+  onOpenMain,
   onAlwaysOnTop,
 }: Props) {
   const notifications = useNotifications();
@@ -121,6 +123,23 @@ export function Result({
         </pre>
       </div>
       <footer className="button-row">
+        <Button
+          onClick={() => {
+            if (!onOpenMain) return;
+            try {
+              const result = onOpenMain();
+              if (result instanceof Promise) {
+                void result.catch((value: unknown) =>
+                  notifications.error(getErrorMessage(value)),
+                );
+              }
+            } catch (value) {
+              notifications.error(getErrorMessage(value));
+            }
+          }}
+        >
+          打开主窗口
+        </Button>
         {active && (
           <Button
             variant="danger"
