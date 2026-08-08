@@ -155,6 +155,8 @@ export type HistoryPage = {
   nextCursor: string | null;
 };
 export type HistoryEntryDetail = HistoryListItem & {
+  promptConfigId: string | null;
+  modelConfigId: string | null;
   thinkingText: string | null;
   resultText: string | null;
   errorCode: string | null;
@@ -210,8 +212,16 @@ export const ipc = {
     invoke<HistoryEntryDetail>("get_history_entry", { id }),
   getHistoryImage: (id: string, variant: "thumbnail" | "original") =>
     invoke<ArrayBuffer>("get_history_image", { id, variant }),
-  resubmitHistory: (id: string) =>
-    invoke<{ runId: string }>("resubmit_history", { id }),
+  resubmitHistory: (
+    id: string,
+    modelConfigId: string,
+    promptConfigId: string,
+  ) =>
+    invoke<{ runId: string }>("resubmit_history", {
+      id,
+      modelConfigId,
+      promptConfigId,
+    }),
   deleteHistoryEntry: (id: string) =>
     invoke<void>("delete_history_entry", { id }),
   clearHistory: () => invoke<{ deletedCount: number }>("clear_history"),

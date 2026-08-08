@@ -31,7 +31,7 @@ fn result_window_creation_stays_out_of_synchronous_windows_commands() {
 
     fn assert_resubmit_async<F, Fut>(_: F)
     where
-        F: Fn(AppHandle, String) -> Fut,
+        F: Fn(AppHandle, String, String, String) -> Fut,
         Fut: Future<Output = Result<AnalysisStarted, AppError>>,
     {
     }

@@ -19,6 +19,8 @@ import {
   type HistoryListItem,
   type HistoryPage,
   type HistoryQuery,
+  type ModelConfigSummary,
+  type PromptPreset,
 } from "../ipc";
 
 export type HistoryApi = {
@@ -28,11 +30,31 @@ export type HistoryApi = {
     id: string,
     variant: "thumbnail" | "original",
   ) => Promise<ArrayBuffer>;
-  resubmitHistory: (id: string) => Promise<{ runId: string }>;
+  listModelConfigs: () => Promise<ModelConfigSummary[]>;
+  listPromptPresets: () => Promise<PromptPreset[]>;
+  resubmitHistory: (
+    id: string,
+    modelConfigId: string,
+    promptConfigId: string,
+  ) => Promise<{ runId: string }>;
   deleteHistoryEntry: (id: string) => Promise<void>;
   clearHistory: () => Promise<{ deletedCount: number }>;
   copyText: (text: string) => Promise<void>;
 };
+
+function defaultConfigurationId(
+  options: { id: string; name: string; isActive: boolean }[],
+  originalId: string | null,
+  originalName: string,
+) {
+  return (
+    options.find((option) => option.id === originalId)?.id ??
+    options.find((option) => option.name === originalName)?.id ??
+    options.find((option) => option.isActive)?.id ??
+    options[0]?.id ??
+    ""
+  );
+}
 
 function useImage(
   api: HistoryApi,
@@ -84,6 +106,12 @@ export function History({ api = ipc }: { api?: HistoryApi }) {
   const [promptName, setPromptName] = useState("");
   const [status, setStatus] = useState<"" | "success" | "failed">("");
   const [detail, setDetail] = useState<HistoryEntryDetail | null>(null);
+  const [modelConfigs, setModelConfigs] = useState<ModelConfigSummary[]>([]);
+  const [promptPresets, setPromptPresets] = useState<PromptPreset[]>([]);
+  const [selectedModelConfigId, setSelectedModelConfigId] = useState("");
+  const [selectedPromptConfigId, setSelectedPromptConfigId] = useState("");
+  const [configurationsLoading, setConfigurationsLoading] = useState(false);
+  const [resubmitting, setResubmitting] = useState(false);
   const [confirmation, setConfirmation] = useState<
     { kind: "entry"; item: HistoryListItem } | { kind: "all" } | null
   >(null);
@@ -100,6 +128,40 @@ export function History({ api = ipc }: { api?: HistoryApi }) {
     if (scrollContainer) scrollContainer.scrollTop = listScrollTop.current;
     restoreListScroll.current = false;
   }, [detail]);
+
+  useEffect(() => {
+    if (!detail) return;
+    let active = true;
+    void Promise.all([api.listModelConfigs(), api.listPromptPresets()])
+      .then(([models, prompts]) => {
+        if (!active) return;
+        setModelConfigs(models);
+        setPromptPresets(prompts);
+        setSelectedModelConfigId(
+          defaultConfigurationId(
+            models,
+            detail.modelConfigId,
+            detail.modelConfigName,
+          ),
+        );
+        setSelectedPromptConfigId(
+          defaultConfigurationId(
+            prompts,
+            detail.promptConfigId,
+            detail.promptName,
+          ),
+        );
+      })
+      .catch((value: AppError) => {
+        if (active) notifications.error(value.message);
+      })
+      .finally(() => {
+        if (active) setConfigurationsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [api, detail, notifications]);
 
   const query = useCallback(
     (cursor?: string, append = false) => {
@@ -186,6 +248,56 @@ export function History({ api = ipc }: { api?: HistoryApi }) {
                 message={detail.errorMessage ?? detail.errorCode ?? "分析失败"}
               />
             )}
+            <div className="history-resubmit-config">
+              <label>
+                模型配置
+                <select
+                  aria-label="模型配置"
+                  value={selectedModelConfigId}
+                  disabled={configurationsLoading || modelConfigs.length === 0}
+                  onChange={(event) =>
+                    setSelectedModelConfigId(event.target.value)
+                  }
+                >
+                  {modelConfigs.length === 0 && (
+                    <option value="">
+                      {configurationsLoading
+                        ? "正在加载模型配置"
+                        : "没有可用模型配置"}
+                    </option>
+                  )}
+                  {modelConfigs.map((model) => (
+                    <option key={model.id} value={model.id}>
+                      {model.name} · {model.modelId}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                提示词配置
+                <select
+                  aria-label="提示词配置"
+                  value={selectedPromptConfigId}
+                  disabled={configurationsLoading || promptPresets.length === 0}
+                  onChange={(event) =>
+                    setSelectedPromptConfigId(event.target.value)
+                  }
+                >
+                  {promptPresets.length === 0 && (
+                    <option value="">
+                      {configurationsLoading
+                        ? "正在加载提示词配置"
+                        : "没有可用提示词配置"}
+                    </option>
+                  )}
+                  {promptPresets.map((prompt) => (
+                    <option key={prompt.id} value={prompt.id}>
+                      {prompt.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
             <div className="button-row">
               <Button
                 disabled={!detail.resultText}
@@ -204,18 +316,30 @@ export function History({ api = ipc }: { api?: HistoryApi }) {
               </Button>
               <Button
                 variant="primary"
-                disabled={!detail.hasImage}
+                disabled={
+                  !detail.hasImage ||
+                  configurationsLoading ||
+                  resubmitting ||
+                  !selectedModelConfigId ||
+                  !selectedPromptConfigId
+                }
                 onClick={() => {
                   notifications.clear();
+                  setResubmitting(true);
                   void api
-                    .resubmitHistory(detail.id)
-                    .then(() => notifications.success("已使用当前配置重新提交"))
+                    .resubmitHistory(
+                      detail.id,
+                      selectedModelConfigId,
+                      selectedPromptConfigId,
+                    )
+                    .then(() => notifications.success("已重新提交"))
                     .catch((value: AppError) =>
                       notifications.error(value.message),
-                    );
+                    )
+                    .finally(() => setResubmitting(false));
                 }}
               >
-                使用当前配置再次提交
+                重新选择配置提交
               </Button>
             </div>
           </section>
@@ -301,7 +425,14 @@ export function History({ api = ipc }: { api?: HistoryApi }) {
                         listScrollTop.current = scrollContainer?.scrollTop ?? 0;
                         void api
                           .getHistoryEntry(item.id)
-                          .then(setDetail)
+                          .then((entry) => {
+                            setModelConfigs([]);
+                            setPromptPresets([]);
+                            setSelectedModelConfigId("");
+                            setSelectedPromptConfigId("");
+                            setConfigurationsLoading(true);
+                            setDetail(entry);
+                          })
                           .catch((value: AppError) =>
                             notifications.error(value.message),
                           );

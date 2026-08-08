@@ -5,6 +5,8 @@ use std::{path::Path, sync::Mutex};
 const INITIAL_SCHEMA: &str = include_str!("../migrations/0001_init.sql");
 const PLAINTEXT_KEY_MIGRATION: &str = include_str!("../migrations/0002_plaintext_model_keys.sql");
 const HISTORY_THINKING_MIGRATION: &str = include_str!("../migrations/0003_history_thinking.sql");
+const HISTORY_CONFIGURATION_IDS_MIGRATION: &str =
+    include_str!("../migrations/0004_history_configuration_ids.sql");
 const LEGACY_DEFAULT_CAPTURE_SHORTCUT: &str = "Alt+Shift+A";
 pub const WINDOWS_DEFAULT_CAPTURE_SHORTCUT: &str = "Ctrl+Shift+X";
 pub const MACOS_DEFAULT_CAPTURE_SHORTCUT: &str = "Command+Shift+X";
@@ -104,6 +106,26 @@ impl Database {
                 .execute_batch(HISTORY_THINKING_MIGRATION)
                 .map_err(|_| AppError::storage("无法升级历史记录存储"))?;
         }
+        let history_columns = {
+            let mut statement = connection
+                .prepare("PRAGMA table_info(history_entries)")
+                .map_err(|_| AppError::storage("无法检查历史配置数据库版本"))?;
+            let columns = statement
+                .query_map([], |row| row.get::<_, String>(1))
+                .map_err(|_| AppError::storage("无法检查历史配置数据库版本"))?;
+            columns.filter_map(Result::ok).collect::<Vec<_>>()
+        };
+        if !history_columns
+            .iter()
+            .any(|column| column == "prompt_config_id")
+            || !history_columns
+                .iter()
+                .any(|column| column == "model_config_id")
+        {
+            connection
+                .execute_batch(HISTORY_CONFIGURATION_IDS_MIGRATION)
+                .map_err(|_| AppError::storage("无法升级历史配置存储"))?;
+        }
         if previous_version < 4 {
             connection
                 .execute(
@@ -113,7 +135,7 @@ impl Database {
                 .map_err(|_| AppError::storage("无法升级默认截图快捷键"))?;
         }
         connection
-            .pragma_update(None, "user_version", 5)
+            .pragma_update(None, "user_version", 6)
             .map_err(|_| AppError::storage("无法记录数据库版本"))?;
         Ok(Self {
             connection: Mutex::new(connection),
@@ -242,6 +264,77 @@ mod tests {
             .unwrap();
 
         assert!(has_thinking);
-        assert_eq!(database.pragma_i64("user_version").unwrap(), 5);
+        assert_eq!(database.pragma_i64("user_version").unwrap(), 6);
+    }
+
+    #[test]
+    fn legacy_history_rows_backfill_configuration_ids() {
+        let connection = Connection::open_in_memory().unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE model_configs (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                    protocol TEXT NOT NULL,
+                    base_url TEXT NOT NULL,
+                    model_id TEXT NOT NULL,
+                    api_key TEXT,
+                    credential_ref TEXT,
+                    test_status TEXT NOT NULL DEFAULT 'untested',
+                    tested_at TEXT,
+                    test_error_code TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                INSERT INTO model_configs (
+                    id, name, protocol, base_url, model_id, api_key, credential_ref,
+                    test_status, tested_at, test_error_code, created_at, updated_at
+                ) VALUES (
+                    'model-legacy', '旧模型', 'openai', 'https://example.com/v1', 'vision',
+                    NULL, NULL, 'untested', NULL, NULL,
+                    '2026-07-23T00:00:00Z', '2026-07-23T00:00:00Z'
+                );
+                CREATE TABLE history_entries (
+                    id TEXT PRIMARY KEY,
+                    status TEXT NOT NULL,
+                    thinking_text TEXT,
+                    result_text TEXT,
+                    error_code TEXT,
+                    error_message TEXT,
+                    prompt_name TEXT NOT NULL,
+                    prompt_body TEXT NOT NULL,
+                    model_config_name TEXT NOT NULL,
+                    protocol TEXT NOT NULL,
+                    model_id TEXT NOT NULL,
+                    started_at TEXT NOT NULL,
+                    completed_at TEXT NOT NULL
+                );
+                INSERT INTO history_entries (
+                    id, status, result_text, prompt_name, prompt_body, model_config_name,
+                    protocol, model_id, started_at, completed_at
+                ) VALUES (
+                    'legacy', 'success', '结果', '通用翻译为中文', '旧正文', '旧模型',
+                    'openai', 'vision', '2026-07-23T00:00:00Z', '2026-07-23T00:00:01Z'
+                );",
+            )
+            .unwrap();
+        connection.pragma_update(None, "user_version", 5).unwrap();
+
+        let database = Database::initialize(connection).unwrap();
+        let references = database
+            .read(|connection| {
+                connection.query_row(
+                    "SELECT prompt_config_id, model_config_id FROM history_entries WHERE id = 'legacy'",
+                    [],
+                    |row| Ok((row.get::<_, Option<String>>(0)?, row.get::<_, Option<String>>(1)?)),
+                )
+            })
+            .unwrap();
+
+        assert_eq!(
+            references.0.as_deref(),
+            Some("00000000-0000-4000-8000-000000000001")
+        );
+        assert_eq!(references.1.as_deref(), Some("model-legacy"));
     }
 }

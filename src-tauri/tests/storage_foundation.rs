@@ -24,7 +24,7 @@ fn database_defaults_and_pragmas_match_the_plan() {
     assert!(snapshot.active_prompt_id.is_some());
     assert_eq!(db.pragma_i64("foreign_keys").unwrap(), 1);
     assert_eq!(db.pragma_i64("secure_delete").unwrap(), 1);
-    assert_eq!(db.pragma_i64("user_version").unwrap(), 5);
+    assert_eq!(db.pragma_i64("user_version").unwrap(), 6);
 }
 
 #[test]
@@ -37,8 +37,10 @@ fn history_save_is_atomic_and_respects_the_setting() {
         result_text: Some("结果".into()),
         error_code: None,
         error_message: None,
+        prompt_config_id: None,
         prompt_name: "日语学习解析".into(),
         prompt_body: "解释图片".into(),
+        model_config_id: None,
         model_config_name: "测试模型".into(),
         protocol: "openai".into(),
         model_id: "vision-model".into(),
@@ -65,8 +67,10 @@ fn invalid_success_history_rolls_back() {
         result_text: None,
         error_code: None,
         error_message: None,
+        prompt_config_id: None,
         prompt_name: "提示词".into(),
         prompt_body: "正文".into(),
+        model_config_id: None,
         model_config_name: "模型".into(),
         protocol: "openai".into(),
         model_id: "vision-model".into(),

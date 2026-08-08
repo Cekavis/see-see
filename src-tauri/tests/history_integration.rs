@@ -7,6 +7,9 @@ use see_see_lib::{
     settings::{load_app_snapshot, set_save_history},
 };
 
+const PROMPT_ID: &str = "00000000-0000-4000-8000-000000000001";
+const MODEL_ID: &str = "model-1";
+
 fn tiny_png() -> Vec<u8> {
     use image::{ImageFormat, Rgba, RgbaImage};
     use std::io::Cursor;
@@ -17,6 +20,18 @@ fn tiny_png() -> Vec<u8> {
 }
 
 fn insert(db: &Database, id: &str, result: &str, prompt: &str, status: HistoryStatus) {
+    db.transaction(|transaction| {
+        transaction.execute(
+            "INSERT OR IGNORE INTO model_configs (
+                id, name, protocol, base_url, model_id, api_key, credential_ref,
+                test_status, tested_at, test_error_code, created_at, updated_at
+             ) VALUES (?1, '模型', 'openai', 'https://example.com/v1', 'vision', NULL, NULL,
+                'untested', NULL, NULL, '2026-07-23T00:00:00Z', '2026-07-23T00:00:00Z')",
+            [MODEL_ID],
+        )?;
+        Ok(())
+    })
+    .unwrap();
     let failed = status == HistoryStatus::Failed;
     save_history(
         db,
@@ -28,8 +43,10 @@ fn insert(db: &Database, id: &str, result: &str, prompt: &str, status: HistorySt
             result_text: (!failed).then(|| result.into()),
             error_code: failed.then(|| "timeout".into()),
             error_message: failed.then(|| "请求超时".into()),
+            prompt_config_id: Some(PROMPT_ID.into()),
             prompt_name: prompt.into(),
             prompt_body: "提示正文".into(),
+            model_config_id: Some(MODEL_ID.into()),
             model_config_name: "模型".into(),
             protocol: "openai".into(),
             model_id: "vision".into(),
@@ -108,6 +125,20 @@ fn detail_images_delete_and_clear_are_consistent() {
     assert_eq!(
         get_history_detail(&db, "1")
             .unwrap()
+            .prompt_config_id
+            .as_deref(),
+        Some(PROMPT_ID)
+    );
+    assert_eq!(
+        get_history_detail(&db, "1")
+            .unwrap()
+            .model_config_id
+            .as_deref(),
+        Some(MODEL_ID)
+    );
+    assert_eq!(
+        get_history_detail(&db, "1")
+            .unwrap()
             .thinking_text
             .as_deref(),
         Some("思考 1")
@@ -173,8 +204,10 @@ fn history_setting_persists_and_disables_new_writes() {
         result_text: Some("结果".into()),
         error_code: None,
         error_message: None,
+        prompt_config_id: Some(PROMPT_ID.into()),
         prompt_name: "日语".into(),
         prompt_body: "正文".into(),
+        model_config_id: Some(MODEL_ID.into()),
         model_config_name: "模型".into(),
         protocol: "openai".into(),
         model_id: "vision".into(),

@@ -306,6 +306,11 @@ fn start_analysis_with_image(
 ) -> Result<AnalysisStarted, AppError> {
     let state = app.state::<AppState>();
     let input = analysis_input_for_image(&state, image_png)?;
+    start_analysis(app, input)
+}
+
+fn start_analysis(app: AppHandle, input: AnalysisInput) -> Result<AnalysisStarted, AppError> {
+    let state = app.state::<AppState>();
     let run_id = Uuid::new_v4().to_string();
     let active = Arc::new(ActiveAnalysis::new(run_id.clone(), input.image_png.clone()));
     {
@@ -339,6 +344,30 @@ fn analysis_input_for_image(
     image_png: Vec<u8>,
 ) -> Result<AnalysisInput, AppError> {
     let (model, prompt) = require_active_configuration(&state)?;
+    let api_key = settings::load_model_api_key(&state.database, &model.id)?;
+    let save_history = settings::load_app_snapshot(&state.database)?
+        .settings
+        .save_history;
+    Ok(AnalysisInput {
+        image_png,
+        prompt,
+        model,
+        api_key,
+        save_history,
+        started_at: analysis::now(),
+    })
+}
+
+fn analysis_input_for_configuration(
+    state: &AppState,
+    image_png: Vec<u8>,
+    model_config_id: &str,
+    prompt_config_id: &str,
+) -> Result<AnalysisInput, AppError> {
+    let model = settings::load_model(&state.database, model_config_id)?
+        .ok_or_else(|| AppError::new(ErrorCode::NotFound, "模型配置不存在", false, None))?;
+    let prompt = settings::load_prompt(&state.database, prompt_config_id)?
+        .ok_or_else(|| AppError::new(ErrorCode::NotFound, "提示词不存在", false, None))?;
     let api_key = settings::load_model_api_key(&state.database, &model.id)?;
     let save_history = settings::load_app_snapshot(&state.database)?
         .settings
@@ -554,7 +583,12 @@ pub fn get_history_image(
 }
 
 #[tauri::command]
-pub async fn resubmit_history(app: AppHandle, id: String) -> Result<AnalysisStarted, AppError> {
+pub async fn resubmit_history(
+    app: AppHandle,
+    id: String,
+    model_config_id: String,
+    prompt_config_id: String,
+) -> Result<AnalysisStarted, AppError> {
     {
         let state = app.state::<AppState>();
         let runtime = state
@@ -570,7 +604,13 @@ pub async fn resubmit_history(app: AppHandle, id: String) -> Result<AnalysisStar
         &id,
         HistoryImageVariant::Original,
     )?;
-    start_analysis_with_image(app, image)
+    let input = analysis_input_for_configuration(
+        &app.state::<AppState>(),
+        image,
+        &model_config_id,
+        &prompt_config_id,
+    )?;
+    start_analysis(app, input)
 }
 
 #[tauri::command]

@@ -259,6 +259,24 @@ pub fn load_active_prompt(database: &Database) -> Result<Option<PromptSnapshot>,
     })
 }
 
+pub fn load_prompt(database: &Database, id: &str) -> Result<Option<PromptSnapshot>, AppError> {
+    database.read(|connection| {
+        connection
+            .query_row(
+                "SELECT id, name, body FROM prompt_presets WHERE id = ?1",
+                [id],
+                |row| {
+                    Ok(PromptSnapshot {
+                        id: row.get(0)?,
+                        name: row.get(1)?,
+                        body: row.get(2)?,
+                    })
+                },
+            )
+            .optional()
+    })
+}
+
 pub fn list_prompt_presets(database: &Database) -> Result<Vec<PromptPreset>, AppError> {
     database.read(|connection| {
         let active: Option<String> = connection.query_row(

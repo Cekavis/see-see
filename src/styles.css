@@ -1042,6 +1042,25 @@ textarea {
   font-size: 0.86rem;
 }
 
+.history-resubmit-config {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 14px 0;
+}
+
+.history-resubmit-config label {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+}
+
+@media (max-width: 620px) {
+  .history-resubmit-config {
+    grid-template-columns: 1fr;
+  }
+}
+
 .about-view__mark {
   width: 48px;
   height: 48px;
