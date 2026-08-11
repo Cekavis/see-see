@@ -14,11 +14,13 @@ const mocks = vi.hoisted(() => ({
 const getVersion = vi.hoisted(() => vi.fn());
 const check = vi.hoisted(() => vi.fn());
 const relaunch = vi.hoisted(() => vi.fn());
+const listen = vi.hoisted(() => vi.fn().mockResolvedValue(vi.fn()));
 
 vi.mock("../ipc", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../ipc")>()),
   ipc: mocks,
 }));
+vi.mock("@tauri-apps/api/event", () => ({ listen }));
 vi.mock("@tauri-apps/api/app", () => ({ getVersion }));
 vi.mock("@tauri-apps/plugin-updater", () => ({ check }));
 vi.mock("@tauri-apps/plugin-process", () => ({ relaunch }));

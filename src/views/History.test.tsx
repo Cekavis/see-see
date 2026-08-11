@@ -5,9 +5,13 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NotificationProvider } from "../components/Notifications";
 import { History, type HistoryApi } from "./History";
+
+const listen = vi.hoisted(() => vi.fn());
+
+vi.mock("@tauri-apps/api/event", () => ({ listen }));
 
 const item = {
   id: "h1",
@@ -96,6 +100,41 @@ function renderHistory(service: HistoryApi) {
 }
 
 describe("History", () => {
+  beforeEach(() => {
+    listen.mockReset();
+    listen.mockResolvedValue(vi.fn());
+  });
+
+  it("refreshes when a new history record is saved", async () => {
+    const service = api([]);
+    vi.mocked(service.queryHistory)
+      .mockResolvedValueOnce({ items: [], nextCursor: null })
+      .mockResolvedValueOnce({ items: [item], nextCursor: null });
+    const removeListener = vi.fn();
+    listen.mockResolvedValue(removeListener);
+    const view = renderHistory(service);
+
+    expect(await screen.findByText("没有历史记录")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(listen).toHaveBeenCalledWith(
+        "history-updated",
+        expect.any(Function),
+      ),
+    );
+    const onHistoryUpdated = listen.mock.calls[0][1] as () => void;
+    onHistoryUpdated();
+
+    expect(await screen.findByText("旅行：旅行")).toBeInTheDocument();
+    expect(service.queryHistory).toHaveBeenLastCalledWith({
+      text: undefined,
+      promptName: undefined,
+      status: undefined,
+      cursor: undefined,
+    });
+    view.unmount();
+    expect(removeListener).toHaveBeenCalledOnce();
+  });
+
   it("opens a dedicated detail view and returns to the preserved list state", async () => {
     const service = api();
     renderHistory(service);

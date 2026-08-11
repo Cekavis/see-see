@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { Button } from "../components/Button";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { EmptyState } from "../components/EmptyState";
@@ -200,6 +201,19 @@ export function History({ api = ipc }: { api?: HistoryApi }) {
     }
     load();
   }, [api, notifications]);
+
+  useEffect(() => {
+    let active = true;
+    let unlisten: (() => void) | undefined;
+    void listen("history-updated", () => void query()).then((remove) => {
+      if (active) unlisten = remove;
+      else remove();
+    });
+    return () => {
+      active = false;
+      unlisten?.();
+    };
+  }, [query]);
 
   const hasFilters = Boolean(text || promptName || status);
   if (detail) {

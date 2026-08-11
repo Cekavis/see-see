@@ -8,7 +8,7 @@ use crate::{
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Manager, ipc::Channel};
+use tauri::{AppHandle, Emitter, Manager, ipc::Channel};
 use tokio::sync::watch;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -359,6 +359,9 @@ pub fn start_network_analysis(app: AppHandle, active: Arc<ActiveAnalysis>, input
                     Some(&input.image_png),
                 )
                 .unwrap_or(false);
+                if saved {
+                    let _ = app.emit("history-updated", ());
+                }
                 let _ = active.complete(saved);
             }
             Err(error) => {
@@ -394,6 +397,9 @@ pub fn start_network_analysis(app: AppHandle, active: Arc<ActiveAnalysis>, input
                     Some(&input.image_png),
                 )
                 .unwrap_or(false);
+                if saved {
+                    let _ = app.emit("history-updated", ());
+                }
                 let _ = active.fail(error, saved);
             }
         }
