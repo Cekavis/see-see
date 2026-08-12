@@ -13,6 +13,17 @@ const listen = vi.hoisted(() => vi.fn());
 
 vi.mock("@tauri-apps/api/event", () => ({ listen }));
 
+const nodeProcess = (
+  globalThis as typeof globalThis & {
+    process: {
+      cwd(): string;
+      getBuiltinModule(name: "node:fs"): {
+        readFileSync(path: string, encoding: "utf8"): string;
+      };
+    };
+  }
+).process;
+
 const item = {
   id: "h1",
   status: "success" as const,
@@ -130,9 +141,101 @@ describe("History", () => {
       promptName: undefined,
       status: undefined,
       cursor: undefined,
+      limit: 10,
     });
     view.unmount();
     expect(removeListener).toHaveBeenCalledOnce();
+  });
+
+  it("shows the saved model name and uses an image-first wide-card layout", async () => {
+    const service = api();
+    renderHistory(service);
+
+    const summary = await screen.findByText("旅行：旅行");
+    const image = await screen.findByRole("img", { name: "原始截图" });
+    const card = summary.closest("article");
+    expect(card).not.toBeNull();
+    expect(card?.firstElementChild).toBe(image);
+    expect(card).toHaveTextContent("模型");
+    expect(card).toHaveTextContent("日语学习解析");
+    expect(service.getHistoryImage).toHaveBeenCalledWith("h1", "original");
+
+    const styles = nodeProcess
+      .getBuiltinModule("node:fs")
+      .readFileSync(`${nodeProcess.cwd()}/src/styles.css`, "utf8");
+    const itemRule = styles.match(/\.history-item\s*\{([^}]*)\}/)?.[1];
+    const imageRule = styles.match(/\.history-item__image\s*\{([^}]*)\}/)?.[1];
+
+    expect(itemRule).toMatch(/grid-template-columns:\s*minmax\(0, 1fr\);/);
+    expect(imageRule).toMatch(/width:\s*auto;/);
+    expect(imageRule).toMatch(/max-width:\s*100%;/);
+    expect(imageRule).toMatch(/height:\s*auto;/);
+    expect(imageRule).toMatch(/max-height:\s*280px;/);
+    expect(imageRule).not.toMatch(/aspect-ratio:/);
+    expect(imageRule).not.toMatch(/min-height:/);
+  });
+
+  it("paginates with bounded cursor queries and selectable page sizes", async () => {
+    const secondItem = {
+      ...item,
+      id: "h2",
+      resultPreview: "第二页结果",
+      hasImage: false,
+    };
+    const service = api();
+    vi.mocked(service.queryHistory)
+      .mockResolvedValueOnce({ items: [item], nextCursor: "cursor-2" })
+      .mockResolvedValueOnce({ items: [secondItem], nextCursor: null })
+      .mockResolvedValueOnce({ items: [item], nextCursor: "cursor-2" })
+      .mockResolvedValueOnce({ items: [item], nextCursor: null });
+
+    renderHistory(service);
+
+    expect(await screen.findByText("旅行：旅行")).toBeInTheDocument();
+    expect(service.queryHistory).toHaveBeenNthCalledWith(1, { limit: 10 });
+    expect(screen.getByText("第 1 页")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "上一页" })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "下一页" }));
+    const secondSummary = await screen.findByText("第二页结果");
+    expect(secondSummary.closest("article")?.firstElementChild).toHaveClass(
+      "history-item__content",
+    );
+    expect(service.queryHistory).toHaveBeenNthCalledWith(2, {
+      text: undefined,
+      promptName: undefined,
+      status: undefined,
+      cursor: "cursor-2",
+      limit: 10,
+    });
+    expect(screen.getByText("第 2 页")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "下一页" })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "上一页" }));
+    expect(await screen.findByText("旅行：旅行")).toBeInTheDocument();
+    expect(service.queryHistory).toHaveBeenNthCalledWith(3, {
+      text: undefined,
+      promptName: undefined,
+      status: undefined,
+      cursor: undefined,
+      limit: 10,
+    });
+    expect(screen.getByText("第 1 页")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("每页条目数"), {
+      target: { value: "20" },
+    });
+    await waitFor(() =>
+      expect(service.queryHistory).toHaveBeenNthCalledWith(4, {
+        text: undefined,
+        promptName: undefined,
+        status: undefined,
+        cursor: undefined,
+        limit: 20,
+      }),
+    );
+    expect(screen.getByLabelText("每页条目数")).toHaveValue("20");
+    expect(screen.getByText("第 1 页")).toBeInTheDocument();
   });
 
   it("opens a dedicated detail view and returns to the preserved list state", async () => {

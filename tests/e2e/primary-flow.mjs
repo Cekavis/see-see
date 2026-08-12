@@ -28,14 +28,28 @@ export async function runPrimaryFlow(page) {
   await page.addInitScript(
     ({ initialResults }) => {
       const testBridge = { calls: [], results: initialResults };
+      let callbackId = 0;
       window.__SEE_SEE_TEST__ = testBridge;
+      window.__TAURI_EVENT_PLUGIN_INTERNALS__ = {
+        unregisterListener() {},
+      };
       window.__TAURI_INTERNALS__ = {
         metadata: {
           currentWindow: { label: "main" },
           currentWebview: { label: "main" },
         },
+        transformCallback(callback) {
+          const id = ++callbackId;
+          window[`_${id}`] = callback;
+          return id;
+        },
+        unregisterCallback(id) {
+          delete window[`_${id}`];
+        },
         invoke(command, args) {
           testBridge.calls.push({ command, args });
+          if (command === "plugin:event|listen") return Promise.resolve(1);
+          if (command === "plugin:event|unlisten") return Promise.resolve();
           return Object.hasOwn(testBridge.results, command)
             ? Promise.resolve(testBridge.results[command])
             : Promise.reject(

@@ -312,7 +312,12 @@ fn start_analysis_with_image(
 fn start_analysis(app: AppHandle, input: AnalysisInput) -> Result<AnalysisStarted, AppError> {
     let state = app.state::<AppState>();
     let run_id = Uuid::new_v4().to_string();
-    let active = Arc::new(ActiveAnalysis::new(run_id.clone(), input.image_png.clone()));
+    let active = Arc::new(ActiveAnalysis::new(
+        run_id.clone(),
+        input.image_png.clone(),
+        input.model.name.clone(),
+        input.prompt.name.clone(),
+    ));
     {
         let mut runtime = state
             .runtime
@@ -414,7 +419,7 @@ pub fn cancel_analysis(app: AppHandle, run_id: String) -> Result<(), AppError> {
 pub fn retry_analysis(app: AppHandle, run_id: String) -> Result<(), AppError> {
     let active = active_analysis(&app, &run_id)?;
     let input = analysis_input_for_image(&app.state::<AppState>(), active.image_png())?;
-    active.reset_for_retry()?;
+    active.reset_for_retry(input.model.name.clone(), input.prompt.name.clone())?;
     analysis::start_network_analysis(app, active, input);
     Ok(())
 }

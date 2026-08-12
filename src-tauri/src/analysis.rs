@@ -17,6 +17,10 @@ pub enum AnalysisEvent {
     Started {
         #[serde(rename = "runId")]
         run_id: String,
+        #[serde(rename = "modelConfigName")]
+        model_config_name: String,
+        #[serde(rename = "promptConfigName")]
+        prompt_config_name: String,
     },
     Delta {
         #[serde(rename = "runId")]
@@ -53,6 +57,8 @@ pub enum AnalysisEvent {
 #[serde(rename_all = "camelCase")]
 pub struct AnalysisSnapshot {
     pub run_id: String,
+    pub model_config_name: String,
+    pub prompt_config_name: String,
     pub state: AnalysisState,
     pub thinking: String,
     pub text: String,
@@ -61,9 +67,16 @@ pub struct AnalysisSnapshot {
 }
 
 impl AnalysisSnapshot {
-    pub fn new(run_id: impl Into<String>, state: AnalysisState) -> Self {
+    pub fn new(
+        run_id: impl Into<String>,
+        state: AnalysisState,
+        model_config_name: impl Into<String>,
+        prompt_config_name: impl Into<String>,
+    ) -> Self {
         Self {
             run_id: run_id.into(),
+            model_config_name: model_config_name.into(),
+            prompt_config_name: prompt_config_name.into(),
             state,
             thinking: String::new(),
             text: String::new(),
@@ -79,9 +92,18 @@ pub struct AnalysisRun {
 }
 
 impl AnalysisRun {
-    pub fn new(run_id: impl Into<String>) -> Self {
+    pub fn new(
+        run_id: impl Into<String>,
+        model_config_name: impl Into<String>,
+        prompt_config_name: impl Into<String>,
+    ) -> Self {
         Self {
-            snapshot: AnalysisSnapshot::new(run_id, AnalysisState::Submitting),
+            snapshot: AnalysisSnapshot::new(
+                run_id,
+                AnalysisState::Submitting,
+                model_config_name,
+                prompt_config_name,
+            ),
             terminal: false,
         }
     }
@@ -93,6 +115,8 @@ impl AnalysisRun {
     pub fn started(&self) -> AnalysisEvent {
         AnalysisEvent::Started {
             run_id: self.snapshot.run_id.clone(),
+            model_config_name: self.snapshot.model_config_name.clone(),
+            prompt_config_name: self.snapshot.prompt_config_name.clone(),
         }
     }
 
@@ -185,10 +209,19 @@ pub struct ActiveAnalysis {
 }
 
 impl ActiveAnalysis {
-    pub fn new(run_id: impl Into<String>, image_png: Vec<u8>) -> Self {
+    pub fn new(
+        run_id: impl Into<String>,
+        image_png: Vec<u8>,
+        model_config_name: impl Into<String>,
+        prompt_config_name: impl Into<String>,
+    ) -> Self {
         let (cancel, _) = watch::channel(false);
         Self {
-            run: Mutex::new(AnalysisRun::new(run_id)),
+            run: Mutex::new(AnalysisRun::new(
+                run_id,
+                model_config_name,
+                prompt_config_name,
+            )),
             image_png,
             listeners: Mutex::new(Vec::new()),
             cancel,
@@ -255,7 +288,11 @@ impl ActiveAnalysis {
         self.cancel.subscribe()
     }
 
-    pub fn reset_for_retry(&self) -> Result<(), AppError> {
+    pub fn reset_for_retry(
+        &self,
+        model_config_name: impl Into<String>,
+        prompt_config_name: impl Into<String>,
+    ) -> Result<(), AppError> {
         let mut run = self.lock_run()?;
         let snapshot = run.snapshot();
         if snapshot.state != AnalysisState::Failed
@@ -263,7 +300,7 @@ impl ActiveAnalysis {
         {
             return Err(AppError::invalid("当前分析不可重试"));
         }
-        *run = AnalysisRun::new(snapshot.run_id);
+        *run = AnalysisRun::new(snapshot.run_id, model_config_name, prompt_config_name);
         let _ = self.cancel.send(false);
         Ok(())
     }

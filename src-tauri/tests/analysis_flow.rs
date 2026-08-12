@@ -7,10 +7,18 @@ use std::sync::Arc;
 
 #[test]
 fn analysis_has_one_active_run_and_one_terminal_event() {
-    let mut run = AnalysisRun::new("run-1");
+    let mut run = AnalysisRun::new("run-1", "模型配置", "提示词配置");
     assert_eq!(
         run.snapshot(),
-        AnalysisSnapshot::new("run-1", AnalysisState::Submitting)
+        AnalysisSnapshot::new("run-1", AnalysisState::Submitting, "模型配置", "提示词配置")
+    );
+    assert_eq!(
+        run.started(),
+        AnalysisEvent::Started {
+            run_id: "run-1".into(),
+            model_config_name: "模型配置".into(),
+            prompt_config_name: "提示词配置".into(),
+        }
     );
     assert!(matches!(
         run.push_thinking("先判断"),
@@ -42,7 +50,7 @@ fn analysis_has_one_active_run_and_one_terminal_event() {
 
 #[test]
 fn cancellation_is_terminal_and_never_claims_history_persistence() {
-    let mut run = AnalysisRun::new("run-2");
+    let mut run = AnalysisRun::new("run-2", "模型配置", "提示词配置");
     assert_eq!(
         run.cancel().unwrap(),
         AnalysisEvent::Cancelled {
@@ -60,7 +68,7 @@ fn cancellation_is_terminal_and_never_claims_history_persistence() {
 
 #[test]
 fn failed_requests_are_not_retried_and_storage_failure_keeps_result_available() {
-    let mut failed = AnalysisRun::new("run-3");
+    let mut failed = AnalysisRun::new("run-3", "模型配置", "提示词配置");
     let event = failed
         .fail(
             see_see_lib::error::AppError::provider(ErrorCode::Timeout, "超时", true),
@@ -75,7 +83,7 @@ fn failed_requests_are_not_retried_and_storage_failure_keeps_result_available() 
         }
     ));
 
-    let mut completed = AnalysisRun::new("run-4");
+    let mut completed = AnalysisRun::new("run-4", "模型配置", "提示词配置");
     completed.push_thinking("内部分析").unwrap();
     completed.push_text("仍可复制").unwrap();
     completed.complete(false).unwrap();
@@ -86,7 +94,12 @@ fn failed_requests_are_not_retried_and_storage_failure_keeps_result_available() 
 
 #[test]
 fn retry_resets_only_retryable_failures_and_keeps_the_source_image() {
-    let active = Arc::new(ActiveAnalysis::new("run-5", vec![1, 2, 3]));
+    let active = Arc::new(ActiveAnalysis::new(
+        "run-5",
+        vec![1, 2, 3],
+        "原模型配置",
+        "原提示词配置",
+    ));
     active
         .fail(
             see_see_lib::error::AppError::provider(ErrorCode::Timeout, "超时", true),
@@ -94,19 +107,27 @@ fn retry_resets_only_retryable_failures_and_keeps_the_source_image() {
         )
         .unwrap();
 
-    active.reset_for_retry().unwrap();
+    active
+        .reset_for_retry("重试模型配置", "重试提示词配置")
+        .unwrap();
     let snapshot = active.snapshot().unwrap();
     assert_eq!(snapshot.state, AnalysisState::Submitting);
+    assert_eq!(snapshot.model_config_name, "重试模型配置");
+    assert_eq!(snapshot.prompt_config_name, "重试提示词配置");
     assert!(snapshot.thinking.is_empty());
     assert!(snapshot.text.is_empty());
     assert_eq!(active.image_png(), vec![1, 2, 3]);
 
-    let terminal = ActiveAnalysis::new("run-6", vec![]);
+    let terminal = ActiveAnalysis::new("run-6", vec![], "模型配置", "提示词配置");
     terminal
         .fail(
             see_see_lib::error::AppError::provider(ErrorCode::AuthFailed, "认证失败", false),
             false,
         )
         .unwrap();
-    assert!(terminal.reset_for_retry().is_err());
+    assert!(
+        terminal
+            .reset_for_retry("重试模型配置", "重试提示词配置")
+            .is_err()
+    );
 }

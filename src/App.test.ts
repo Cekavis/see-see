@@ -6,6 +6,8 @@ describe("analysis event state", () => {
   it("clears the previous failure when a retry starts", () => {
     const failed: AnalysisSnapshot = {
       runId: "run-1",
+      modelConfigName: "原模型配置",
+      promptConfigName: "原提示词配置",
       state: "failed",
       thinking: "old thinking",
       text: "partial",
@@ -19,9 +21,16 @@ describe("analysis event state", () => {
     };
 
     expect(
-      updateAnalysisSnapshot(failed, { type: "started", runId: "run-1" }),
+      updateAnalysisSnapshot(failed, {
+        type: "started",
+        runId: "run-1",
+        modelConfigName: "重试模型配置",
+        promptConfigName: "重试提示词配置",
+      }),
     ).toEqual({
       runId: "run-1",
+      modelConfigName: "重试模型配置",
+      promptConfigName: "重试提示词配置",
       state: "submitting",
       thinking: "",
       text: "",
@@ -33,6 +42,8 @@ describe("analysis event state", () => {
   it("accumulates thinking separately and uses the terminal snapshot", () => {
     const initial: AnalysisSnapshot = {
       runId: "run-1",
+      modelConfigName: "模型配置",
+      promptConfigName: "提示词配置",
       state: "submitting",
       thinking: "",
       text: "",
@@ -46,6 +57,8 @@ describe("analysis event state", () => {
     });
     expect(thinking).toMatchObject({
       state: "streaming",
+      modelConfigName: "模型配置",
+      promptConfigName: "提示词配置",
       thinking: "分析",
       text: "",
     });

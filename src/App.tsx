@@ -39,6 +39,8 @@ function ResultView() {
   const runId = new URLSearchParams(window.location.search).get("run") ?? "";
   const [snapshot, setSnapshot] = useState<AnalysisSnapshot>({
     runId,
+    modelConfigName: "",
+    promptConfigName: "",
     state: "submitting",
     thinking: "",
     text: "",
@@ -86,6 +88,8 @@ export function updateAnalysisSnapshot(
   if (event.type === "started")
     return {
       ...current,
+      modelConfigName: event.modelConfigName,
+      promptConfigName: event.promptConfigName,
       state: "submitting",
       thinking: "",
       text: "",

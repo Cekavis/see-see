@@ -5,6 +5,8 @@ import { getErrorMessage, type AppError } from "../ipc";
 
 export type ResultSnapshot = {
   runId: string;
+  modelConfigName: string;
+  promptConfigName: string;
   state: "submitting" | "streaming" | "completed" | "failed" | "cancelled";
   thinking: string;
   text: string;
@@ -89,6 +91,12 @@ export function Result({
             {snapshot.state === "failed" && "分析失败"}
             {snapshot.state === "cancelled" && "已取消"}
           </p>
+          {snapshot.modelConfigName && snapshot.promptConfigName && (
+            <div className="result-view__configuration">
+              <span>模型配置：{snapshot.modelConfigName}</span>
+              <span>提示词配置：{snapshot.promptConfigName}</span>
+            </div>
+          )}
         </div>
         <label className="toggle">
           <input

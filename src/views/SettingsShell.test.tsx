@@ -91,7 +91,7 @@ describe("SettingsShell", () => {
     expect(
       await screen.findByRole("heading", { name: "历史记录" }),
     ).toBeInTheDocument();
-    expect(mocks.queryHistory).toHaveBeenCalledWith({});
+    expect(mocks.queryHistory).toHaveBeenCalledWith({ limit: 10 });
 
     fireEvent.click(screen.getByRole("button", { name: "关于" }));
     expect(

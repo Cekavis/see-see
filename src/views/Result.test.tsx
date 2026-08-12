@@ -16,6 +16,8 @@ const nodeProcess = (
 
 const snapshot = (overrides: Partial<ResultSnapshot> = {}): ResultSnapshot => ({
   runId: "run-1",
+  modelConfigName: "视觉模型",
+  promptConfigName: "日语解析",
   state: "streaming",
   thinking: "",
   text: "逐步输出",
@@ -29,6 +31,24 @@ function renderResult(node: React.ReactNode) {
 }
 
 describe("Result", () => {
+  it("shows the model and prompt configurations used by the run", () => {
+    renderResult(<Result snapshot={snapshot()} />);
+
+    expect(screen.getByText("模型配置：视觉模型")).toBeInTheDocument();
+    expect(screen.getByText("提示词配置：日语解析")).toBeInTheDocument();
+  });
+
+  it("omits configuration metadata until the analysis attaches", () => {
+    renderResult(
+      <Result
+        snapshot={snapshot({ modelConfigName: "", promptConfigName: "" })}
+      />,
+    );
+
+    expect(screen.queryByText(/模型配置：/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/提示词配置：/)).not.toBeInTheDocument();
+  });
+
   it("keeps the footer visible while the result text scrolls", () => {
     const styles = nodeProcess
       .getBuiltinModule("node:fs")

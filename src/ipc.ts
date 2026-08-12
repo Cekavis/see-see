@@ -63,6 +63,8 @@ export type CaptureSessionSummary = {
 
 export type AnalysisSnapshot = {
   runId: string;
+  modelConfigName: string;
+  promptConfigName: string;
   state: "submitting" | "streaming" | "completed" | "failed" | "cancelled";
   thinking: string;
   text: string;
@@ -71,7 +73,12 @@ export type AnalysisSnapshot = {
 };
 
 export type AnalysisEvent =
-  | { type: "started"; runId: string }
+  | {
+      type: "started";
+      runId: string;
+      modelConfigName: string;
+      promptConfigName: string;
+    }
   | { type: "thinkingDelta"; runId: string; text: string }
   | { type: "delta"; runId: string; text: string }
   | {

@@ -86,14 +86,18 @@ function useImage(
   return url;
 }
 
-function Thumbnail({ api, item }: { api: HistoryApi; item: HistoryListItem }) {
+function HistoryImage({
+  api,
+  item,
+}: {
+  api: HistoryApi;
+  item: HistoryListItem;
+}) {
   const notifications = useNotifications();
-  const url = useImage(api, item, "thumbnail", notifications.error);
+  const url = useImage(api, item, "original", notifications.error);
   return url ? (
-    <img className="history-item__thumbnail" src={url} alt="截图缩略图" />
-  ) : (
-    <div className="history-item__thumbnail history-item__thumbnail--empty" />
-  );
+    <img className="history-item__image" src={url} alt="原始截图" />
+  ) : null;
 }
 
 export function History({ api = ipc }: { api?: HistoryApi }) {
@@ -103,6 +107,11 @@ export function History({ api = ipc }: { api?: HistoryApi }) {
   const restoreListScroll = useRef(false);
   const [items, setItems] = useState<HistoryListItem[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [pageSize, setPageSize] = useState(10);
+  const [pageIndex, setPageIndex] = useState(0);
+  const [pageCursors, setPageCursors] = useState<(string | undefined)[]>([
+    undefined,
+  ]);
   const [text, setText] = useState("");
   const [promptName, setPromptName] = useState("");
   const [status, setStatus] = useState<"" | "success" | "failed">("");
@@ -165,30 +174,31 @@ export function History({ api = ipc }: { api?: HistoryApi }) {
   }, [api, detail, notifications]);
 
   const query = useCallback(
-    (cursor?: string, append = false) => {
+    (cursor?: string, targetPage = 0, limit = pageSize) => {
       const value: HistoryQuery = {
         text: text || undefined,
         promptName: promptName || undefined,
         status: status || undefined,
         cursor,
+        limit,
       };
       return api
         .queryHistory(value)
         .then((page) => {
-          setItems((current) =>
-            append ? [...current, ...page.items] : page.items,
-          );
+          setItems(page.items);
           setNextCursor(page.nextCursor);
+          setPageIndex(targetPage);
+          if (targetPage === 0) setPageCursors([undefined]);
         })
         .catch((value: AppError) => notifications.error(value.message));
     },
-    [api, notifications, promptName, status, text],
+    [api, notifications, pageSize, promptName, status, text],
   );
 
   useEffect(() => {
     function load() {
       void api
-        .queryHistory({})
+        .queryHistory({ limit: 10 })
         .then((page) => {
           setItems(page.items);
           setNextCursor(page.nextCursor);
@@ -406,7 +416,7 @@ export function History({ api = ipc }: { api?: HistoryApi }) {
             <option value="failed">失败</option>
           </select>
         </label>
-        <Button variant="primary" onClick={() => void query()}>
+        <Button variant="primary" onClick={() => void query(undefined, 0)}>
           搜索
         </Button>
       </section>
@@ -419,11 +429,11 @@ export function History({ api = ipc }: { api?: HistoryApi }) {
           ) : (
             items.map((item) => (
               <article className="history-item" key={item.id}>
-                <Thumbnail api={api} item={item} />
+                <HistoryImage api={api} item={item} />
                 <div className="history-item__content">
                   <p className="history-item__meta">
                     {item.status === "success" ? "成功" : "失败"} ·{" "}
-                    {item.promptName} ·{" "}
+                    {item.modelConfigName} · {item.promptName} ·{" "}
                     {new Date(item.startedAt).toLocaleString()}
                   </p>
                   <pre className="history-item__summary">
@@ -465,11 +475,47 @@ export function History({ api = ipc }: { api?: HistoryApi }) {
               </article>
             ))
           )}
-          {nextCursor && (
-            <Button onClick={() => void query(nextCursor, true)}>
-              加载更多
+          <nav className="history-pagination" aria-label="历史分页">
+            <label>
+              每页
+              <select
+                aria-label="每页条目数"
+                value={pageSize}
+                onChange={(event) => {
+                  const limit = Number(event.target.value);
+                  setPageSize(limit);
+                  void query(undefined, 0, limit);
+                }}
+              >
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+              </select>
+            </label>
+            <span>第 {pageIndex + 1} 页</span>
+            <Button
+              disabled={pageIndex === 0}
+              onClick={() =>
+                void query(pageCursors[pageIndex - 1], pageIndex - 1)
+              }
+            >
+              上一页
             </Button>
-          )}
+            <Button
+              disabled={!nextCursor}
+              onClick={() => {
+                if (!nextCursor) return;
+                setPageCursors((current) => {
+                  const cursors = current.slice(0, pageIndex + 1);
+                  cursors[pageIndex + 1] = nextCursor;
+                  return cursors;
+                });
+                void query(nextCursor, pageIndex + 1);
+              }}
+            >
+              下一页
+            </Button>
+          </nav>
         </section>
       </div>
       <ConfirmDialog
@@ -495,7 +541,7 @@ export function History({ api = ipc }: { api?: HistoryApi }) {
               .then(() => {
                 setDetail(null);
                 notifications.success("历史记录已清空");
-                void query();
+                void query(undefined, 0);
               })
               .catch((value: AppError) => notifications.error(value.message));
             return;
@@ -504,7 +550,7 @@ export function History({ api = ipc }: { api?: HistoryApi }) {
             .deleteHistoryEntry(target.item.id)
             .then(() => {
               notifications.success("历史记录已删除");
-              void query();
+              void query(undefined, 0);
             })
             .catch((value: AppError) => notifications.error(value.message));
         }}
