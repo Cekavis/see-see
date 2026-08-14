@@ -78,6 +78,12 @@ pub fn run() {
                 .build(),
         )
         .setup(|app| {
+            // See See 是驻留后台的托盘工具。以 accessory 策略运行后，结果窗口
+            // 才能在“其他应用独占的原生全屏 Space”上加入当前 Space，而不会
+            // 被 AppKit 拖回 See See 自己的 Desktop Space。
+            #[cfg(target_os = "macos")]
+            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+
             let directory = app.path().app_data_dir()?;
             std::fs::create_dir_all(&directory)?;
             let database_path = directory.join("see-see.sqlite3");

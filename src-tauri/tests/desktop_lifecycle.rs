@@ -9,9 +9,8 @@ use see_see_lib::{
         set_capture_shortcut_value,
     },
     windowing::{
-        WindowRole, ignores_window_cycle, is_stationary, joins_all_spaces, moves_to_active_space,
-        policy_for, result_run_id, result_window_label, result_window_size,
-        supports_full_screen_space,
+        WindowRole, ignores_window_cycle, is_stationary, joins_all_spaces, policy_for,
+        result_run_id, result_window_label, result_window_size, supports_full_screen_space,
     },
 };
 use std::cell::RefCell;
@@ -214,15 +213,13 @@ fn macos_login_item_status_requires_explicit_approval() {
 fn macos_capture_and_result_windows_use_distinct_space_policies() {
     let capture = policy_for(WindowRole::CaptureOverlay);
     assert!(joins_all_spaces(capture));
-    assert!(!moves_to_active_space(capture));
     assert!(supports_full_screen_space(capture));
     assert!(is_stationary(capture));
     assert!(ignores_window_cycle(capture));
     assert!(capture.elevated_overlay_level);
 
     let result = policy_for(WindowRole::Result);
-    assert!(!joins_all_spaces(result));
-    assert!(moves_to_active_space(result));
+    assert!(joins_all_spaces(result));
     assert!(supports_full_screen_space(result));
     assert!(!is_stationary(result));
     assert!(!ignores_window_cycle(result));

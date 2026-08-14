@@ -8,7 +8,6 @@ const RESULT_MIN_HEIGHT: f64 = 360.0;
 const RESULT_WINDOW_PREFIX: &str = "result-";
 
 const CAN_JOIN_ALL_SPACES: usize = 1 << 0;
-const MOVE_TO_ACTIVE_SPACE: usize = 1 << 1;
 const STATIONARY: usize = 1 << 4;
 const IGNORES_CYCLE: usize = 1 << 6;
 const FULL_SCREEN_AUXILIARY: usize = 1 << 8;
@@ -62,7 +61,7 @@ pub fn policy_for(role: WindowRole) -> WindowPolicy {
             elevated_overlay_level: true,
         },
         WindowRole::Result => WindowPolicy {
-            collection_behavior: MOVE_TO_ACTIVE_SPACE | FULL_SCREEN_AUXILIARY,
+            collection_behavior: CAN_JOIN_ALL_SPACES | FULL_SCREEN_AUXILIARY,
             elevated_overlay_level: false,
         },
     }
@@ -70,10 +69,6 @@ pub fn policy_for(role: WindowRole) -> WindowPolicy {
 
 pub fn joins_all_spaces(policy: WindowPolicy) -> bool {
     policy.collection_behavior & CAN_JOIN_ALL_SPACES != 0
-}
-
-pub fn moves_to_active_space(policy: WindowPolicy) -> bool {
-    policy.collection_behavior & MOVE_TO_ACTIVE_SPACE != 0
 }
 
 pub fn supports_full_screen_space(policy: WindowPolicy) -> bool {
