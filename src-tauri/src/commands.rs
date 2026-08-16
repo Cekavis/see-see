@@ -340,7 +340,7 @@ fn start_analysis(app: AppHandle, input: AnalysisInput) -> Result<AnalysisStarte
             .analysis = None;
         return Err(error);
     }
-    let http = state.http.clone();
+    let http = http_client(&state)?;
     analysis::start_network_analysis(app, active, input, http);
     Ok(AnalysisStarted { run_id })
 }
@@ -419,9 +419,16 @@ pub fn cancel_analysis(app: AppHandle, run_id: String) -> Result<(), AppError> {
 #[tauri::command]
 pub fn retry_analysis(app: AppHandle, run_id: String) -> Result<(), AppError> {
     let active = active_analysis(&app, &run_id)?;
-    let input = analysis_input_for_image(&app.state::<AppState>(), active.image_png())?;
+    let state = app.state::<AppState>();
+    let input = analysis_input_for_image(&state, active.image_png())?;
     let http = providers::client()?;
+    let mut shared_http = state
+        .http
+        .lock()
+        .map_err(|_| AppError::storage("模型连接状态不可用"))?;
     active.reset_for_retry(input.model.name.clone(), input.prompt.name.clone())?;
+    *shared_http = http.clone();
+    drop(shared_http);
     analysis::start_network_analysis(app, active, input, http);
     Ok(())
 }
@@ -525,7 +532,8 @@ pub async fn list_remote_models(
 ) -> Result<Vec<RemoteModel>, AppError> {
     let state = app.state::<AppState>();
     let key = connection_key(&state, &draft)?;
-    providers::list_models(&state.http, draft.protocol, &draft.base_url, key.as_ref()).await
+    let http = http_client(&state)?;
+    providers::list_models(&http, draft.protocol, &draft.base_url, key.as_ref()).await
 }
 
 #[tauri::command]
@@ -539,8 +547,9 @@ pub async fn test_model_config(
     }
     let state = app.state::<AppState>();
     let key = connection_key(&state, &draft)?;
+    let http = http_client(&state)?;
     Ok(providers::test_connection(
-        &state.http,
+        &http,
         ProviderRequest {
             protocol: draft.protocol,
             base_url: draft.base_url,
@@ -552,6 +561,14 @@ pub async fn test_model_config(
         },
     )
     .await)
+}
+
+fn http_client(state: &AppState) -> Result<reqwest::Client, AppError> {
+    Ok(state
+        .http
+        .lock()
+        .map_err(|_| AppError::storage("模型连接状态不可用"))?
+        .clone())
 }
 
 #[tauri::command]

@@ -96,7 +96,7 @@ impl RuntimeState {
 
 pub struct AppState {
     pub database: Database,
-    pub http: Client,
+    pub http: Mutex<Client>,
     pub runtime: Mutex<RuntimeState>,
 }
 
@@ -108,7 +108,7 @@ impl AppState {
         crate::settings::migrate_model_credentials(&database, credentials.as_ref())?;
         Ok(Self {
             database,
-            http: client()?,
+            http: Mutex::new(client()?),
             runtime: Mutex::new(RuntimeState::default()),
         })
     }
