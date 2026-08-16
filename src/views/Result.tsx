@@ -168,7 +168,7 @@ export function Result({
             取消分析
           </Button>
         )}
-        {snapshot.state === "failed" && snapshot.error?.retryable && (
+        {snapshot.state === "failed" && onRetry && (
           <Button
             variant="primary"
             disabled={retrying}

@@ -93,7 +93,7 @@ fn failed_requests_are_not_retried_and_storage_failure_keeps_result_available() 
 }
 
 #[test]
-fn retry_resets_only_retryable_failures_and_keeps_the_source_image() {
+fn retry_resets_all_failures_and_keeps_the_source_image() {
     let active = Arc::new(ActiveAnalysis::new(
         "run-5",
         vec![1, 2, 3],
@@ -102,7 +102,7 @@ fn retry_resets_only_retryable_failures_and_keeps_the_source_image() {
     ));
     active
         .fail(
-            see_see_lib::error::AppError::provider(ErrorCode::Timeout, "超时", true),
+            see_see_lib::error::AppError::provider(ErrorCode::AuthFailed, "认证失败", false),
             false,
         )
         .unwrap();
@@ -119,12 +119,7 @@ fn retry_resets_only_retryable_failures_and_keeps_the_source_image() {
     assert_eq!(active.image_png(), vec![1, 2, 3]);
 
     let terminal = ActiveAnalysis::new("run-6", vec![], "模型配置", "提示词配置");
-    terminal
-        .fail(
-            see_see_lib::error::AppError::provider(ErrorCode::AuthFailed, "认证失败", false),
-            false,
-        )
-        .unwrap();
+    terminal.complete(false).unwrap();
     assert!(
         terminal
             .reset_for_retry("重试模型配置", "重试提示词配置")

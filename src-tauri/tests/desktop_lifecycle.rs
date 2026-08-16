@@ -50,6 +50,35 @@ fn result_navigation_uses_the_run_specific_window_command() {
 }
 
 #[test]
+fn retry_analysis_creates_a_fresh_http_client_before_resetting() {
+    let commands = include_str!("../src/commands.rs");
+    let initial = commands
+        .split_once("fn start_analysis(")
+        .unwrap()
+        .1
+        .split_once("fn analysis_input_for_image(")
+        .unwrap()
+        .0;
+    assert!(initial.contains("let http = state.http.clone();"));
+
+    let retry = commands
+        .split_once("pub fn retry_analysis(")
+        .unwrap()
+        .1
+        .split_once("pub fn close_result(")
+        .unwrap()
+        .0;
+    let create = retry.find("let http = providers::client()?;").unwrap();
+    let reset = retry.find("active.reset_for_retry(").unwrap();
+    let start = retry
+        .find("start_network_analysis(app, active, input, http)")
+        .unwrap();
+
+    assert!(create < reset);
+    assert!(reset < start);
+}
+
+#[test]
 fn result_navigation_closes_only_after_a_terminal_state_check() {
     let commands = include_str!("../src/commands.rs");
     let navigation = commands

@@ -5,6 +5,7 @@ use crate::{
     settings::{ModelSnapshot, PromptSnapshot},
     state::{AnalysisState, AppState},
 };
+use reqwest::Client;
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
@@ -295,9 +296,7 @@ impl ActiveAnalysis {
     ) -> Result<(), AppError> {
         let mut run = self.lock_run()?;
         let snapshot = run.snapshot();
-        if snapshot.state != AnalysisState::Failed
-            || !snapshot.error.is_some_and(|error| error.retryable)
-        {
+        if snapshot.state != AnalysisState::Failed {
             return Err(AppError::invalid("当前分析不可重试"));
         }
         *run = AnalysisRun::new(snapshot.run_id, model_config_name, prompt_config_name);
@@ -329,7 +328,12 @@ pub struct AnalysisInput {
     pub started_at: String,
 }
 
-pub fn start_network_analysis(app: AppHandle, active: Arc<ActiveAnalysis>, input: AnalysisInput) {
+pub fn start_network_analysis(
+    app: AppHandle,
+    active: Arc<ActiveAnalysis>,
+    input: AnalysisInput,
+    http: Client,
+) {
     tauri::async_runtime::spawn(async move {
         let _ = active.started();
         let request = ProviderRequest {
@@ -343,7 +347,7 @@ pub fn start_network_analysis(app: AppHandle, active: Arc<ActiveAnalysis>, input
         };
         let state = app.state::<AppState>();
         let mut cancelled = active.cancel_receiver();
-        let stream = stream_text(&state.http, &request, |event| match event {
+        let stream = stream_text(&http, &request, |event| match event {
             ProviderEvent::ThinkingDelta(text) => {
                 let _ = active.push_thinking(text);
             }

@@ -197,7 +197,7 @@ describe("Result", () => {
               code: "timeout",
               message: "请求超时",
               details: "HTTP 504\nupstream timeout",
-              retryable: true,
+              retryable: false,
             },
           })}
           onRetry={onRetry}

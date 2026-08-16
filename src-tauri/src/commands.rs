@@ -340,7 +340,8 @@ fn start_analysis(app: AppHandle, input: AnalysisInput) -> Result<AnalysisStarte
             .analysis = None;
         return Err(error);
     }
-    analysis::start_network_analysis(app, active, input);
+    let http = state.http.clone();
+    analysis::start_network_analysis(app, active, input, http);
     Ok(AnalysisStarted { run_id })
 }
 
@@ -419,8 +420,9 @@ pub fn cancel_analysis(app: AppHandle, run_id: String) -> Result<(), AppError> {
 pub fn retry_analysis(app: AppHandle, run_id: String) -> Result<(), AppError> {
     let active = active_analysis(&app, &run_id)?;
     let input = analysis_input_for_image(&app.state::<AppState>(), active.image_png())?;
+    let http = providers::client()?;
     active.reset_for_retry(input.model.name.clone(), input.prompt.name.clone())?;
-    analysis::start_network_analysis(app, active, input);
+    analysis::start_network_analysis(app, active, input, http);
     Ok(())
 }
 
