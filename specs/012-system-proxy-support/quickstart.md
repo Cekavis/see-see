@@ -40,3 +40,9 @@ Expected: all commands pass and signed Windows installers plus updater artifacts
 5. Check for an application update.
 6. Confirm the proxy observes the requests and all operations complete.
 7. Disable the system proxy, relaunch See See, and confirm direct model requests still work.
+
+## Release verification
+
+- Release workflow `32613863665` completed successfully on 2026-08-23.
+- `v0.11.0` was published as the latest release.
+- The published release contains `latest.json`, signed Windows MSI and NSIS updater assets, Apple Silicon and Intel macOS DMG/app updater assets, and source archives.

@@ -59,8 +59,8 @@
 - [x] T008 Synchronize version 0.11.0 in `package.json`, `package-lock.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`, and `src-tauri/tauri.conf.json`
 - [x] T009 Run formatting, lint, frontend tests/build, Rust tests, release configuration checks, and dependency feature verification across the repository
 - [x] T010 Produce signed Windows release bundles with `npm run tauri build` and install the generated installer locally
-- [ ] T011 Inspect final status and diff, commit the complete change atomically, push `master`, create annotated tag `v0.11.0`, and push the tag
-- [ ] T012 Monitor `.github/workflows/release.yml` until the GitHub Release is published with all expected Windows and macOS assets
+- [x] T011 Inspect final status and diff, commit the complete change atomically, push `master`, create annotated tag `v0.11.0`, and push the tag
+- [x] T012 Monitor `.github/workflows/release.yml` until the GitHub Release is published with all expected Windows and macOS assets
 
 ---
 

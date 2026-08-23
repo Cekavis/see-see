@@ -4,7 +4,7 @@
 
 **Created**: 2026-08-23
 
-**Status**: Draft
+**Status**: Published
 
 **Input**: User description: "改成接受系统代理，然后发布release"
 
