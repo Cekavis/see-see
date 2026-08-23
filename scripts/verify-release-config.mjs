@@ -23,6 +23,16 @@ assert.ok(packageJson.dependencies["@tauri-apps/plugin-updater"]);
 assert.ok(packageJson.dependencies["@tauri-apps/plugin-process"]);
 assert.match(cargo, /^tauri-plugin-updater = "2"$/m);
 assert.match(cargo, /^tauri-plugin-process = "2"$/m);
+assert.match(
+  cargo,
+  /^reqwest = \{ version = "0\.12", default-features = false, features = \[[^\]]*"system-proxy"[^\]]*\] \}$/m,
+  "the model client must enable operating-system proxy discovery",
+);
+assert.match(
+  cargo,
+  /^reqwest-updater = \{ package = "reqwest", version = "0\.13", default-features = false, features = \["system-proxy"\] \}$/m,
+  "the updater client must enable operating-system proxy discovery",
+);
 
 for (const required of [
   "TAURI_SIGNING_PRIVATE_KEY",

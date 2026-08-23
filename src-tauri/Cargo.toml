@@ -1,6 +1,6 @@
 [package]
 name = "see-see"
-version = "0.10.2"
+version = "0.11.0"
 description = "See See multimodal screenshot translator"
 authors = ["See See contributors"]
 edition = "2024"
@@ -34,7 +34,8 @@ futures-util = "0.3"
 image = "0.25"
 keyring = "3"
 log = "0.4"
-reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "native-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "native-tls", "system-proxy"] }
+reqwest-updater = { package = "reqwest", version = "0.13", default-features = false, features = ["system-proxy"] }
 rusqlite = { version = "0.37", features = ["bundled"] }
 secrecy = "0.10"
 serde = { version = "1", features = ["derive"] }
