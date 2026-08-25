@@ -84,7 +84,7 @@ export function Result({
         <div>
           <h1>识别结果</h1>
           <p aria-live="polite">
-            {snapshot.state === "submitting" && "正在提交图片…"}
+            {snapshot.state === "submitting" && "等待模型首字…"}
             {snapshot.state === "streaming" && "模型正在输出…"}
             {snapshot.state === "completed" &&
               (snapshot.savedToHistory ? "已完成并保存到历史" : "已完成")}

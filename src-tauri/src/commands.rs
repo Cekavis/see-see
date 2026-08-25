@@ -340,7 +340,7 @@ fn start_analysis(app: AppHandle, input: AnalysisInput) -> Result<AnalysisStarte
             .analysis = None;
         return Err(error);
     }
-    let http = http_client(&state)?;
+    let http = providers::streaming_client()?;
     analysis::start_network_analysis(app, active, input, http);
     Ok(AnalysisStarted { run_id })
 }
@@ -421,14 +421,8 @@ pub fn retry_analysis(app: AppHandle, run_id: String) -> Result<(), AppError> {
     let active = active_analysis(&app, &run_id)?;
     let state = app.state::<AppState>();
     let input = analysis_input_for_image(&state, active.image_png())?;
-    let http = providers::client()?;
-    let mut shared_http = state
-        .http
-        .lock()
-        .map_err(|_| AppError::storage("模型连接状态不可用"))?;
+    let http = providers::streaming_client()?;
     active.reset_for_retry(input.model.name.clone(), input.prompt.name.clone())?;
-    *shared_http = http.clone();
-    drop(shared_http);
     analysis::start_network_analysis(app, active, input, http);
     Ok(())
 }

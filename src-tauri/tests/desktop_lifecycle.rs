@@ -50,7 +50,7 @@ fn result_navigation_uses_the_run_specific_window_command() {
 }
 
 #[test]
-fn retry_analysis_replaces_the_shared_http_client_for_future_requests() {
+fn analysis_uses_a_streaming_client_without_changing_model_request_client() {
     let commands = include_str!("../src/commands.rs");
     let initial = commands
         .split_once("fn start_analysis(")
@@ -59,7 +59,7 @@ fn retry_analysis_replaces_the_shared_http_client_for_future_requests() {
         .split_once("fn analysis_input_for_image(")
         .unwrap()
         .0;
-    assert!(initial.contains("let http = http_client(&state)?;"));
+    assert!(initial.contains("let http = providers::streaming_client()?;"));
 
     let retry = commands
         .split_once("pub fn retry_analysis(")
@@ -68,20 +68,16 @@ fn retry_analysis_replaces_the_shared_http_client_for_future_requests() {
         .split_once("pub fn close_result(")
         .unwrap()
         .0;
-    let create = retry.find("let http = providers::client()?;").unwrap();
-    let lock = retry.find("let mut shared_http = state").unwrap();
+    let create = retry
+        .find("let http = providers::streaming_client()?;")
+        .unwrap();
     let reset = retry.find("active.reset_for_retry(").unwrap();
-    let replace = retry.find("*shared_http = http.clone();").unwrap();
-    let unlock = retry.find("drop(shared_http);").unwrap();
     let start = retry
         .find("start_network_analysis(app, active, input, http)")
         .unwrap();
 
-    assert!(create < lock);
-    assert!(lock < reset);
-    assert!(reset < replace);
-    assert!(replace < unlock);
-    assert!(unlock < start);
+    assert!(create < reset);
+    assert!(reset < start);
 
     let model_requests = commands
         .split_once("pub async fn list_remote_models(")

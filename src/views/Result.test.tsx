@@ -97,6 +97,17 @@ describe("Result", () => {
     expect(onAlwaysOnTop).toHaveBeenCalledWith(false);
   });
 
+  it("shows a first-token wait while the request is being submitted", () => {
+    renderResult(
+      <Result
+        snapshot={snapshot({ state: "submitting", thinking: "", text: "" })}
+      />,
+    );
+
+    expect(screen.getByText("等待模型首字…")).toBeInTheDocument();
+    expect(screen.getByText("等待模型返回文字…")).toBeInTheDocument();
+  });
+
   it("keeps the main-window action available in active and terminal states", () => {
     const onOpenMain = vi.fn();
     const { rerender } = renderResult(

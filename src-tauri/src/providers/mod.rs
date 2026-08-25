@@ -294,11 +294,22 @@ pub async fn list_models(
 }
 
 pub fn client() -> Result<Client, AppError> {
-    Client::builder()
+    build_client(Some(Duration::from_secs(60)))
+}
+
+pub fn streaming_client() -> Result<Client, AppError> {
+    build_client(None)
+}
+
+fn build_client(read_timeout: Option<Duration>) -> Result<Client, AppError> {
+    let mut builder = Client::builder()
         .redirect(Policy::none())
         .connect_timeout(Duration::from_secs(10))
-        .read_timeout(Duration::from_secs(60))
-        .timeout(Duration::from_secs(300))
+        .timeout(Duration::from_secs(300));
+    if let Some(read_timeout) = read_timeout {
+        builder = builder.read_timeout(read_timeout);
+    }
+    builder
         .build()
         .map_err(|_| AppError::provider(ErrorCode::ProviderError, "无法创建网络客户端", false))
 }
@@ -341,8 +352,11 @@ pub async fn stream_text(
     let mut tag_parser = ThinkTagParser::default();
     let mut stream = response.bytes_stream().eventsource();
     while let Some(event) = stream.next().await {
-        let event = event
-            .map_err(|_| AppError::provider(ErrorCode::ProviderError, "模型流格式无效", true))?;
+        let event = event.map_err(|error| match error {
+            eventsource_stream::EventStreamError::Transport(error) => map_reqwest_error(error),
+            error => AppError::provider(ErrorCode::ProviderError, "模型流格式无效", true)
+                .with_details(error.to_string()),
+        })?;
         for normalized in parse_stream_event(
             request.protocol,
             (!event.event.is_empty()).then_some(event.event.as_str()),
@@ -593,4 +607,80 @@ pub fn normalize_png(bytes: &[u8]) -> Result<Vec<u8>, AppError> {
         "截图超过模型共同限制",
         false,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{
+        io::{Read, Write},
+        net::TcpListener,
+        thread,
+    };
+
+    fn delayed_sse_server(delay: Duration) -> (String, thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let handle = thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            let mut request = [0; 8 * 1024];
+            let _ = socket.read(&mut request);
+            socket
+                .write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\nConnection: keep-alive\r\n\r\n",
+                )
+                .unwrap();
+            socket.flush().unwrap();
+            thread::sleep(delay);
+            let body =
+                b"data: {\"choices\":[{\"delta\":{\"content\":\"OK\"}}]}\n\ndata: [DONE]\n\n";
+            let chunk = format!("{:X}\r\n", body.len());
+            let _ = socket.write_all(chunk.as_bytes());
+            let _ = socket.write_all(body);
+            let _ = socket.write_all(b"\r\n0\r\n\r\n");
+        });
+        (format!("http://{address}/v1"), handle)
+    }
+
+    fn delayed_request(base_url: String) -> ProviderRequest {
+        ProviderRequest {
+            protocol: ProviderProtocol::OpenAi,
+            base_url,
+            model_id: "vision-model".into(),
+            api_key: None,
+            prompt: "OK".into(),
+            image_png: connection_test_png(),
+            stream: true,
+        }
+    }
+
+    #[tokio::test]
+    async fn streaming_client_allows_a_long_first_token_wait() {
+        let (base_url, server) = delayed_sse_server(Duration::from_millis(50));
+        let answer = stream_text(
+            &streaming_client().unwrap(),
+            &delayed_request(base_url),
+            |_| {},
+        )
+        .await
+        .unwrap();
+
+        server.join().unwrap();
+        assert_eq!(answer, "OK");
+    }
+
+    #[tokio::test]
+    async fn stream_transport_timeouts_are_classified_as_timeouts() {
+        let (base_url, server) = delayed_sse_server(Duration::from_millis(50));
+        let error = stream_text(
+            &build_client(Some(Duration::from_millis(10))).unwrap(),
+            &delayed_request(base_url),
+            |_| {},
+        )
+        .await
+        .unwrap_err();
+
+        server.join().unwrap();
+        assert_eq!(error.code, ErrorCode::Timeout);
+    }
 }
