@@ -125,6 +125,7 @@ export function History({ api = ipc }: { api?: HistoryApi }) {
   const [confirmation, setConfirmation] = useState<
     { kind: "entry"; item: HistoryListItem } | { kind: "all" } | null
   >(null);
+  const skipInitialFilterQuery = useRef(true);
   const imageUrl = useImage(api, detail, "original", notifications.error);
 
   useLayoutEffect(() => {
@@ -211,6 +212,14 @@ export function History({ api = ipc }: { api?: HistoryApi }) {
     }
     load();
   }, [api, notifications]);
+
+  useEffect(() => {
+    if (skipInitialFilterQuery.current) {
+      skipInitialFilterQuery.current = false;
+      return;
+    }
+    void query(undefined, 0);
+  }, [promptName, query, status, text]);
 
   useEffect(() => {
     let active = true;
@@ -416,8 +425,15 @@ export function History({ api = ipc }: { api?: HistoryApi }) {
             <option value="failed">失败</option>
           </select>
         </label>
-        <Button variant="primary" onClick={() => void query(undefined, 0)}>
-          搜索
+        <Button
+          disabled={!hasFilters}
+          onClick={() => {
+            setText("");
+            setPromptName("");
+            setStatus("");
+          }}
+        >
+          清除搜索
         </Button>
       </section>
       <div className="history-layout">
@@ -484,7 +500,6 @@ export function History({ api = ipc }: { api?: HistoryApi }) {
                 onChange={(event) => {
                   const limit = Number(event.target.value);
                   setPageSize(limit);
-                  void query(undefined, 0, limit);
                 }}
               >
                 <option value={10}>10</option>

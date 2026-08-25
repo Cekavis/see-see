@@ -248,7 +248,6 @@ describe("History", () => {
     fireEvent.change(screen.getByLabelText("状态"), {
       target: { value: "success" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "搜索" }));
     await waitFor(() =>
       expect(service.queryHistory).toHaveBeenLastCalledWith(
         expect.objectContaining({ text: "旅行", status: "success" }),
@@ -298,6 +297,42 @@ describe("History", () => {
     expect(screen.getByText("旅行：旅行")).toBeInTheDocument();
     expect(scrollContainer.scrollTop).toBe(240);
     expect(service.queryHistory).toHaveBeenCalledTimes(queryCount);
+  });
+
+  it("updates results when filters change and clears all filters", async () => {
+    const service = api();
+    renderHistory(service);
+    expect(await screen.findByText("旅行：旅行")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("搜索结果"), {
+      target: { value: "旅行" },
+    });
+    await waitFor(() =>
+      expect(service.queryHistory).toHaveBeenLastCalledWith(
+        expect.objectContaining({ text: "旅行" }),
+      ),
+    );
+
+    fireEvent.change(screen.getByLabelText("提示词"), {
+      target: { value: "日语" },
+    });
+    fireEvent.change(screen.getByLabelText("状态"), {
+      target: { value: "success" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "清除搜索" }));
+
+    expect(screen.getByLabelText("搜索结果")).toHaveValue("");
+    expect(screen.getByLabelText("提示词")).toHaveValue("");
+    expect(screen.getByLabelText("状态")).toHaveValue("");
+    await waitFor(() =>
+      expect(service.queryHistory).toHaveBeenLastCalledWith({
+        text: undefined,
+        promptName: undefined,
+        status: undefined,
+        cursor: undefined,
+        limit: 10,
+      }),
+    );
   });
 
   it("keeps the list available when detail loading fails", async () => {
