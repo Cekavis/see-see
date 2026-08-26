@@ -1,6 +1,51 @@
 import { describe, expect, it } from "vitest";
 import type { AnalysisSnapshot } from "./ipc";
-import { updateAnalysisSnapshot } from "./App";
+import { shouldCloseWindowOnKeydown, updateAnalysisSnapshot } from "./App";
+
+const key = (overrides: Partial<KeyboardEvent> = {}) => ({
+  key: "",
+  code: "",
+  ctrlKey: false,
+  metaKey: false,
+  altKey: false,
+  shiftKey: false,
+  ...overrides,
+});
+
+describe("window close shortcuts", () => {
+  it("closes result windows with Escape or Ctrl+W", () => {
+    expect(
+      shouldCloseWindowOnKeydown("result-run-1", key({ key: "Escape" })),
+    ).toBe(true);
+    expect(
+      shouldCloseWindowOnKeydown(
+        "result-run-1",
+        key({ key: "w", ctrlKey: true }),
+      ),
+    ).toBe(true);
+  });
+
+  it("closes the main window with Ctrl+W only", () => {
+    expect(
+      shouldCloseWindowOnKeydown("main", key({ key: "w", ctrlKey: true })),
+    ).toBe(true);
+    expect(shouldCloseWindowOnKeydown("main", key({ key: "Escape" }))).toBe(
+      false,
+    );
+  });
+
+  it("ignores shortcuts for other windows and modified Escape", () => {
+    expect(
+      shouldCloseWindowOnKeydown("settings", key({ key: "w", ctrlKey: true })),
+    ).toBe(false);
+    expect(
+      shouldCloseWindowOnKeydown(
+        "result-run-1",
+        key({ key: "Escape", shiftKey: true }),
+      ),
+    ).toBe(false);
+  });
+});
 
 describe("analysis event state", () => {
   it("clears the previous failure when a retry starts", () => {

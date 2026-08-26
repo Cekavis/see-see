@@ -132,6 +132,32 @@ export function updateAnalysisSnapshot(
   };
 }
 
+type WindowShortcutEvent = Pick<
+  KeyboardEvent,
+  "key" | "code" | "ctrlKey" | "metaKey" | "altKey" | "shiftKey"
+>;
+
+export function shouldCloseWindowOnKeydown(
+  label: string,
+  event: WindowShortcutEvent,
+): boolean {
+  const resultWindow = isResultWindowLabel(label);
+  const escape =
+    resultWindow &&
+    (event.key === "Escape" || event.code === "Escape") &&
+    !event.ctrlKey &&
+    !event.metaKey &&
+    !event.altKey &&
+    !event.shiftKey;
+  const closeShortcut =
+    (label === "main" || resultWindow) &&
+    (event.key.toLowerCase() === "w" || event.code === "KeyW") &&
+    (event.ctrlKey || event.metaKey) &&
+    !event.altKey &&
+    !event.shiftKey;
+  return escape || closeShortcut;
+}
+
 function PlaceholderView({ label }: { label: string }) {
   return (
     <main className="app-shell">
@@ -141,7 +167,20 @@ function PlaceholderView({ label }: { label: string }) {
 }
 
 export function App() {
-  const label = getCurrentWebviewWindow().label;
+  const currentWindow = getCurrentWebviewWindow();
+  const label = currentWindow.label;
+
+  useEffect(() => {
+    const keydown = (event: KeyboardEvent) => {
+      if (!shouldCloseWindowOnKeydown(label, event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      void currentWindow.close();
+    };
+    window.addEventListener("keydown", keydown, true);
+    return () => window.removeEventListener("keydown", keydown, true);
+  }, [currentWindow, label]);
+
   if (label === "main") return <MainView />;
   if (label.startsWith("capture-")) return <CaptureView />;
   if (isResultWindowLabel(label)) return <ResultView />;
