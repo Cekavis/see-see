@@ -149,6 +149,10 @@ pub fn run() {
             if should_open_main_window(&args, autostart::launched_as_login_item()) {
                 show_main_window(app.handle());
             }
+            let main = app
+                .get_webview_window("main")
+                .ok_or_else(|| "主窗口不存在")?;
+            windowing::install_native_close_shortcuts(&main, false)?;
             Ok(())
         })
         .on_window_event(|window, event| {

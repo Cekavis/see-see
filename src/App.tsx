@@ -175,7 +175,9 @@ export function App() {
       if (!shouldCloseWindowOnKeydown(label, event)) return;
       event.preventDefault();
       event.stopPropagation();
-      void currentWindow.close();
+      void currentWindow.close().catch((error: unknown) => {
+        console.error("无法关闭窗口", error);
+      });
     };
     window.addEventListener("keydown", keydown, true);
     return () => window.removeEventListener("keydown", keydown, true);

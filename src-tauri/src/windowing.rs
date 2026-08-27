@@ -1,6 +1,72 @@
 use crate::error::AppError;
 use tauri::WebviewWindow;
 
+#[cfg(target_os = "windows")]
+pub fn install_native_close_shortcuts(
+    window: &WebviewWindow,
+    result: bool,
+) -> Result<(), AppError> {
+    use webview2_com::{
+        AcceleratorKeyPressedEventHandler,
+        Microsoft::Web::WebView2::Win32::{
+            COREWEBVIEW2_KEY_EVENT_KIND, COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN,
+        },
+    };
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        GetKeyState, VK_CONTROL, VK_ESCAPE, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT, VK_W,
+    };
+
+    let target = window.clone();
+    window
+        .with_webview(move |webview| {
+            let handler = AcceleratorKeyPressedEventHandler::create(Box::new(move |_, args| {
+                let Some(args) = args else {
+                    return Ok(());
+                };
+                let mut kind = COREWEBVIEW2_KEY_EVENT_KIND(0);
+                let mut key = 0;
+                unsafe {
+                    args.KeyEventKind(&mut kind)?;
+                    args.VirtualKey(&mut key)?;
+                }
+                if kind != COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN {
+                    return Ok(());
+                }
+                let ctrl_pressed = unsafe { GetKeyState(VK_CONTROL.0 as i32) < 0 };
+                let has_modifier = ctrl_pressed
+                    || unsafe { GetKeyState(VK_MENU.0 as i32) < 0 }
+                    || unsafe { GetKeyState(VK_SHIFT.0 as i32) < 0 }
+                    || unsafe { GetKeyState(VK_LWIN.0 as i32) < 0 }
+                    || unsafe { GetKeyState(VK_RWIN.0 as i32) < 0 };
+                let close = (key == VK_W.0 as u32 && ctrl_pressed)
+                    || (result && key == VK_ESCAPE.0 as u32 && !has_modifier);
+                if close {
+                    unsafe { args.SetHandled(true)? };
+                    let _ = target.close();
+                }
+                Ok(())
+            }));
+            let mut token = 0;
+            if let Err(error) = unsafe {
+                webview
+                    .controller()
+                    .add_AcceleratorKeyPressed(&handler, &mut token)
+            } {
+                log::error!("无法注册窗口原生快捷键: {error}");
+            }
+        })
+        .map_err(|_| AppError::invalid("无法配置窗口快捷键"))?;
+    Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn install_native_close_shortcuts(
+    _window: &WebviewWindow,
+    _result: bool,
+) -> Result<(), AppError> {
+    Ok(())
+}
+
 const RESULT_DEFAULT_WIDTH: f64 = 460.0;
 const RESULT_DEFAULT_HEIGHT: f64 = 500.0;
 const RESULT_MIN_WIDTH: f64 = 420.0;

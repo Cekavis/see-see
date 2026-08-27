@@ -904,6 +904,7 @@ fn create_result_window(app: &AppHandle, run_id: &str) -> Result<(), AppError> {
     .visible(false)
     .build()
     .map_err(|_| AppError::invalid("无法创建结果窗口"))?;
+    windowing::install_native_close_shortcuts(&window, true)?;
     windowing::present_result_window(&window)
 }
 
