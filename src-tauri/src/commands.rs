@@ -430,7 +430,14 @@ pub fn retry_analysis(app: AppHandle, run_id: String) -> Result<(), AppError> {
 #[tauri::command]
 pub fn close_result(app: AppHandle, run_id: String) -> Result<(), AppError> {
     let state = app.state::<AppState>();
-    let active = active_analysis(&app, &run_id)?;
+    let active = match active_analysis(&app, &run_id) {
+        Ok(active) => Some(active),
+        Err(error) if error.code == ErrorCode::NotFound => None,
+        Err(error) => return Err(error),
+    };
+    let Some(active) = active else {
+        return Ok(());
+    };
     if !active.snapshot()?.state.is_terminal() {
         active.cancel()?;
     }
@@ -445,15 +452,17 @@ pub fn close_result(app: AppHandle, run_id: String) -> Result<(), AppError> {
 #[tauri::command]
 pub fn open_main_window(app: AppHandle, run_id: String) -> Result<(), AppError> {
     focus_main(&app)?;
-    if active_analysis(&app, &run_id)?
-        .snapshot()?
-        .state
-        .is_terminal()
-    {
-        app.get_webview_window(&windowing::result_window_label(&run_id))
-            .ok_or_else(|| AppError::invalid("结果窗口不存在"))?
-            .close()
-            .map_err(|_| AppError::invalid("无法关闭结果窗口"))?;
+    let should_close_result = match active_analysis(&app, &run_id) {
+        Ok(active) => active.snapshot()?.state.is_terminal(),
+        Err(error) if error.code == ErrorCode::NotFound => true,
+        Err(error) => return Err(error),
+    };
+    if should_close_result {
+        if let Some(window) = app.get_webview_window(&windowing::result_window_label(&run_id)) {
+            window
+                .close()
+                .map_err(|_| AppError::invalid("无法关闭结果窗口"))?;
+        }
     }
     Ok(())
 }

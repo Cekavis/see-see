@@ -114,6 +114,30 @@ fn result_navigation_closes_only_after_a_terminal_state_check() {
 }
 
 #[test]
+fn stale_result_navigation_does_not_report_missing_analysis() {
+    let commands = include_str!("../src/commands.rs");
+    let navigation = commands
+        .split_once("pub fn open_main_window(")
+        .unwrap()
+        .1
+        .split_once("pub fn set_result_always_on_top(")
+        .unwrap()
+        .0;
+    assert!(navigation.contains("error.code == ErrorCode::NotFound"));
+    assert!(navigation.contains("Err(error) if error.code == ErrorCode::NotFound => true"));
+    assert!(navigation.contains("if let Some(window) = app.get_webview_window"));
+
+    let close = commands
+        .split_once("pub fn close_result(")
+        .unwrap()
+        .1
+        .split_once("pub fn open_main_window(")
+        .unwrap()
+        .0;
+    assert!(close.contains("Err(error) if error.code == ErrorCode::NotFound => None"));
+}
+
+#[test]
 fn capture_overlay_disables_undecorated_window_shadow() {
     let commands = include_str!("../src/commands.rs");
     let capture_windows = commands
