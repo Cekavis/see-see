@@ -8,7 +8,10 @@ use crate::{
 };
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::sync::{Arc, Mutex};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -37,7 +40,7 @@ impl AnalysisState {
 pub struct RuntimeState {
     pub capture: Option<CaptureSession>,
     pub capture_reservation: Option<String>,
-    pub analysis: Option<Arc<ActiveAnalysis>>,
+    pub analysis: HashMap<String, Arc<ActiveAnalysis>>,
 }
 
 impl RuntimeState {
@@ -81,16 +84,7 @@ impl RuntimeState {
     }
 
     pub fn take_analysis(&mut self, run_id: &str) -> Option<Arc<ActiveAnalysis>> {
-        let is_current = self.analysis.as_ref().is_some_and(|active| {
-            active
-                .snapshot()
-                .is_ok_and(|snapshot| snapshot.run_id == run_id)
-        });
-        if is_current {
-            self.analysis.take()
-        } else {
-            None
-        }
+        self.analysis.remove(run_id)
     }
 }
 
@@ -118,7 +112,7 @@ impl AppState {
 mod tests {
     use super::{AnalysisState, RuntimeState};
     use crate::{analysis::ActiveAnalysis, capture::CaptureSession};
-    use std::sync::Arc;
+    use std::{collections::HashMap, sync::Arc};
 
     #[test]
     fn wrong_capture_id_does_not_discard_active_session() {
@@ -129,7 +123,7 @@ mod tests {
                 selection: None,
             }),
             capture_reservation: None,
-            analysis: None,
+            analysis: HashMap::new(),
         };
 
         assert!(runtime.take_capture("stale").is_err());
@@ -155,15 +149,24 @@ mod tests {
     }
 
     #[test]
-    fn stale_result_window_cannot_take_current_analysis() {
-        let active = Arc::new(ActiveAnalysis::new(
-            "current",
+    fn result_windows_are_tracked_and_removed_by_run_id() {
+        let first = Arc::new(ActiveAnalysis::new(
+            "first",
             vec![],
             "模型配置",
             "提示词配置",
         ));
+        let second = Arc::new(ActiveAnalysis::new(
+            "second",
+            vec![],
+            "另一个模型配置",
+            "另一个提示词配置",
+        ));
         let mut runtime = RuntimeState {
-            analysis: Some(active.clone()),
+            analysis: HashMap::from([
+                (String::from("first"), first.clone()),
+                (String::from("second"), second.clone()),
+            ]),
             ..RuntimeState::default()
         };
 
@@ -171,11 +174,17 @@ mod tests {
         assert!(
             runtime
                 .analysis
-                .as_ref()
-                .is_some_and(|value| Arc::ptr_eq(value, &active))
+                .get("first")
+                .is_some_and(|value| Arc::ptr_eq(value, &first))
         );
-        assert!(runtime.take_analysis("current").is_some());
-        assert!(runtime.analysis.is_none());
+        assert!(runtime.take_analysis("first").is_some());
+        assert!(
+            runtime
+                .analysis
+                .get("second")
+                .is_some_and(|value| Arc::ptr_eq(value, &second))
+        );
+        assert_eq!(runtime.analysis.len(), 1);
     }
 
     #[test]

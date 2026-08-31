@@ -205,6 +205,7 @@ impl AnalysisRun {
 pub struct ActiveAnalysis {
     run: Mutex<AnalysisRun>,
     image_png: Vec<u8>,
+    request: Mutex<Option<AnalysisInput>>,
     listeners: Mutex<Vec<Channel<AnalysisEvent>>>,
     cancel: watch::Sender<bool>,
 }
@@ -216,6 +217,22 @@ impl ActiveAnalysis {
         model_config_name: impl Into<String>,
         prompt_config_name: impl Into<String>,
     ) -> Self {
+        Self::with_request(
+            run_id,
+            image_png,
+            model_config_name,
+            prompt_config_name,
+            None,
+        )
+    }
+
+    fn with_request(
+        run_id: impl Into<String>,
+        image_png: Vec<u8>,
+        model_config_name: impl Into<String>,
+        prompt_config_name: impl Into<String>,
+        request: Option<AnalysisInput>,
+    ) -> Self {
         let (cancel, _) = watch::channel(false);
         Self {
             run: Mutex::new(AnalysisRun::new(
@@ -224,9 +241,20 @@ impl ActiveAnalysis {
                 prompt_config_name,
             )),
             image_png,
+            request: Mutex::new(request),
             listeners: Mutex::new(Vec::new()),
             cancel,
         }
+    }
+
+    pub fn new_with_input(run_id: impl Into<String>, input: &AnalysisInput) -> Self {
+        Self::with_request(
+            run_id,
+            input.image_png.clone(),
+            input.model.name.clone(),
+            input.prompt.name.clone(),
+            Some(input.clone()),
+        )
     }
 
     pub fn image_png(&self) -> Vec<u8> {
@@ -289,6 +317,23 @@ impl ActiveAnalysis {
         self.cancel.subscribe()
     }
 
+    pub fn retry_input(&self) -> Result<AnalysisInput, AppError> {
+        let snapshot = self.snapshot()?;
+        if snapshot.state != AnalysisState::Failed {
+            return Err(AppError::invalid("当前分析不可重试"));
+        }
+        let request = self
+            .request
+            .lock()
+            .map_err(|_| AppError::storage("分析请求不可用"))?
+            .clone()
+            .ok_or_else(|| AppError::invalid("原始分析配置不可用"))?;
+        Ok(AnalysisInput {
+            started_at: now(),
+            ..request
+        })
+    }
+
     pub fn reset_for_retry(
         &self,
         model_config_name: impl Into<String>,
@@ -319,6 +364,7 @@ impl ActiveAnalysis {
     }
 }
 
+#[derive(Clone)]
 pub struct AnalysisInput {
     pub image_png: Vec<u8>,
     pub prompt: PromptSnapshot,

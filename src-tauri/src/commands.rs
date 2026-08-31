@@ -66,21 +66,13 @@ pub async fn begin_capture(app: AppHandle) -> Result<(), AppError> {
 pub async fn begin_capture_action(app: AppHandle) -> Result<(), AppError> {
     {
         let state = app.state::<AppState>();
-        let mut runtime = state
+        let runtime = state
             .runtime
             .lock()
             .map_err(|_| AppError::storage("运行状态不可用"))?;
         if runtime.capture_is_active() {
             return Err(already_running("截图正在进行"));
         }
-        if let Some(active) = &runtime.analysis {
-            let snapshot = active.snapshot()?;
-            if !snapshot.state.is_terminal() {
-                focus_result(&app, &snapshot.run_id);
-                return Err(already_running("已有分析正在进行"));
-            }
-        }
-        runtime.analysis = None;
         require_active_configuration(&state)?;
     }
     if let Err(error) = capture::require_screen_permission(capture::screen_permission_status()) {
@@ -114,13 +106,6 @@ async fn begin_native_region_capture(app: AppHandle) -> Result<(), AppError> {
             .runtime
             .lock()
             .map_err(|_| AppError::storage("运行状态不可用"))?;
-        if let Some(active) = &runtime.analysis {
-            let snapshot = active.snapshot()?;
-            if !snapshot.state.is_terminal() {
-                focus_result(&app, &snapshot.run_id);
-                return Err(already_running("已有分析正在进行"));
-            }
-        }
         runtime.reserve_capture(capture_id.clone())?;
     }
 
@@ -178,7 +163,7 @@ async fn begin_overlay_capture(app: AppHandle) -> Result<(), AppError> {
             .runtime
             .lock()
             .map_err(|_| AppError::storage("运行状态不可用"))?;
-        if runtime.capture.is_some() || runtime.analysis.is_some() {
+        if runtime.capture.is_some() {
             return Err(already_running("已有任务正在进行"));
         }
         runtime.capture = Some(session);
@@ -312,35 +297,23 @@ fn start_analysis_with_image(
 fn start_analysis(app: AppHandle, input: AnalysisInput) -> Result<AnalysisStarted, AppError> {
     let state = app.state::<AppState>();
     let run_id = Uuid::new_v4().to_string();
-    let active = Arc::new(ActiveAnalysis::new(
-        run_id.clone(),
-        input.image_png.clone(),
-        input.model.name.clone(),
-        input.prompt.name.clone(),
-    ));
+    let http = providers::streaming_client()?;
+    let active = Arc::new(ActiveAnalysis::new_with_input(&run_id, &input));
     {
         let mut runtime = state
             .runtime
             .lock()
             .map_err(|_| AppError::storage("运行状态不可用"))?;
-        if let Some(current) = &runtime.analysis {
-            let snapshot = current.snapshot()?;
-            if !snapshot.state.is_terminal() {
-                focus_result(&app, &snapshot.run_id);
-                return Err(already_running("已有分析正在进行"));
-            }
-        }
-        runtime.analysis = Some(active.clone());
+        runtime.analysis.insert(run_id.clone(), active.clone());
     }
     if let Err(error) = create_result_window(&app, &run_id) {
         state
             .runtime
             .lock()
             .map_err(|_| AppError::storage("运行状态不可用"))?
-            .analysis = None;
+            .take_analysis(&run_id);
         return Err(error);
     }
-    let http = providers::streaming_client()?;
     analysis::start_network_analysis(app, active, input, http);
     Ok(AnalysisStarted { run_id })
 }
@@ -419,8 +392,7 @@ pub fn cancel_analysis(app: AppHandle, run_id: String) -> Result<(), AppError> {
 #[tauri::command]
 pub fn retry_analysis(app: AppHandle, run_id: String) -> Result<(), AppError> {
     let active = active_analysis(&app, &run_id)?;
-    let state = app.state::<AppState>();
-    let input = analysis_input_for_image(&state, active.image_png())?;
+    let input = active.retry_input()?;
     let http = providers::streaming_client()?;
     active.reset_for_retry(input.model.name.clone(), input.prompt.name.clone())?;
     analysis::start_network_analysis(app, active, input, http);
@@ -783,9 +755,14 @@ pub async fn export_sanitized_logs(app: AppHandle) -> Result<ExportResult, AppEr
 
 #[tauri::command]
 pub fn quit_app(app: AppHandle) {
-    if let Ok(runtime) = app.state::<AppState>().runtime.lock()
-        && let Some(active) = &runtime.analysis
-    {
+    let actives = app
+        .state::<AppState>()
+        .runtime
+        .lock()
+        .ok()
+        .map(|runtime| runtime.analysis.values().cloned().collect::<Vec<_>>())
+        .unwrap_or_default();
+    for active in actives {
         let _ = active.cancel();
     }
     app.exit(0);
@@ -834,12 +811,7 @@ fn active_analysis(app: &AppHandle, run_id: &str) -> Result<Arc<ActiveAnalysis>,
         .map_err(|_| AppError::storage("运行状态不可用"))?;
     runtime
         .analysis
-        .as_ref()
-        .filter(|active| {
-            active
-                .snapshot()
-                .is_ok_and(|snapshot| snapshot.run_id == run_id)
-        })
+        .get(run_id)
         .cloned()
         .ok_or_else(|| AppError::new(ErrorCode::NotFound, "分析任务不存在", false, None))
 }
@@ -927,13 +899,6 @@ fn close_capture_windows(app: &AppHandle, summary: &CaptureSessionSummary) {
 
 fn capture_label(monitor_id: &str) -> String {
     format!("capture-{monitor_id}")
-}
-
-fn focus_result(app: &AppHandle, run_id: &str) {
-    if let Some(window) = app.get_webview_window(&windowing::result_window_label(run_id)) {
-        let _ = window.show();
-        let _ = window.set_focus();
-    }
 }
 
 fn focus_main(app: &AppHandle) -> Result<(), AppError> {

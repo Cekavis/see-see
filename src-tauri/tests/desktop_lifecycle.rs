@@ -96,6 +96,44 @@ fn analysis_uses_a_streaming_client_without_changing_model_request_client() {
 }
 
 #[test]
+fn analysis_requests_are_inserted_by_run_id_without_singleton_guards() {
+    let commands = include_str!("../src/commands.rs");
+    let start = commands
+        .split_once("fn start_analysis(")
+        .unwrap()
+        .1
+        .split_once("fn analysis_input_for_image(")
+        .unwrap()
+        .0;
+    assert!(start.contains("runtime.analysis.insert(run_id.clone(), active.clone())"));
+    assert!(!start.contains("if let Some(current) = &runtime.analysis"));
+
+    let capture = commands
+        .split_once("async fn begin_overlay_capture(")
+        .unwrap()
+        .1
+        .split_once("pub fn get_capture_frame(")
+        .unwrap()
+        .0;
+    assert!(capture.contains("if runtime.capture.is_some()"));
+    assert!(!capture.contains("runtime.analysis.is_some()"));
+}
+
+#[test]
+fn retry_uses_the_failed_run_snapshot_instead_of_current_configuration() {
+    let commands = include_str!("../src/commands.rs");
+    let retry = commands
+        .split_once("pub fn retry_analysis(")
+        .unwrap()
+        .1
+        .split_once("pub fn close_result(")
+        .unwrap()
+        .0;
+    assert!(retry.contains("active.retry_input()?"));
+    assert!(!retry.contains("analysis_input_for_image"));
+}
+
+#[test]
 fn result_navigation_closes_only_after_a_terminal_state_check() {
     let commands = include_str!("../src/commands.rs");
     let navigation = commands

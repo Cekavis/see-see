@@ -56,7 +56,15 @@ function ResultView() {
     };
     void ipc
       .attachAnalysis(runId, channel)
-      .then(setSnapshot)
+      .then((next) => {
+        if (next.runId !== runId) {
+          notifications.error("分析任务标识不匹配");
+          return;
+        }
+        setSnapshot((current) =>
+          mergeAttachedAnalysisSnapshot(current, next, runId),
+        );
+      })
       .catch((value: unknown) => notifications.error(getErrorMessage(value)));
     void ipc
       .getAppSnapshot()
@@ -130,6 +138,24 @@ export function updateAnalysisSnapshot(
     text: "",
     error: null,
   };
+}
+
+export function mergeAttachedAnalysisSnapshot(
+  current: AnalysisSnapshot,
+  attached: AnalysisSnapshot,
+  runId: string,
+): AnalysisSnapshot {
+  if (attached.runId !== runId || current.runId !== runId) return current;
+  const hasLiveUpdate =
+    current.state !== "submitting" ||
+    Boolean(
+      current.modelConfigName ||
+      current.promptConfigName ||
+      current.thinking ||
+      current.text ||
+      current.error,
+    );
+  return hasLiveUpdate ? current : attached;
 }
 
 type WindowShortcutEvent = Pick<

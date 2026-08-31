@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { AnalysisSnapshot } from "./ipc";
-import { shouldCloseWindowOnKeydown, updateAnalysisSnapshot } from "./App";
+import {
+  mergeAttachedAnalysisSnapshot,
+  shouldCloseWindowOnKeydown,
+  updateAnalysisSnapshot,
+} from "./App";
 
 const key = (overrides: Partial<KeyboardEvent> = {}) => ({
   key: "",
@@ -48,6 +52,42 @@ describe("window close shortcuts", () => {
 });
 
 describe("analysis event state", () => {
+  it("does not replace a window with an attached snapshot from another run", () => {
+    const current: AnalysisSnapshot = {
+      runId: "run-1",
+      modelConfigName: "模型一",
+      promptConfigName: "提示词一",
+      state: "streaming",
+      thinking: "",
+      text: "第一路",
+      savedToHistory: false,
+      error: null,
+    };
+    const attached = { ...current, runId: "run-2", text: "第二路" };
+
+    expect(mergeAttachedAnalysisSnapshot(current, attached, "run-1")).toBe(
+      current,
+    );
+  });
+
+  it("does not let an attach snapshot overwrite live updates", () => {
+    const current: AnalysisSnapshot = {
+      runId: "run-1",
+      modelConfigName: "模型配置",
+      promptConfigName: "提示词配置",
+      state: "streaming",
+      thinking: "",
+      text: "已收到增量",
+      savedToHistory: false,
+      error: null,
+    };
+    const attached = { ...current, state: "submitting" as const, text: "" };
+
+    expect(mergeAttachedAnalysisSnapshot(current, attached, "run-1")).toBe(
+      current,
+    );
+  });
+
   it("clears the previous failure when a retry starts", () => {
     const failed: AnalysisSnapshot = {
       runId: "run-1",

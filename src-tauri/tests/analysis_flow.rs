@@ -1,12 +1,15 @@
+use secrecy::{ExposeSecret, SecretString};
 use see_see_lib::{
-    analysis::{ActiveAnalysis, AnalysisEvent, AnalysisRun, AnalysisSnapshot},
+    analysis::{ActiveAnalysis, AnalysisEvent, AnalysisInput, AnalysisRun, AnalysisSnapshot},
     error::ErrorCode,
+    providers::ProviderProtocol,
+    settings::{ModelSnapshot, PromptSnapshot},
     state::AnalysisState,
 };
 use std::sync::Arc;
 
 #[test]
-fn analysis_has_one_active_run_and_one_terminal_event() {
+fn analysis_run_has_one_terminal_event() {
     let mut run = AnalysisRun::new("run-1", "模型配置", "提示词配置");
     assert_eq!(
         run.snapshot(),
@@ -46,6 +49,21 @@ fn analysis_has_one_active_run_and_one_terminal_event() {
     assert_eq!(run.snapshot().text, "你好");
     assert_eq!(run.snapshot().state, AnalysisState::Completed);
     assert_eq!(run.cancel().unwrap_err().code, ErrorCode::AlreadyRunning);
+}
+
+#[test]
+fn concurrent_analyses_keep_run_ids_and_streams_independent() {
+    let first = ActiveAnalysis::new("run-first", vec![], "模型一", "提示词一");
+    let second = ActiveAnalysis::new("run-second", vec![], "模型二", "提示词二");
+
+    first.started().unwrap();
+    second.started().unwrap();
+    first.push_text("第一路").unwrap();
+    second.push_text("第二路").unwrap();
+    assert_eq!(first.snapshot().unwrap().text, "第一路");
+    assert_eq!(second.snapshot().unwrap().text, "第二路");
+    assert_eq!(first.snapshot().unwrap().run_id, "run-first");
+    assert_eq!(second.snapshot().unwrap().run_id, "run-second");
 }
 
 #[test]
@@ -125,4 +143,51 @@ fn retry_resets_all_failures_and_keeps_the_source_image() {
             .reset_for_retry("重试模型配置", "重试提示词配置")
             .is_err()
     );
+}
+
+#[test]
+fn retry_uses_the_original_request_snapshot_after_configuration_changes() {
+    let input = AnalysisInput {
+        image_png: vec![9, 8, 7],
+        prompt: PromptSnapshot {
+            id: "prompt-original".into(),
+            name: "原提示词".into(),
+            body: "请按原提示词回答".into(),
+        },
+        model: ModelSnapshot {
+            id: "model-original".into(),
+            name: "原模型".into(),
+            protocol: ProviderProtocol::Anthropic,
+            base_url: "https://original.example/v1".into(),
+            model_id: "vision-original".into(),
+        },
+        api_key: Some(SecretString::from("original-secret")),
+        save_history: true,
+        started_at: "2026-08-31T00:00:00Z".into(),
+    };
+    let active = Arc::new(ActiveAnalysis::new_with_input("run-snapshot", &input));
+    active
+        .fail(
+            see_see_lib::error::AppError::provider(ErrorCode::Timeout, "超时", true),
+            true,
+        )
+        .unwrap();
+
+    let retry = active.retry_input().unwrap();
+    assert_eq!(retry.image_png, input.image_png);
+    assert_eq!(retry.prompt, input.prompt);
+    assert_eq!(retry.model, input.model);
+    assert_eq!(
+        retry.api_key.as_ref().unwrap().expose_secret(),
+        "original-secret"
+    );
+    assert_eq!(retry.save_history, input.save_history);
+    assert_ne!(retry.started_at, input.started_at);
+
+    active
+        .reset_for_retry(retry.model.name.clone(), retry.prompt.name.clone())
+        .unwrap();
+    assert_eq!(active.snapshot().unwrap().run_id, "run-snapshot");
+    assert_eq!(active.snapshot().unwrap().model_config_name, "原模型");
+    assert_eq!(active.snapshot().unwrap().prompt_config_name, "原提示词");
 }
