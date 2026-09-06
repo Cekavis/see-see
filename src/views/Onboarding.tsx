@@ -60,7 +60,7 @@ export function Onboarding({
     );
   const permissionReady = snapshot.screenPermission === "granted";
   const modelReady = Boolean(snapshot.activeModelConfigId);
-  const promptReady = Boolean(snapshot.activePromptId);
+  const promptReady = snapshot.promptCount > 0;
   const ready = permissionReady && modelReady && promptReady;
   const permissionMessage = permissionReady
     ? "屏幕权限已就绪"
@@ -138,7 +138,7 @@ export function Onboarding({
         </li>
         <li>
           <h2>3. 提示词</h2>
-          <p>{promptReady ? "已选择提示词" : "尚未选择提示词"}</p>
+          <p>{promptReady ? "已配置提示词" : "尚未添加提示词"}</p>
           <Button onClick={() => onSelectSection("prompts")}>管理提示词</Button>
         </li>
       </ol>

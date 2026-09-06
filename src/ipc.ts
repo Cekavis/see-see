@@ -22,8 +22,6 @@ export function getErrorMessage(
 
 export type AppSettings = {
   activeModelConfigId: string | null;
-  activePromptId: string | null;
-  captureShortcut: string;
   saveHistory: boolean;
   autostart: boolean;
   resultAlwaysOnTop: boolean;
@@ -34,7 +32,6 @@ export type AppSnapshot = {
   settings: AppSettings;
   promptCount: number;
   modelConfigCount: number;
-  activePromptId: string | null;
   activeModelConfigId: string | null;
   screenPermission: "granted" | "denied" | "unknown";
 };
@@ -134,7 +131,7 @@ export type PromptPreset = {
   name: string;
   body: string;
   isBuiltin: boolean;
-  isActive: boolean;
+  captureShortcut: string | null;
 };
 
 export type HistoryStatus = "success" | "failed";
@@ -173,7 +170,8 @@ export type HistoryEntryDetail = HistoryListItem & {
 
 export const ipc = {
   getAppSnapshot: () => invoke<AppSnapshot>("get_app_snapshot"),
-  beginCapture: () => invoke<void>("begin_capture"),
+  beginCapture: (promptId: string) =>
+    invoke<void>("begin_capture", { promptId }),
   getCaptureFrame: (sessionId: string, monitorId: string) =>
     invoke<ArrayBuffer>("get_capture_frame", { sessionId, monitorId }),
   showCaptureOverlay: (sessionId: string, monitorId: string) =>
@@ -214,7 +212,8 @@ export const ipc = {
     invoke<PromptPreset>("duplicate_prompt_preset", { id }),
   deletePromptPreset: (id: string) =>
     invoke<void>("delete_prompt_preset", { id }),
-  setActivePrompt: (id: string) => invoke<void>("set_active_prompt", { id }),
+  setPromptShortcut: (id: string, shortcut: string | null) =>
+    invoke<PromptPreset>("set_prompt_shortcut", { id, shortcut }),
   queryHistory: (query: HistoryQuery) =>
     invoke<HistoryPage>("query_history", { query }),
   getHistoryEntry: (id: string) =>
@@ -237,8 +236,6 @@ export const ipc = {
   setSaveHistory: (value: boolean) =>
     invoke<AppSettings>("set_save_history", { value }),
   getSettings: () => invoke<AppSettings>("get_settings"),
-  setCaptureShortcut: (shortcut: string) =>
-    invoke<AppSettings>("set_capture_shortcut", { shortcut }),
   setAutostart: (value: boolean) =>
     invoke<AppSettings>("set_autostart", { value }),
   openLoginItemsSettings: () => invoke<void>("open_login_items_settings"),

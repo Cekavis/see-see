@@ -13,8 +13,6 @@ use uuid::Uuid;
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
     pub active_model_config_id: Option<String>,
-    pub active_prompt_id: Option<String>,
-    pub capture_shortcut: String,
     pub save_history: bool,
     pub autostart: bool,
     pub result_always_on_top: bool,
@@ -27,7 +25,6 @@ pub struct AppSnapshot {
     pub settings: AppSettings,
     pub prompt_count: i64,
     pub model_config_count: i64,
-    pub active_prompt_id: Option<String>,
     pub active_model_config_id: Option<String>,
     pub screen_permission: crate::capture::ScreenPermission,
 }
@@ -55,7 +52,7 @@ pub struct PromptPreset {
     pub name: String,
     pub body: String,
     pub is_builtin: bool,
-    pub is_active: bool,
+    pub capture_shortcut: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -104,19 +101,17 @@ struct StoredModel {
 pub fn load_app_snapshot(database: &Database) -> Result<AppSnapshot, AppError> {
     database.read(|connection| {
         let settings = connection.query_row(
-            "SELECT active_model_config_id, active_prompt_id, capture_shortcut,
+            "SELECT active_model_config_id,
                     save_history, autostart, result_always_on_top, onboarding_completed
              FROM app_settings WHERE id = 1",
             [],
             |row| {
                 Ok(AppSettings {
                     active_model_config_id: row.get(0)?,
-                    active_prompt_id: row.get(1)?,
-                    capture_shortcut: row.get(2)?,
-                    save_history: row.get(3)?,
-                    autostart: row.get(4)?,
-                    result_always_on_top: row.get(5)?,
-                    onboarding_completed: row.get(6)?,
+                    save_history: row.get(1)?,
+                    autostart: row.get(2)?,
+                    result_always_on_top: row.get(3)?,
+                    onboarding_completed: row.get(4)?,
                 })
             },
         )?;
@@ -125,7 +120,6 @@ pub fn load_app_snapshot(database: &Database) -> Result<AppSnapshot, AppError> {
         let model_config_count =
             connection.query_row("SELECT COUNT(*) FROM model_configs", [], |row| row.get(0))?;
         Ok(AppSnapshot {
-            active_prompt_id: settings.active_prompt_id.clone(),
             active_model_config_id: settings.active_model_config_id.clone(),
             settings,
             prompt_count,
@@ -155,22 +149,45 @@ pub fn replace_shortcut<E>(
     Ok(())
 }
 
-pub fn set_capture_shortcut_value(
+pub fn set_prompt_shortcut_value(
     database: &Database,
-    shortcut: &str,
-) -> Result<AppSettings, AppError> {
-    let shortcut = shortcut.trim();
-    if shortcut.is_empty() || shortcut.chars().count() > 100 {
+    id: &str,
+    shortcut: Option<&str>,
+) -> Result<PromptPreset, AppError> {
+    if !prompt_exists(database, id)? {
+        return Err(AppError::new(
+            ErrorCode::NotFound,
+            "提示词不存在",
+            false,
+            None,
+        ));
+    }
+    if shortcut.is_some_and(|value| value.is_empty() || value.len() > 100) {
         return Err(AppError::invalid("快捷键格式无效"));
+    }
+    if let Some(value) = shortcut
+        && list_prompt_presets(database)?
+            .iter()
+            .any(|prompt| prompt.id != id && prompt.capture_shortcut.as_deref() == Some(value))
+    {
+        return Err(AppError::new(
+            ErrorCode::ShortcutConflict,
+            "快捷键已被占用",
+            false,
+            None,
+        ));
     }
     database.transaction(|transaction| {
         transaction.execute(
-            "UPDATE app_settings SET capture_shortcut = ?1, updated_at = ?2 WHERE id = 1",
-            rusqlite::params![shortcut, crate::analysis::now()],
+            "UPDATE prompt_presets SET capture_shortcut = ?1, updated_at = ?2 WHERE id = ?3",
+            rusqlite::params![shortcut, crate::analysis::now(), id],
         )?;
         Ok(())
     })?;
-    Ok(load_app_snapshot(database)?.settings)
+    list_prompt_presets(database)?
+        .into_iter()
+        .find(|prompt| prompt.id == id)
+        .ok_or_else(|| AppError::storage("提示词不可用"))
 }
 
 pub fn set_autostart_with<E>(
@@ -192,7 +209,7 @@ pub fn set_autostart_with<E>(
 pub fn complete_onboarding(database: &Database) -> Result<(), AppError> {
     let snapshot = load_app_snapshot(database)?;
     if snapshot.active_model_config_id.is_none()
-        || snapshot.active_prompt_id.is_none()
+        || snapshot.prompt_count == 0
         || snapshot.screen_permission != crate::capture::ScreenPermission::Granted
     {
         return Err(AppError::invalid("截图权限、模型和提示词尚未全部就绪"));
@@ -239,26 +256,6 @@ pub fn set_save_history(database: &Database, value: bool) -> Result<AppSettings,
     Ok(load_app_snapshot(database)?.settings)
 }
 
-pub fn load_active_prompt(database: &Database) -> Result<Option<PromptSnapshot>, AppError> {
-    database.read(|connection| {
-        connection
-            .query_row(
-                "SELECT p.id, p.name, p.body
-                 FROM app_settings s JOIN prompt_presets p ON p.id = s.active_prompt_id
-                 WHERE s.id = 1",
-                [],
-                |row| {
-                    Ok(PromptSnapshot {
-                        id: row.get(0)?,
-                        name: row.get(1)?,
-                        body: row.get(2)?,
-                    })
-                },
-            )
-            .optional()
-    })
-}
-
 pub fn load_prompt(database: &Database, id: &str) -> Result<Option<PromptSnapshot>, AppError> {
     database.read(|connection| {
         connection
@@ -279,22 +276,17 @@ pub fn load_prompt(database: &Database, id: &str) -> Result<Option<PromptSnapsho
 
 pub fn list_prompt_presets(database: &Database) -> Result<Vec<PromptPreset>, AppError> {
     database.read(|connection| {
-        let active: Option<String> = connection.query_row(
-            "SELECT active_prompt_id FROM app_settings WHERE id = 1",
-            [],
-            |row| row.get(0),
-        )?;
         let mut statement = connection.prepare(
-            "SELECT id, name, body, is_builtin FROM prompt_presets ORDER BY name COLLATE NOCASE, id",
+            "SELECT id, name, body, is_builtin, capture_shortcut FROM prompt_presets ORDER BY name COLLATE NOCASE, id",
         )?;
         let rows = statement.query_map([], |row| {
             let id: String = row.get(0)?;
             Ok(PromptPreset {
-                is_active: active.as_deref() == Some(id.as_str()),
                 id,
                 name: row.get(1)?,
                 body: row.get(2)?,
                 is_builtin: row.get(3)?,
+                capture_shortcut: row.get(4)?,
             })
         })?;
         rows.collect()
@@ -366,24 +358,6 @@ pub fn delete_prompt_preset(database: &Database, id: &str) -> Result<(), AppErro
         if deleted == 0 {
             return Err(rusqlite::Error::QueryReturnedNoRows);
         }
-        Ok(())
-    })
-}
-
-pub fn set_active_prompt(database: &Database, id: &str) -> Result<(), AppError> {
-    if !prompt_exists(database, id)? {
-        return Err(AppError::new(
-            ErrorCode::NotFound,
-            "提示词不存在",
-            false,
-            None,
-        ));
-    }
-    database.transaction(|transaction| {
-        transaction.execute(
-            "UPDATE app_settings SET active_prompt_id = ?1, updated_at = ?2 WHERE id = 1",
-            rusqlite::params![id, crate::analysis::now()],
-        )?;
         Ok(())
     })
 }

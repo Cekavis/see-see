@@ -239,12 +239,16 @@ impl FrozenMonitor {
 
 pub struct CaptureSession {
     pub id: String,
+    pub prompt_id: String,
     pub monitors: Vec<FrozenMonitor>,
     pub selection: Option<PhysicalRect>,
 }
 
 impl CaptureSession {
-    pub fn capture_all(id: impl Into<String>) -> Result<Self, AppError> {
+    pub fn capture_all(
+        id: impl Into<String>,
+        prompt_id: impl Into<String>,
+    ) -> Result<Self, AppError> {
         #[cfg(target_os = "macos")]
         let frozen = macos::capture_all()?;
         #[cfg(not(target_os = "macos"))]
@@ -260,6 +264,7 @@ impl CaptureSession {
         }
         Ok(Self {
             id: id.into(),
+            prompt_id: prompt_id.into(),
             monitors: frozen,
             selection: None,
         })
@@ -344,7 +349,12 @@ pub(crate) fn frozen_monitor_from_bgra(
     for row in 0..height {
         let source = &data[row * bytes_per_row..row * bytes_per_row + row_bytes];
         let target = &mut rgba[row * row_bytes..(row + 1) * row_bytes];
-        for (bgra, rgba) in source.chunks_exact(4).zip(target.chunks_exact_mut(4)) {
+        for (bgra, rgba) in source
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .zip(target.as_chunks_mut::<4>().0.iter_mut())
+        {
             rgba.copy_from_slice(&[bgra[2], bgra[1], bgra[0], bgra[3]]);
         }
     }

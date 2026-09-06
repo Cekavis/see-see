@@ -59,11 +59,11 @@ pub fn get_app_snapshot(app: AppHandle) -> Result<settings::AppSnapshot, AppErro
 }
 
 #[tauri::command]
-pub async fn begin_capture(app: AppHandle) -> Result<(), AppError> {
-    begin_capture_action(app).await
+pub async fn begin_capture(app: AppHandle, prompt_id: String) -> Result<(), AppError> {
+    begin_capture_action(app, &prompt_id).await
 }
 
-pub async fn begin_capture_action(app: AppHandle) -> Result<(), AppError> {
+pub async fn begin_capture_action(app: AppHandle, prompt_id: &str) -> Result<(), AppError> {
     {
         let state = app.state::<AppState>();
         let runtime = state
@@ -73,7 +73,8 @@ pub async fn begin_capture_action(app: AppHandle) -> Result<(), AppError> {
         if runtime.capture_is_active() {
             return Err(already_running("截图正在进行"));
         }
-        require_active_configuration(&state)?;
+        let _ = settings::load_prompt(&state.database, prompt_id)?
+            .ok_or_else(|| AppError::new(ErrorCode::NotFound, "提示词不存在", false, None))?;
     }
     if let Err(error) = capture::require_screen_permission(capture::screen_permission_status()) {
         let _ = focus_main(&app);
@@ -82,16 +83,16 @@ pub async fn begin_capture_action(app: AppHandle) -> Result<(), AppError> {
 
     #[cfg(target_os = "macos")]
     {
-        begin_native_region_capture(app).await
+        begin_native_region_capture(app, prompt_id).await
     }
     #[cfg(not(target_os = "macos"))]
     {
-        begin_overlay_capture(app).await
+        begin_overlay_capture(app, prompt_id).await
     }
 }
 
 #[cfg(target_os = "macos")]
-async fn begin_native_region_capture(app: AppHandle) -> Result<(), AppError> {
+async fn begin_native_region_capture(app: AppHandle, prompt_id: &str) -> Result<(), AppError> {
     let capture_id = Uuid::new_v4().to_string();
     let output_directory = app
         .path()
@@ -122,7 +123,9 @@ async fn begin_native_region_capture(app: AppHandle) -> Result<(), AppError> {
             });
 
     let outcome = match capture_result {
-        Ok(Ok(Some(image_png))) => start_analysis_with_image(app.clone(), image_png).map(|_| ()),
+        Ok(Ok(Some(image_png))) => {
+            start_analysis_with_image(app.clone(), image_png, prompt_id).map(|_| ())
+        }
         Ok(Ok(None)) => Ok(()),
         Ok(Err(error)) | Err(error) => Err(error),
     };
@@ -135,21 +138,23 @@ async fn begin_native_region_capture(app: AppHandle) -> Result<(), AppError> {
 }
 
 #[cfg(not(target_os = "macos"))]
-async fn begin_overlay_capture(app: AppHandle) -> Result<(), AppError> {
+async fn begin_overlay_capture(app: AppHandle, prompt_id: &str) -> Result<(), AppError> {
     let state = app.state::<AppState>();
 
     let session_id = Uuid::new_v4().to_string();
-    let session_result =
-        tauri::async_runtime::spawn_blocking(move || CaptureSession::capture_all(session_id))
-            .await
-            .map_err(|_| {
-                AppError::new(
-                    ErrorCode::CaptureFailed,
-                    "截图任务异常结束",
-                    false,
-                    Some("retry"),
-                )
-            })?;
+    let prompt_id = prompt_id.to_owned();
+    let session_result = tauri::async_runtime::spawn_blocking(move || {
+        CaptureSession::capture_all(session_id, prompt_id)
+    })
+    .await
+    .map_err(|_| {
+        AppError::new(
+            ErrorCode::CaptureFailed,
+            "截图任务异常结束",
+            false,
+            Some("retry"),
+        )
+    })?;
     let session = match session_result {
         Ok(session) => session,
         Err(error) => {
@@ -282,15 +287,17 @@ pub async fn finish_capture(
     let summary = session.summary();
     close_capture_windows(&app, &summary);
     let image_png = compose_selection(&session.monitors, selection)?;
-    start_analysis_with_image(app, image_png)
+    let prompt_id = session.prompt_id.clone();
+    start_analysis_with_image(app, image_png, &prompt_id)
 }
 
 fn start_analysis_with_image(
     app: AppHandle,
     image_png: Vec<u8>,
+    prompt_id: &str,
 ) -> Result<AnalysisStarted, AppError> {
     let state = app.state::<AppState>();
-    let input = analysis_input_for_image(&state, image_png)?;
+    let input = analysis_input_for_image(&state, image_png, prompt_id)?;
     start_analysis(app, input)
 }
 
@@ -321,8 +328,24 @@ fn start_analysis(app: AppHandle, input: AnalysisInput) -> Result<AnalysisStarte
 fn analysis_input_for_image(
     state: &AppState,
     image_png: Vec<u8>,
+    prompt_id: &str,
 ) -> Result<AnalysisInput, AppError> {
-    let (model, prompt) = require_active_configuration(&state)?;
+    let model = settings::load_active_model(&state.database)?.ok_or_else(|| {
+        AppError::new(
+            ErrorCode::NoActiveModel,
+            "请先选择一个模型配置",
+            false,
+            Some("edit_model_config"),
+        )
+    })?;
+    let prompt = settings::load_prompt(&state.database, prompt_id)?.ok_or_else(|| {
+        AppError::new(
+            ErrorCode::NoActivePrompt,
+            "提示词不存在",
+            false,
+            Some("edit_prompt"),
+        )
+    })?;
     let api_key = settings::load_model_api_key(&state.database, &model.id)?;
     let save_history = settings::load_app_snapshot(&state.database)?
         .settings
@@ -429,12 +452,12 @@ pub fn open_main_window(app: AppHandle, run_id: String) -> Result<(), AppError> 
         Err(error) if error.code == ErrorCode::NotFound => true,
         Err(error) => return Err(error),
     };
-    if should_close_result {
-        if let Some(window) = app.get_webview_window(&windowing::result_window_label(&run_id)) {
-            window
-                .close()
-                .map_err(|_| AppError::invalid("无法关闭结果窗口"))?;
-        }
+    if should_close_result
+        && let Some(window) = app.get_webview_window(&windowing::result_window_label(&run_id))
+    {
+        window
+            .close()
+            .map_err(|_| AppError::invalid("无法关闭结果窗口"))?;
     }
     Ok(())
 }
@@ -570,11 +593,6 @@ pub fn delete_prompt_preset(app: AppHandle, id: String) -> Result<(), AppError> 
 }
 
 #[tauri::command]
-pub fn set_active_prompt(app: AppHandle, id: String) -> Result<(), AppError> {
-    settings::set_active_prompt(&app.state::<AppState>().database, &id)
-}
-
-#[tauri::command]
 pub fn query_history(app: AppHandle, query: HistoryQuery) -> Result<HistoryPage, AppError> {
     history::query_history(&app.state::<AppState>().database, query)
 }
@@ -651,28 +669,47 @@ pub fn get_settings(app: AppHandle) -> Result<settings::AppSettings, AppError> {
 }
 
 #[tauri::command]
-pub fn set_capture_shortcut(
+pub fn set_prompt_shortcut(
     app: AppHandle,
-    shortcut: String,
-) -> Result<settings::AppSettings, AppError> {
-    shortcut
-        .parse::<tauri_plugin_global_shortcut::Shortcut>()
-        .map_err(|_| AppError::invalid("快捷键格式无效"))?;
-    let state = app.state::<AppState>();
-    let old = settings::load_app_snapshot(&state.database)?
-        .settings
+    id: String,
+    shortcut: Option<String>,
+) -> Result<PromptPreset, AppError> {
+    let database = &app.state::<AppState>().database;
+    let old = settings::list_prompt_presets(database)?
+        .into_iter()
+        .find(|prompt| prompt.id == id)
+        .ok_or_else(|| AppError::new(ErrorCode::NotFound, "提示词不存在", false, None))?
         .capture_shortcut;
-    settings::replace_shortcut(
-        &old,
-        &shortcut,
-        |value| register_capture_shortcut(&app, value),
-        |value| app.global_shortcut().unregister(value),
-    )?;
-    match settings::set_capture_shortcut_value(&state.database, &shortcut) {
-        Ok(settings) => Ok(settings),
+    if let Some(value) = shortcut.as_deref() {
+        value
+            .parse::<tauri_plugin_global_shortcut::Shortcut>()
+            .map_err(|_| AppError::invalid("快捷键格式无效"))?;
+        if let Some(previous) = old.as_deref() {
+            settings::replace_shortcut(
+                previous,
+                value,
+                |candidate| register_capture_shortcut(&app, candidate, &id),
+                |candidate| app.global_shortcut().unregister(candidate),
+            )?;
+        } else {
+            register_capture_shortcut(&app, value, &id).map_err(|_| {
+                AppError::new(ErrorCode::ShortcutConflict, "快捷键已被占用", false, None)
+            })?;
+        }
+    } else if let Some(previous) = old.as_deref() {
+        app.global_shortcut()
+            .unregister(previous)
+            .map_err(|_| AppError::invalid("无法清除快捷键"))?;
+    }
+    match settings::set_prompt_shortcut_value(database, &id, shortcut.as_deref()) {
+        Ok(prompt) => Ok(prompt),
         Err(error) => {
-            let _ = register_capture_shortcut(&app, &old);
-            let _ = app.global_shortcut().unregister(shortcut.as_str());
+            if let Some(value) = shortcut.as_deref() {
+                let _ = app.global_shortcut().unregister(value);
+            }
+            if let Some(previous) = old.as_deref() {
+                let _ = register_capture_shortcut(&app, previous, &id);
+            }
             Err(error)
         }
     }
@@ -766,28 +803,6 @@ pub fn quit_app(app: AppHandle) {
         let _ = active.cancel();
     }
     app.exit(0);
-}
-
-fn require_active_configuration(
-    state: &AppState,
-) -> Result<(settings::ModelSnapshot, settings::PromptSnapshot), AppError> {
-    let model = settings::load_active_model(&state.database)?.ok_or_else(|| {
-        AppError::new(
-            ErrorCode::NoActiveModel,
-            "请先选择一个模型配置",
-            false,
-            Some("edit_model_config"),
-        )
-    })?;
-    let prompt = settings::load_active_prompt(&state.database)?.ok_or_else(|| {
-        AppError::new(
-            ErrorCode::NoActivePrompt,
-            "请先选择一个提示词",
-            false,
-            Some("edit_prompt"),
-        )
-    })?;
-    Ok((model, prompt))
 }
 
 fn connection_key(
@@ -937,13 +952,16 @@ fn already_running(message: &str) -> AppError {
 pub fn register_capture_shortcut(
     app: &AppHandle,
     shortcut: &str,
+    prompt_id: &str,
 ) -> Result<(), tauri_plugin_global_shortcut::Error> {
+    let prompt_id = prompt_id.to_owned();
     app.global_shortcut()
-        .on_shortcut(shortcut, |app, _, event| {
+        .on_shortcut(shortcut, move |app, _, event| {
             if event.state == ShortcutState::Pressed {
                 let app = app.clone();
+                let prompt_id = prompt_id.clone();
                 tauri::async_runtime::spawn(async move {
-                    if let Err(error) = begin_capture_action(app.clone()).await {
+                    if let Err(error) = begin_capture_action(app.clone(), &prompt_id).await {
                         report_capture_failure(&app, "shortcut", &error);
                     }
                 });

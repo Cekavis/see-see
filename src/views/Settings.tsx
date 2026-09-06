@@ -117,7 +117,6 @@ export function Settings({ api = ipc }: { api?: SettingsApi }) {
 
       <div className={form ? "section-split" : "section-stack"}>
         <section className="config-list" aria-label="已保存模型配置">
-          <h2>已保存配置</h2>
           {configs.length === 0 ? (
             <EmptyState
               title="还没有模型配置"

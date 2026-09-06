@@ -379,7 +379,8 @@ p {
   padding: 24px clamp(20px, 3vw, 34px) 44px;
 }
 
-.section-stack > .config-list {
+.section-stack > .config-list,
+.section-stack > .settings-grid {
   width: min(100%, 920px);
 }
 
@@ -464,10 +465,6 @@ p {
   padding: 17px;
 }
 
-.prompts-view .config-list {
-  order: -1;
-}
-
 .settings-grid > h2,
 .config-list > h2 {
   margin: 0;
@@ -509,7 +506,8 @@ p {
   width: 100%;
   min-height: 40px;
   justify-content: flex-start;
-  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-family: inherit;
+  font-size: 0.84rem;
 }
 
 .shortcut-recorder[aria-pressed="true"] {
@@ -725,6 +723,7 @@ textarea {
 .notification--error {
   border-color: color-mix(in srgb, var(--danger) 42%, var(--border));
   background: color-mix(in srgb, var(--danger-soft) 76%, var(--surface-raised));
+  box-shadow: var(--shadow-sm);
 }
 
 .notification--success {
@@ -734,6 +733,7 @@ textarea {
     var(--success-soft) 72%,
     var(--surface-raised)
   );
+  box-shadow: var(--shadow-sm);
 }
 
 .notification__icon {
@@ -841,6 +841,27 @@ textarea {
   max-height: 6.4em;
   overflow: hidden;
   white-space: pre-wrap;
+}
+
+.prompt-card__actions {
+  display: grid;
+  gap: 8px;
+  align-self: center;
+  min-width: 204px;
+}
+
+.prompt-card__actions .button-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.prompt-card__actions .shortcut-recorder {
+  width: 100%;
+  min-width: 0;
+}
+
+.shortcut-recorder--empty:not([aria-pressed="true"]) {
+  color: var(--muted);
 }
 
 .onboarding {

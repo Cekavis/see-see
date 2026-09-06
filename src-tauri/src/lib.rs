@@ -95,7 +95,15 @@ pub fn run() {
             app.manage(state);
             let snapshot = settings::load_app_snapshot(&app.state::<AppState>().database)
                 .map_err(Box::<dyn std::error::Error>::from)?;
-            commands::register_capture_shortcut(app.handle(), &snapshot.settings.capture_shortcut)?;
+            for prompt in settings::list_prompt_presets(&app.state::<AppState>().database)
+                .map_err(Box::<dyn std::error::Error>::from)?
+            {
+                if let Some(shortcut) = prompt.capture_shortcut {
+                    commands::register_capture_shortcut(app.handle(), &shortcut, &prompt.id)
+                        .map_err(Box::<dyn std::error::Error>::from)?;
+                }
+            }
+
             match autostart::reconcile_on_startup(app.handle(), snapshot.settings.autostart) {
                 Ok(actual) if actual != snapshot.settings.autostart => {
                     let _ = settings::set_autostart_with(
@@ -107,10 +115,9 @@ pub fn run() {
                 Err(error) => log::warn!("无法同步开机启动状态：{error}"),
                 _ => {}
             }
-            let capture = MenuItem::with_id(app, "capture", "开始截图", true, None::<&str>)?;
             let show = MenuItem::with_id(app, "show", "打开 See See", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&capture, &show, &quit])?;
+            let menu = Menu::with_items(app, &[&show, &quit])?;
             let mut tray = TrayIconBuilder::new()
                 .tooltip("See See")
                 .menu(&menu)
@@ -127,14 +134,6 @@ pub fn run() {
                     }
                 })
                 .on_menu_event(|app, event| match event.id.as_ref() {
-                    "capture" => {
-                        let app = app.clone();
-                        tauri::async_runtime::spawn(async move {
-                            if let Err(error) = commands::begin_capture_action(app.clone()).await {
-                                commands::report_capture_failure(&app, "tray", &error);
-                            }
-                        });
-                    }
                     "show" => {
                         show_main_window(app);
                     }
@@ -149,9 +148,7 @@ pub fn run() {
             if should_open_main_window(&args, autostart::launched_as_login_item()) {
                 show_main_window(app.handle());
             }
-            let main = app
-                .get_webview_window("main")
-                .ok_or_else(|| "主窗口不存在")?;
+            let main = app.get_webview_window("main").ok_or("主窗口不存在")?;
             windowing::install_native_close_shortcuts(&main, false)?;
             Ok(())
         })
@@ -204,7 +201,7 @@ pub fn run() {
             commands::save_prompt_preset,
             commands::duplicate_prompt_preset,
             commands::delete_prompt_preset,
-            commands::set_active_prompt,
+            commands::set_prompt_shortcut,
             commands::query_history,
             commands::get_history_entry,
             commands::get_history_image,
@@ -213,7 +210,6 @@ pub fn run() {
             commands::clear_history,
             commands::set_save_history,
             commands::get_settings,
-            commands::set_capture_shortcut,
             commands::set_autostart,
             commands::open_login_items_settings,
             commands::complete_onboarding,

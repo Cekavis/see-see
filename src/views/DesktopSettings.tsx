@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "../components/Button";
-import { Field } from "../components/Field";
 import { useNotifications } from "../components/Notifications";
 import { ipc, type AppError, type AppSettings } from "../ipc";
 
@@ -132,7 +131,6 @@ export function shortcutFromKeyboardEvent(
 
 export type DesktopSettingsApi = {
   getSettings: () => Promise<AppSettings>;
-  setCaptureShortcut: (shortcut: string) => Promise<AppSettings>;
   setAutostart: (value: boolean) => Promise<AppSettings>;
   openLoginItemsSettings: () => Promise<void>;
   setSaveHistory: (value: boolean) => Promise<AppSettings>;
@@ -142,16 +140,12 @@ export type DesktopSettingsApi = {
 export function DesktopSettings({ api = ipc }: { api?: DesktopSettingsApi }) {
   const notifications = useNotifications();
   const [settings, setSettings] = useState<AppSettings | null>(null);
-  const [shortcut, setShortcut] = useState("");
-  const [isRecordingShortcut, setIsRecordingShortcut] = useState(false);
-  const [isSavingShortcut, setIsSavingShortcut] = useState(false);
   const load = useCallback(() => {
     function run() {
       void api
         .getSettings()
         .then((value) => {
           setSettings(value);
-          setShortcut(value.captureShortcut);
         })
         .catch((failure: AppError) =>
           notifications.error(failure.message, {
@@ -165,50 +159,6 @@ export function DesktopSettings({ api = ipc }: { api?: DesktopSettingsApi }) {
     load();
   }, [load]);
 
-  const saveCapturedShortcut = useCallback(
-    (nextShortcut: string) => {
-      if (!settings) return;
-      setIsRecordingShortcut(false);
-      setIsSavingShortcut(true);
-      notifications.clear();
-      void api
-        .setCaptureShortcut(nextShortcut)
-        .then((value) => {
-          setSettings(value);
-          setShortcut(value.captureShortcut);
-          notifications.success("快捷键已保存并生效");
-        })
-        .catch((failure: AppError) => {
-          setShortcut(settings.captureShortcut);
-          notifications.error(failure.message);
-        })
-        .finally(() => setIsSavingShortcut(false));
-    },
-    [api, notifications, settings],
-  );
-
-  useEffect(() => {
-    if (!isRecordingShortcut) return;
-    const recordShortcut = (event: KeyboardEvent) => {
-      event.preventDefault();
-      event.stopPropagation();
-      if (
-        (event.code === "Escape" || event.key === "Escape") &&
-        !event.altKey &&
-        !event.ctrlKey &&
-        !event.metaKey &&
-        !event.shiftKey
-      ) {
-        setIsRecordingShortcut(false);
-        return;
-      }
-      const nextShortcut = shortcutFromKeyboardEvent(event);
-      if (nextShortcut) saveCapturedShortcut(nextShortcut);
-    };
-    window.addEventListener("keydown", recordShortcut, true);
-    return () => window.removeEventListener("keydown", recordShortcut, true);
-  }, [isRecordingShortcut, saveCapturedShortcut]);
-
   if (!settings) {
     return (
       <section className="settings-group" aria-label="桌面设置">
@@ -218,32 +168,6 @@ export function DesktopSettings({ api = ipc }: { api?: DesktopSettingsApi }) {
   }
   return (
     <section className="settings-group" aria-label="桌面设置">
-      <h2>应用偏好</h2>
-      <div className="setting-row">
-        <div className="setting-row__body">
-          <Field
-            label="截图快捷键"
-            htmlFor="capture-shortcut"
-            hint="点击后直接按下新组合键；按 Esc 取消。"
-          >
-            <Button
-              id="capture-shortcut"
-              type="button"
-              className="shortcut-recorder"
-              aria-label="截图快捷键"
-              aria-pressed={isRecordingShortcut}
-              disabled={isSavingShortcut}
-              onClick={() => setIsRecordingShortcut((recording) => !recording)}
-            >
-              {isSavingShortcut
-                ? "正在应用…"
-                : isRecordingShortcut
-                  ? "请按新的快捷键…"
-                  : shortcut}
-            </Button>
-          </Field>
-        </div>
-      </div>
       <label className="setting-row switch">
         <span className="setting-row__body">
           <strong>开机启动</strong>

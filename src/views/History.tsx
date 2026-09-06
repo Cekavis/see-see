@@ -44,7 +44,7 @@ export type HistoryApi = {
 };
 
 function defaultConfigurationId(
-  options: { id: string; name: string; isActive: boolean }[],
+  options: { id: string; name: string; isActive?: boolean }[],
   originalId: string | null,
   originalName: string,
 ) {

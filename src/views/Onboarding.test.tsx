@@ -8,8 +8,6 @@ function api(overrides: Partial<OnboardingApi> = {}): OnboardingApi {
     getAppSnapshot: vi.fn().mockResolvedValue({
       settings: {
         activeModelConfigId: null,
-        activePromptId: "p1",
-        captureShortcut: "Alt+Shift+A",
         saveHistory: true,
         autostart: false,
         resultAlwaysOnTop: true,
@@ -17,7 +15,6 @@ function api(overrides: Partial<OnboardingApi> = {}): OnboardingApi {
       },
       promptCount: 2,
       modelConfigCount: 0,
-      activePromptId: "p1",
       activeModelConfigId: null,
       screenPermission: "granted",
     }),
@@ -55,8 +52,6 @@ describe("Onboarding", () => {
       getAppSnapshot: vi.fn().mockResolvedValue({
         settings: {
           activeModelConfigId: "m1",
-          activePromptId: "p1",
-          captureShortcut: "Alt+Shift+A",
           saveHistory: true,
           autostart: false,
           resultAlwaysOnTop: true,
@@ -64,7 +59,6 @@ describe("Onboarding", () => {
         },
         promptCount: 2,
         modelConfigCount: 1,
-        activePromptId: "p1",
         activeModelConfigId: "m1",
         screenPermission: "unknown",
       }),
@@ -129,8 +123,6 @@ describe("Onboarding", () => {
       getAppSnapshot: vi.fn().mockResolvedValue({
         settings: {
           activeModelConfigId: "m1",
-          activePromptId: "p1",
-          captureShortcut: "Alt+Shift+A",
           saveHistory: true,
           autostart: false,
           resultAlwaysOnTop: true,
@@ -138,7 +130,6 @@ describe("Onboarding", () => {
         },
         promptCount: 1,
         modelConfigCount: 1,
-        activePromptId: "p1",
         activeModelConfigId: "m1",
         screenPermission: "granted",
       }),

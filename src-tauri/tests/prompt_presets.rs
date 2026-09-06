@@ -2,7 +2,7 @@ use see_see_lib::{
     database::Database,
     settings::{
         PromptPresetInput, delete_prompt_preset, duplicate_prompt_preset, list_prompt_presets,
-        load_active_prompt, save_prompt_preset, set_active_prompt,
+        load_prompt, save_prompt_preset, set_prompt_shortcut_value,
     },
 };
 
@@ -48,15 +48,21 @@ fn builtins_and_prompt_limits_are_preserved() {
 }
 
 #[test]
-fn duplicate_names_are_unique_and_deleting_active_clears_selection() {
+fn duplicate_names_are_unique_and_clones_start_without_shortcuts() {
     let db = Database::open_in_memory().unwrap();
     let original = list_prompt_presets(&db).unwrap().remove(0);
     let first = duplicate_prompt_preset(&db, &original.id).unwrap();
     let second = duplicate_prompt_preset(&db, &original.id).unwrap();
     assert_ne!(first.name, second.name);
-    set_active_prompt(&db, &first.id).unwrap();
+    assert!(first.capture_shortcut.is_none());
+    assert!(second.capture_shortcut.is_none());
     delete_prompt_preset(&db, &first.id).unwrap();
-    assert!(load_active_prompt(&db).unwrap().is_none());
+    assert!(
+        list_prompt_presets(&db)
+            .unwrap()
+            .iter()
+            .all(|prompt| prompt.id != first.id)
+    );
 }
 
 #[test]
@@ -71,8 +77,7 @@ fn loaded_snapshot_does_not_change_after_edit() {
         },
     )
     .unwrap();
-    set_active_prompt(&db, &prompt.id).unwrap();
-    let snapshot = load_active_prompt(&db).unwrap().unwrap();
+    let snapshot = load_prompt(&db, &prompt.id).unwrap().unwrap();
     save_prompt_preset(
         &db,
         PromptPresetInput {
@@ -83,4 +88,30 @@ fn loaded_snapshot_does_not_change_after_edit() {
     )
     .unwrap();
     assert_eq!(snapshot.body, "原正文");
+}
+
+#[test]
+fn prompt_shortcuts_are_unique_and_previous_value_survives_conflict() {
+    let db = Database::open_in_memory().unwrap();
+    let mut prompts = list_prompt_presets(&db).unwrap();
+    let first = prompts.remove(0);
+    let second = prompts.remove(0);
+    let first = set_prompt_shortcut_value(&db, &first.id, Some("Ctrl+Shift+X")).unwrap();
+    assert_eq!(first.capture_shortcut.as_deref(), Some("Ctrl+Shift+X"));
+    assert!(set_prompt_shortcut_value(&db, &second.id, Some("Ctrl+Shift+Y")).is_ok());
+    let conflict = set_prompt_shortcut_value(&db, &second.id, Some("Ctrl+Shift+X"));
+    assert_eq!(
+        conflict.unwrap_err().code,
+        see_see_lib::error::ErrorCode::ShortcutConflict
+    );
+    assert_eq!(
+        list_prompt_presets(&db)
+            .unwrap()
+            .into_iter()
+            .find(|prompt| prompt.id == second.id)
+            .unwrap()
+            .capture_shortcut
+            .as_deref(),
+        Some("Ctrl+Shift+Y")
+    );
 }

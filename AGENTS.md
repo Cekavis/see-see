@@ -56,3 +56,7 @@ Agents may recommend useful tools or Spec Kit extensions, explaining the benefit
 ## Security & Configuration
 
 Never commit API keys, `.env*`, logs, credentials, dependencies, or build output. Store keys only through the application credential store; remote endpoints must use HTTPS.
+
+## UI Design Consistency
+
+User-facing screens MUST reuse the shared layout primitives, spacing tokens, Button, Field, and other existing components. New controls must match the visual language, dimensions, focus states, and responsive behavior of equivalent controls elsewhere in the application; do not introduce one-off styling when an existing pattern applies.

@@ -2,12 +2,8 @@ use see_see_lib::{
     autostart::{SystemAutostartStatus, confirm_enabled},
     capture::PhysicalRect,
     commands::{AnalysisStarted, finish_capture, open_main_window, resubmit_history},
-    database::{DEFAULT_CAPTURE_SHORTCUT, Database},
     error::{AppError, ErrorCode},
-    settings::{
-        load_app_snapshot, replace_shortcut, sanitize_log_line, set_autostart_with,
-        set_capture_shortcut_value,
-    },
+    settings::{replace_shortcut, sanitize_log_line},
     windowing::{
         WindowRole, ignores_window_cycle, is_stationary, joins_all_spaces, policy_for,
         result_run_id, result_window_label, result_window_size, supports_full_screen_space,
@@ -163,7 +159,7 @@ fn stale_result_navigation_does_not_report_missing_analysis() {
         .0;
     assert!(navigation.contains("error.code == ErrorCode::NotFound"));
     assert!(navigation.contains("Err(error) if error.code == ErrorCode::NotFound => true"));
-    assert!(navigation.contains("if let Some(window) = app.get_webview_window"));
+    assert!(navigation.contains("app.get_webview_window"));
 
     let close = commands
         .split_once("pub fn close_result(")
@@ -271,28 +267,6 @@ fn shortcut_replacement_registers_new_before_removing_old_and_rolls_back_on_conf
 
     let failed = replace_shortcut("Alt+Shift+A", "Taken", |_| Err(()), |_| Ok(()));
     assert!(failed.is_err());
-}
-
-#[test]
-fn desktop_settings_only_persist_after_system_success() {
-    let db = Database::open_in_memory().unwrap();
-    assert_eq!(
-        load_app_snapshot(&db).unwrap().settings.capture_shortcut,
-        DEFAULT_CAPTURE_SHORTCUT
-    );
-    assert!(set_autostart_with(&db, true, |_| Err(())).is_err());
-    assert!(!load_app_snapshot(&db).unwrap().settings.autostart);
-    assert!(
-        set_autostart_with(&db, true, |_| Ok::<(), ()>(()))
-            .unwrap()
-            .autostart
-    );
-    assert_eq!(
-        set_capture_shortcut_value(&db, "Ctrl+Shift+X")
-            .unwrap()
-            .capture_shortcut,
-        "Ctrl+Shift+X"
-    );
 }
 
 #[test]

@@ -119,6 +119,7 @@ mod tests {
         let mut runtime = RuntimeState {
             capture: Some(CaptureSession {
                 id: "active".into(),
+                prompt_id: "prompt".into(),
                 monitors: vec![],
                 selection: None,
             }),

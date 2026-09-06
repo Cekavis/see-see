@@ -27,8 +27,6 @@ vi.mock("@tauri-apps/plugin-process", () => ({ relaunch }));
 
 const settings = {
   activeModelConfigId: "m1",
-  activePromptId: "p1",
-  captureShortcut: "Alt+Shift+A",
   saveHistory: true,
   autostart: false,
   resultAlwaysOnTop: true,
@@ -42,7 +40,6 @@ describe("SettingsShell", () => {
       settings,
       promptCount: 1,
       modelConfigCount: 1,
-      activePromptId: "p1",
       activeModelConfigId: "m1",
       screenPermission: "granted",
     });

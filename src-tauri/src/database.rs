@@ -134,8 +134,23 @@ impl Database {
                 )
                 .map_err(|_| AppError::storage("无法升级默认截图快捷键"))?;
         }
+        let has_prompt_shortcut = connection
+            .prepare("PRAGMA table_info(prompt_presets)")
+            .and_then(|mut statement| {
+                statement
+                    .query_map([], |row| row.get::<_, String>(1))?
+                    .collect::<Result<Vec<_>, _>>()
+            })
+            .map_err(|_| AppError::storage("无法检查提示词数据库版本"))?
+            .iter()
+            .any(|column| column == "capture_shortcut");
+        if !has_prompt_shortcut {
+            connection
+                .execute_batch(include_str!("../migrations/0005_prompt_shortcuts.sql"))
+                .map_err(|_| AppError::storage("无法升级提示词快捷键"))?;
+        }
         connection
-            .pragma_update(None, "user_version", 6)
+            .pragma_update(None, "user_version", 7)
             .map_err(|_| AppError::storage("无法记录数据库版本"))?;
         Ok(Self {
             connection: Mutex::new(connection),
@@ -219,38 +234,6 @@ mod tests {
     }
 
     #[test]
-    fn legacy_default_is_migrated_for_the_current_platform() {
-        let database = legacy_database(LEGACY_DEFAULT_CAPTURE_SHORTCUT);
-        let shortcut = database
-            .read(|connection| {
-                connection.query_row(
-                    "SELECT capture_shortcut FROM app_settings WHERE id = 1",
-                    [],
-                    |row| row.get::<_, String>(0),
-                )
-            })
-            .unwrap();
-
-        assert_eq!(shortcut, DEFAULT_CAPTURE_SHORTCUT);
-    }
-
-    #[test]
-    fn custom_shortcut_is_preserved_during_platform_migration() {
-        let database = legacy_database("Ctrl+Alt+P");
-        let shortcut = database
-            .read(|connection| {
-                connection.query_row(
-                    "SELECT capture_shortcut FROM app_settings WHERE id = 1",
-                    [],
-                    |row| row.get::<_, String>(0),
-                )
-            })
-            .unwrap();
-
-        assert_eq!(shortcut, "Ctrl+Alt+P");
-    }
-
-    #[test]
     fn legacy_history_schema_adds_the_thinking_column() {
         let database = legacy_database(DEFAULT_CAPTURE_SHORTCUT);
         let has_thinking = database
@@ -264,7 +247,7 @@ mod tests {
             .unwrap();
 
         assert!(has_thinking);
-        assert_eq!(database.pragma_i64("user_version").unwrap(), 6);
+        assert_eq!(database.pragma_i64("user_version").unwrap(), 7);
     }
 
     #[test]
