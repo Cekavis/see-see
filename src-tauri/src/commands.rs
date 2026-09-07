@@ -471,13 +471,18 @@ pub fn set_result_always_on_top(app: AppHandle, value: bool) -> Result<(), AppEr
                 .map_err(|_| AppError::invalid("无法更新窗口置顶状态"))?;
         }
     }
-    app.state::<AppState>().database.transaction(|transaction| {
-        transaction.execute(
-            "UPDATE app_settings SET result_always_on_top = ?1, updated_at = ?2 WHERE id = 1",
-            rusqlite::params![value, analysis::now()],
-        )?;
-        Ok(())
-    })
+    app.state::<AppState>()
+        .database
+        .transaction(|transaction| {
+            transaction.execute(
+                "UPDATE app_settings SET result_always_on_top = ?1, updated_at = ?2 WHERE id = 1",
+                rusqlite::params![value, analysis::now()],
+            )?;
+            Ok(())
+        })?;
+    app.emit("result-always-on-top-changed", value)
+        .map_err(|_| AppError::invalid("无法同步窗口置顶状态"))?;
+    Ok(())
 }
 
 #[tauri::command]

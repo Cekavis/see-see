@@ -1,6 +1,7 @@
 import { Channel } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNotifications } from "./components/Notifications";
 import {
   getErrorMessage,
@@ -12,6 +13,8 @@ import { CaptureOverlay } from "./views/CaptureOverlay";
 import { Result } from "./views/Result";
 import { SettingsShell } from "./views/SettingsShell";
 import { isResultWindowLabel } from "./windowLabels";
+
+export const RESULT_ALWAYS_ON_TOP_CHANGED = "result-always-on-top-changed";
 
 function MainView() {
   return <SettingsShell />;
@@ -48,6 +51,7 @@ function ResultView() {
     error: null,
   });
   const [alwaysOnTop, setAlwaysOnTop] = useState(false);
+  const alwaysOnTopEventReceived = useRef(false);
 
   useEffect(() => {
     const channel = new Channel<AnalysisEvent>();
@@ -66,11 +70,42 @@ function ResultView() {
         );
       })
       .catch((value: unknown) => notifications.error(getErrorMessage(value)));
-    void ipc
-      .getAppSnapshot()
-      .then((value) => setAlwaysOnTop(value.settings.resultAlwaysOnTop))
-      .catch((value: unknown) => notifications.error(getErrorMessage(value)));
   }, [notifications, runId]);
+
+  useEffect(() => {
+    let active = true;
+    let unlisten: (() => void) | undefined;
+
+    void (async () => {
+      try {
+        const remove = await listen<boolean>(
+          RESULT_ALWAYS_ON_TOP_CHANGED,
+          (event) => {
+            if (!active) return;
+            alwaysOnTopEventReceived.current = true;
+            setAlwaysOnTop(event.payload);
+          },
+        );
+        if (!active) {
+          remove();
+          return;
+        }
+        unlisten = remove;
+
+        const value = await ipc.getAppSnapshot();
+        if (active && !alwaysOnTopEventReceived.current) {
+          setAlwaysOnTop(value.settings.resultAlwaysOnTop);
+        }
+      } catch (value: unknown) {
+        if (active) notifications.error(getErrorMessage(value));
+      }
+    })();
+
+    return () => {
+      active = false;
+      unlisten?.();
+    };
+  }, [notifications]);
 
   return (
     <Result

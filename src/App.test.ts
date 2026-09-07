@@ -1,10 +1,35 @@
-import { describe, expect, it } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
+import { listen } from "@tauri-apps/api/event";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { createElement } from "react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { NotificationProvider } from "./components/Notifications";
 import type { AnalysisSnapshot } from "./ipc";
 import {
+  App,
+  RESULT_ALWAYS_ON_TOP_CHANGED,
   mergeAttachedAnalysisSnapshot,
   shouldCloseWindowOnKeydown,
   updateAnalysisSnapshot,
 } from "./App";
+import { ipc } from "./ipc";
+
+vi.mock("@tauri-apps/api/core", () => ({
+  Channel: class {
+    onmessage: ((event: unknown) => void) | undefined;
+
+    constructor(onmessage?: (event: unknown) => void) {
+      this.onmessage = onmessage;
+    }
+  },
+  invoke: vi.fn(),
+}));
+
+vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn() }));
+
+vi.mock("@tauri-apps/api/webviewWindow", () => ({
+  getCurrentWebviewWindow: vi.fn(),
+}));
 
 const key = (overrides: Partial<KeyboardEvent> = {}) => ({
   key: "",
@@ -14,6 +39,71 @@ const key = (overrides: Partial<KeyboardEvent> = {}) => ({
   altKey: false,
   shiftKey: false,
   ...overrides,
+});
+
+const resultSnapshot: AnalysisSnapshot = {
+  runId: "run-1",
+  modelConfigName: "模型配置",
+  promptConfigName: "提示词配置",
+  state: "streaming",
+  thinking: "",
+  text: "结果",
+  savedToHistory: false,
+  error: null,
+};
+
+const appSnapshot = {
+  settings: {
+    activeModelConfigId: null,
+    saveHistory: true,
+    autostart: false,
+    resultAlwaysOnTop: false,
+    onboardingCompleted: true,
+  },
+  promptCount: 0,
+  modelConfigCount: 0,
+  activeModelConfigId: null,
+  screenPermission: "unknown" as const,
+};
+
+describe("result window shared settings", () => {
+  let onAlwaysOnTopChanged: ((event: { payload: boolean }) => void) | undefined;
+  const unlisten = vi.fn();
+
+  beforeEach(() => {
+    window.history.replaceState({}, "", "/?run=run-1");
+    onAlwaysOnTopChanged = undefined;
+    unlisten.mockReset();
+    vi.mocked(getCurrentWebviewWindow).mockReturnValue({
+      label: "result-run-1",
+      close: vi.fn(),
+    } as unknown as ReturnType<typeof getCurrentWebviewWindow>);
+    vi.mocked(listen).mockImplementation(async (_event, handler) => {
+      onAlwaysOnTopChanged = handler as (event: { payload: boolean }) => void;
+      return unlisten;
+    });
+    vi.spyOn(ipc, "attachAnalysis").mockResolvedValue(resultSnapshot);
+    vi.spyOn(ipc, "getAppSnapshot").mockResolvedValue(appSnapshot);
+  });
+
+  it("updates the checkbox from the shared always-on-top event", async () => {
+    const { unmount } = render(
+      createElement(NotificationProvider, null, createElement(App)),
+    );
+
+    const checkbox = await screen.findByRole("checkbox", { name: "窗口置顶" });
+    await waitFor(() => expect(checkbox).not.toBeChecked());
+    expect(listen).toHaveBeenCalledWith(
+      RESULT_ALWAYS_ON_TOP_CHANGED,
+      expect.any(Function),
+    );
+
+    onAlwaysOnTopChanged?.({ payload: true });
+    await waitFor(() => expect(checkbox).toBeChecked());
+
+    unmount();
+    expect(unlisten).toHaveBeenCalledOnce();
+  });
 });
 
 describe("window close shortcuts", () => {

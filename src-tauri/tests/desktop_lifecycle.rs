@@ -328,6 +328,25 @@ fn result_windows_use_unique_run_labels() {
 }
 
 #[test]
+fn result_always_on_top_changes_are_broadcast_after_persisting() {
+    let commands = include_str!("../src/commands.rs");
+    let command = commands
+        .split_once("pub fn set_result_always_on_top(")
+        .unwrap()
+        .1
+        .split_once("pub fn copy_text(")
+        .unwrap()
+        .0;
+    let transaction = command.find("database.transaction").unwrap();
+    let emit = command
+        .find("app.emit(\"result-always-on-top-changed\", value)")
+        .unwrap();
+
+    assert!(command.contains("set_always_on_top(value)"));
+    assert!(transaction < emit);
+}
+
+#[test]
 fn exported_logs_remove_secrets_and_provider_payloads() {
     let sanitized =
         sanitize_log_line("Authorization: Bearer sk-secret api_key=abc raw_response={private}");
