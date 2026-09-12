@@ -889,6 +889,12 @@ fn create_capture_windows(
 }
 
 fn create_result_window(app: &AppHandle, run_id: &str) -> Result<(), AppError> {
+    let position = app
+        .state::<AppState>()
+        .runtime
+        .lock()
+        .map_err(|_| AppError::storage("运行状态不可用"))?
+        .result_window_position;
     let always_on_top = settings::load_app_snapshot(&app.state::<AppState>().database)?
         .settings
         .result_always_on_top;
@@ -906,7 +912,7 @@ fn create_result_window(app: &AppHandle, run_id: &str) -> Result<(), AppError> {
     .build()
     .map_err(|_| AppError::invalid("无法创建结果窗口"))?;
     windowing::install_native_close_shortcuts(&window, true)?;
-    windowing::present_result_window(&window)
+    windowing::present_result_window(&window, position)
 }
 
 fn close_capture_windows(app: &AppHandle, summary: &CaptureSessionSummary) {

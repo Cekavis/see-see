@@ -13,7 +13,7 @@ pub mod windowing;
 
 use credentials::SystemCredentialStore;
 use database::Database;
-use state::AppState;
+use state::{AppState, ResultWindowPosition};
 use std::sync::Arc;
 use tauri::{
     AppHandle, Manager, WindowEvent,
@@ -153,6 +153,15 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
+            if windowing::result_run_id(window.label()).is_some()
+                && let WindowEvent::Moved(position) = event
+                && let Ok(mut runtime) = window.app_handle().state::<AppState>().runtime.lock()
+            {
+                runtime.remember_result_window_position(ResultWindowPosition::new(
+                    position.x, position.y,
+                ));
+            }
+
             if let WindowEvent::CloseRequested { api, .. } = event {
                 if should_hide_on_close(window.label()) {
                     api.prevent_close();

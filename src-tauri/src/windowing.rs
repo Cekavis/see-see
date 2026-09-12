@@ -1,5 +1,6 @@
 use crate::error::AppError;
-use tauri::WebviewWindow;
+use crate::state::ResultWindowPosition;
+use tauri::{PhysicalPosition, WebviewWindow};
 
 #[cfg(target_os = "windows")]
 pub fn install_native_close_shortcuts(
@@ -249,7 +250,24 @@ pub fn show_capture_window(window: &WebviewWindow) -> Result<(), AppError> {
     }
 }
 
-pub fn present_result_window(window: &WebviewWindow) -> Result<(), AppError> {
+fn place_result_window(
+    window: &WebviewWindow,
+    position: Option<ResultWindowPosition>,
+) -> Result<(), AppError> {
+    match position {
+        Some(position) => window
+            .set_position(PhysicalPosition::new(position.x, position.y))
+            .map_err(|_| AppError::invalid("无法定位结果窗口")),
+        None => window
+            .center()
+            .map_err(|_| AppError::invalid("无法定位结果窗口")),
+    }
+}
+
+pub fn present_result_window(
+    window: &WebviewWindow,
+    position: Option<ResultWindowPosition>,
+) -> Result<(), AppError> {
     #[cfg(target_os = "macos")]
     {
         let native_window = native_window(window)?;
@@ -258,7 +276,7 @@ pub fn present_result_window(window: &WebviewWindow) -> Result<(), AppError> {
             .clone()
             .run_on_main_thread(move || {
                 apply_macos_policy(native_window, policy_for(WindowRole::Result));
-                let _ = window.center();
+                let _ = place_result_window(&window, position);
                 let _ = window.show();
                 let _ = window.set_focus();
             })
@@ -266,10 +284,12 @@ pub fn present_result_window(window: &WebviewWindow) -> Result<(), AppError> {
     }
     #[cfg(not(target_os = "macos"))]
     {
+        place_result_window(window, position)?;
         window
-            .center()
-            .and_then(|_| window.show())
-            .and_then(|_| window.set_focus())
+            .show()
+            .map_err(|_| AppError::invalid("无法显示结果窗口"))?;
+        window
+            .set_focus()
             .map_err(|_| AppError::invalid("无法显示结果窗口"))
     }
 }

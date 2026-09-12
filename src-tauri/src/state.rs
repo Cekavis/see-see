@@ -41,6 +41,19 @@ pub struct RuntimeState {
     pub capture: Option<CaptureSession>,
     pub capture_reservation: Option<String>,
     pub analysis: HashMap<String, Arc<ActiveAnalysis>>,
+    pub result_window_position: Option<ResultWindowPosition>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ResultWindowPosition {
+    pub x: i32,
+    pub y: i32,
+}
+
+impl ResultWindowPosition {
+    pub const fn new(x: i32, y: i32) -> Self {
+        Self { x, y }
+    }
 }
 
 impl RuntimeState {
@@ -86,6 +99,10 @@ impl RuntimeState {
     pub fn take_analysis(&mut self, run_id: &str) -> Option<Arc<ActiveAnalysis>> {
         self.analysis.remove(run_id)
     }
+
+    pub fn remember_result_window_position(&mut self, position: ResultWindowPosition) {
+        self.result_window_position = Some(position);
+    }
 }
 
 pub struct AppState {
@@ -110,7 +127,7 @@ impl AppState {
 
 #[cfg(test)]
 mod tests {
-    use super::{AnalysisState, RuntimeState};
+    use super::{AnalysisState, ResultWindowPosition, RuntimeState};
     use crate::{analysis::ActiveAnalysis, capture::CaptureSession};
     use std::{collections::HashMap, sync::Arc};
 
@@ -125,6 +142,7 @@ mod tests {
             }),
             capture_reservation: None,
             analysis: HashMap::new(),
+            result_window_position: None,
         };
 
         assert!(runtime.take_capture("stale").is_err());
@@ -186,6 +204,45 @@ mod tests {
                 .is_some_and(|value| Arc::ptr_eq(value, &second))
         );
         assert_eq!(runtime.analysis.len(), 1);
+    }
+
+    #[test]
+    fn result_window_position_defaults_to_empty_and_latest_move_wins() {
+        let mut runtime = RuntimeState::default();
+        assert_eq!(runtime.result_window_position, None);
+
+        runtime.remember_result_window_position(ResultWindowPosition::new(100, 200));
+        assert_eq!(
+            runtime.result_window_position,
+            Some(ResultWindowPosition::new(100, 200))
+        );
+
+        runtime.remember_result_window_position(ResultWindowPosition::new(-40, 80));
+        assert_eq!(
+            runtime.result_window_position,
+            Some(ResultWindowPosition::new(-40, 80))
+        );
+    }
+
+    #[test]
+    fn removing_a_result_window_does_not_clear_the_remembered_position() {
+        let active = Arc::new(ActiveAnalysis::new(
+            "position-owner",
+            vec![],
+            "模型配置",
+            "提示词配置",
+        ));
+        let mut runtime = RuntimeState {
+            analysis: HashMap::from([(String::from("position-owner"), active)]),
+            result_window_position: Some(ResultWindowPosition::new(320, 240)),
+            ..RuntimeState::default()
+        };
+
+        assert!(runtime.take_analysis("position-owner").is_some());
+        assert_eq!(
+            runtime.result_window_position,
+            Some(ResultWindowPosition::new(320, 240))
+        );
     }
 
     #[test]

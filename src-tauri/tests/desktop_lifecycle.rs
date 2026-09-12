@@ -328,6 +328,59 @@ fn result_windows_use_unique_run_labels() {
 }
 
 #[test]
+fn result_window_moves_update_position_only_for_result_windows() {
+    let lib = include_str!("../src/lib.rs");
+    let event_handler = lib
+        .split_once(".on_window_event(|window, event|")
+        .unwrap()
+        .1
+        .split_once(".invoke_handler")
+        .unwrap()
+        .0;
+
+    assert!(event_handler.contains("WindowEvent::Moved"));
+    assert!(event_handler.contains("result_run_id(window.label()).is_some()"));
+    assert!(event_handler.contains("remember_result_window_position"));
+}
+
+#[test]
+fn result_window_placement_prefers_remembered_position_before_showing() {
+    let commands = include_str!("../src/commands.rs");
+    let create = commands
+        .split_once("fn create_result_window(")
+        .unwrap()
+        .1
+        .split_once("fn close_capture_windows(")
+        .unwrap()
+        .0;
+    assert!(create.contains("result_window_position"));
+    assert!(create.contains("present_result_window(&window, position)"));
+
+    let windowing = include_str!("../src/windowing.rs");
+    let placement = windowing
+        .split_once("fn place_result_window(")
+        .unwrap()
+        .1
+        .split_once("pub fn present_result_window(")
+        .unwrap()
+        .0;
+    assert!(placement.contains("PhysicalPosition::new(position.x, position.y)"));
+    assert!(placement.contains(".center()"));
+
+    let present = windowing
+        .split_once("pub fn present_result_window(")
+        .unwrap()
+        .1;
+    assert!(present.contains("Option<ResultWindowPosition>"));
+    assert!(present.contains("place_result_window"));
+    let place = present.find("place_result_window").unwrap();
+    let show = present.find(".show()").unwrap();
+    let focus = present.find(".set_focus()").unwrap();
+    assert!(place < show);
+    assert!(show < focus);
+}
+
+#[test]
 fn result_always_on_top_changes_are_broadcast_after_persisting() {
     let commands = include_str!("../src/commands.rs");
     let command = commands
@@ -337,7 +390,7 @@ fn result_always_on_top_changes_are_broadcast_after_persisting() {
         .split_once("pub fn copy_text(")
         .unwrap()
         .0;
-    let transaction = command.find("database.transaction").unwrap();
+    let transaction = command.find(".transaction(").unwrap();
     let emit = command
         .find("app.emit(\"result-always-on-top-changed\", value)")
         .unwrap();
