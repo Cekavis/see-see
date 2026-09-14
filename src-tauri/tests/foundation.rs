@@ -1,7 +1,7 @@
 use see_see_lib::{
     commands::ModelConnectionInput,
     error::{AppError, ErrorCode},
-    providers::{ProviderProtocol, validate_endpoint},
+    providers::{ProviderProtocol, ReasoningEffort, validate_endpoint},
     settings::ModelConfigInput,
 };
 
@@ -52,6 +52,18 @@ fn provider_protocol_json_matches_the_ipc_contract() {
             "modelId": "gpt-vision"
         }))
         .is_ok(),
+    );
+    assert_eq!(
+        serde_json::to_string(&ReasoningEffort::Low).unwrap(),
+        "\"low\""
+    );
+    assert_eq!(
+        serde_json::to_string(&ReasoningEffort::Medium).unwrap(),
+        "\"medium\""
+    );
+    assert_eq!(
+        serde_json::to_string(&ReasoningEffort::High).unwrap(),
+        "\"high\""
     );
 }
 

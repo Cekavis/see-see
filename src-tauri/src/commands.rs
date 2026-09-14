@@ -5,7 +5,7 @@ use crate::{
     capture::{self, CaptureSessionSummary, PhysicalRect, compose_selection},
     error::{AppError, ErrorCode},
     history::{self, HistoryEntryDetail, HistoryImageVariant, HistoryPage, HistoryQuery},
-    providers::{self, ProviderProtocol, ProviderRequest, RemoteModel},
+    providers::{self, ProviderProtocol, ProviderRequest, ReasoningEffort, RemoteModel},
     settings::{self, ModelConfigInput, ModelConfigSummary, PromptPreset, PromptPresetInput},
     state::AppState,
     windowing,
@@ -50,6 +50,8 @@ pub struct ModelConnectionInput {
     pub protocol: ProviderProtocol,
     pub base_url: String,
     pub model_id: String,
+    #[serde(default)]
+    pub reasoning_effort: Option<ReasoningEffort>,
     pub api_key: Option<String>,
 }
 
@@ -557,6 +559,7 @@ pub async fn test_model_config(
             protocol: draft.protocol,
             base_url: draft.base_url,
             model_id: draft.model_id,
+            reasoning_effort: draft.reasoning_effort,
             api_key: key,
             prompt: "请只回复 OK。".into(),
             image_png: providers::connection_test_png(),

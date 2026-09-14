@@ -25,6 +25,9 @@ pub fn prepare(request: &ProviderRequest) -> Result<PreparedRequest, AppError> {
             ]
         }]
     });
+    if let Some(reasoning_effort) = request.reasoning_effort {
+        body["reasoning_effort"] = json!(reasoning_effort.as_str());
+    }
     if request.stream {
         body["stream_options"] = json!({"include_usage": true});
     }

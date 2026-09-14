@@ -20,6 +20,25 @@ pub enum ProviderProtocol {
     Gemini,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ReasoningEffort {
+    #[default]
+    Low,
+    Medium,
+    High,
+}
+
+impl ReasoningEffort {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+        }
+    }
+}
+
 impl TryFrom<&str> for ProviderProtocol {
     type Error = AppError;
 
@@ -47,6 +66,7 @@ pub struct ProviderRequest {
     pub protocol: ProviderProtocol,
     pub base_url: String,
     pub model_id: String,
+    pub reasoning_effort: Option<ReasoningEffort>,
     pub api_key: Option<SecretString>,
     pub prompt: String,
     pub image_png: Vec<u8>,
@@ -274,6 +294,7 @@ pub async fn list_models(
         protocol,
         base_url: base_url.to_owned(),
         model_id: String::new(),
+        reasoning_effort: None,
         api_key: api_key.cloned(),
         prompt: String::new(),
         image_png: Vec::new(),
@@ -665,6 +686,7 @@ mod tests {
             protocol: ProviderProtocol::OpenAi,
             base_url,
             model_id: "vision-model".into(),
+            reasoning_effort: Some(ReasoningEffort::Low),
             api_key: None,
             prompt: "OK".into(),
             image_png: connection_test_png(),

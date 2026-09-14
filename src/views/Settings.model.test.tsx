@@ -10,6 +10,7 @@ const savedConfig: ModelConfigSummary = {
   protocol: "openai",
   baseUrl: "https://api.example.com/v1",
   modelId: "vision",
+  reasoningEffort: "low",
   hasApiKey: true,
   isActive: false,
 };
@@ -24,6 +25,8 @@ function api(overrides: Partial<SettingsApi> = {}): SettingsApi {
       protocol: input.protocol,
       baseUrl: input.baseUrl,
       modelId: input.modelId,
+      reasoningEffort:
+        input.protocol === "openai" ? (input.reasoningEffort ?? "low") : null,
       hasApiKey: Boolean(input.apiKey),
     })),
     duplicateModelConfig: vi.fn().mockResolvedValue({
@@ -104,6 +107,7 @@ describe("model settings", () => {
         expect.objectContaining({
           baseUrl: "https://api.openai.com/v1",
           modelId: "gpt-vision",
+          reasoningEffort: "low",
           apiKey: "  secret  ",
         }),
       ),
@@ -112,6 +116,24 @@ describe("model settings", () => {
     expect(service.setActiveModelConfig).not.toHaveBeenCalled();
     expect(await screen.findByRole("status")).toHaveTextContent("配置已保存");
     expect(screen.queryByLabelText("配置名称")).not.toBeInTheDocument();
+  });
+
+  it("defaults reasoning effort to low and saves the selected value", async () => {
+    const service = api();
+    renderSettings(service);
+    openNewEditor();
+    fillRequiredFields();
+
+    const effort = screen.getByLabelText("思考强度");
+    expect(effort).toHaveValue("low");
+    fireEvent.change(effort, { target: { value: "high" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存配置" }));
+
+    await waitFor(() =>
+      expect(service.saveModelConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ reasoningEffort: "high" }),
+      ),
+    );
   });
 
   it("tests the draft directly without saving or activating it", async () => {
@@ -130,6 +152,7 @@ describe("model settings", () => {
         protocol: "openai",
         baseUrl: "https://api.openai.com/v1",
         modelId: "gpt-vision",
+        reasoningEffort: "low",
         apiKey: "draft-secret",
       }),
     );
@@ -155,6 +178,7 @@ describe("model settings", () => {
       screen.getByRole("heading", { name: "编辑配置" }),
     ).toBeInTheDocument();
     expect(screen.getByLabelText("配置名称")).toHaveValue("视觉模型");
+    expect(screen.getByLabelText("思考强度")).toHaveValue("low");
     expect(screen.getByLabelText("API Key")).toHaveValue("");
     expect(screen.getByText(/留空保留已保存的 Key/)).toBeInTheDocument();
 
@@ -169,6 +193,28 @@ describe("model settings", () => {
       ),
     );
     expect(screen.queryByLabelText("配置名称")).not.toBeInTheDocument();
+  });
+
+  it("hides and omits reasoning effort for non-OpenAI protocols", async () => {
+    const service = api();
+    renderSettings(service);
+    openNewEditor();
+    fillRequiredFields();
+    fireEvent.change(screen.getByLabelText("协议"), {
+      target: { value: "anthropic" },
+    });
+
+    expect(screen.queryByLabelText("思考强度")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "保存配置" }));
+
+    await waitFor(() =>
+      expect(service.saveModelConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          protocol: "anthropic",
+          reasoningEffort: undefined,
+        }),
+      ),
+    );
   });
 
   it("keeps failed save values open for recovery", async () => {

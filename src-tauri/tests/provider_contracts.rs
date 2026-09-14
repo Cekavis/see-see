@@ -1,7 +1,7 @@
 use secrecy::SecretString;
 use see_see_lib::providers::{
-    ProviderEvent, ProviderProtocol, ProviderRequest, build_http_request, connection_test_png,
-    parse_model_list, parse_stream_event, stream_text, test_connection,
+    ProviderEvent, ProviderProtocol, ProviderRequest, ReasoningEffort, build_http_request,
+    connection_test_png, parse_model_list, parse_stream_event, stream_text, test_connection,
 };
 use wiremock::{
     Mock, MockServer, ResponseTemplate,
@@ -18,6 +18,7 @@ fn request(protocol: ProviderProtocol) -> ProviderRequest {
         }
         .into(),
         model_id: "vision-model".into(),
+        reasoning_effort: Some(ReasoningEffort::Low),
         api_key: Some(SecretString::from("test-key")),
         prompt: "解释图片".into(),
         image_png: vec![1, 2, 3],
@@ -52,6 +53,36 @@ fn provider_requests_match_contracts_without_exposing_keys_in_json() {
     );
     let openai = build_http_request(&request(ProviderProtocol::OpenAi)).unwrap();
     assert_eq!(openai.body["stream_options"]["include_usage"], true);
+    assert_eq!(openai.body["reasoning_effort"], "low");
+}
+
+#[test]
+fn reasoning_effort_is_optional_for_openai_and_ignored_by_other_protocols() {
+    for (effort, expected) in [
+        (ReasoningEffort::Low, "low"),
+        (ReasoningEffort::Medium, "medium"),
+        (ReasoningEffort::High, "high"),
+    ] {
+        let mut request = request(ProviderProtocol::OpenAi);
+        request.reasoning_effort = Some(effort);
+        let prepared = build_http_request(&request).unwrap();
+        assert_eq!(prepared.body["reasoning_effort"], expected);
+    }
+
+    let mut openai = request(ProviderProtocol::OpenAi);
+    openai.reasoning_effort = None;
+    assert!(
+        build_http_request(&openai)
+            .unwrap()
+            .body
+            .get("reasoning_effort")
+            .is_none()
+    );
+
+    let anthropic = build_http_request(&request(ProviderProtocol::Anthropic)).unwrap();
+    assert!(anthropic.body.get("reasoning_effort").is_none());
+    let gemini = build_http_request(&request(ProviderProtocol::Gemini)).unwrap();
+    assert!(gemini.body.get("reasoning_effort").is_none());
 }
 
 #[test]
@@ -206,6 +237,7 @@ async fn leading_think_tags_are_split_across_stream_chunks() {
             protocol: ProviderProtocol::OpenAi,
             base_url: format!("{}/v1", server.uri()),
             model_id: "vision-model".into(),
+            reasoning_effort: Some(ReasoningEffort::Low),
             api_key: None,
             prompt: "OK".into(),
             image_png: connection_test_png(),
@@ -249,6 +281,7 @@ async fn truncated_stream_keeps_partial_text_without_inventing_usage() {
             protocol: ProviderProtocol::OpenAi,
             base_url: format!("{}/v1", server.uri()),
             model_id: "vision-model".into(),
+            reasoning_effort: Some(ReasoningEffort::Low),
             api_key: None,
             prompt: "OK".into(),
             image_png: connection_test_png(),
@@ -311,6 +344,7 @@ async fn connection_errors_are_classified_without_automatic_retry() {
             protocol: ProviderProtocol::OpenAi,
             base_url: format!("{}/v1", server.uri()),
             model_id: "vision-model".into(),
+            reasoning_effort: Some(ReasoningEffort::Low),
             api_key: Some(SecretString::from("wrong")),
             prompt: "OK".into(),
             image_png: connection_test_png(),
@@ -338,6 +372,7 @@ async fn image_capability_errors_have_a_stable_code() {
             protocol: ProviderProtocol::OpenAi,
             base_url: format!("{}/v1", server.uri()),
             model_id: "text-only".into(),
+            reasoning_effort: Some(ReasoningEffort::Low),
             api_key: None,
             prompt: "OK".into(),
             image_png: connection_test_png(),
@@ -374,6 +409,7 @@ async fn provider_response_details_are_bounded_and_redact_sensitive_json() {
             protocol: ProviderProtocol::OpenAi,
             base_url: format!("{}/v1", server.uri()),
             model_id: "vision-model".into(),
+            reasoning_effort: Some(ReasoningEffort::Low),
             api_key: None,
             prompt: "OK".into(),
             image_png: connection_test_png(),

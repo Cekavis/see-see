@@ -186,6 +186,7 @@ fn retry_uses_the_original_request_snapshot_after_configuration_changes() {
             protocol: ProviderProtocol::Anthropic,
             base_url: "https://original.example/v1".into(),
             model_id: "vision-original".into(),
+            reasoning_effort: None,
         },
         api_key: Some(SecretString::from("original-secret")),
         save_history: true,

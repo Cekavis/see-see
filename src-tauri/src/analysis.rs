@@ -438,6 +438,7 @@ pub fn start_network_analysis(
             protocol: input.model.protocol,
             base_url: input.model.base_url.clone(),
             model_id: input.model.model_id.clone(),
+            reasoning_effort: input.model.reasoning_effort,
             api_key: input.api_key,
             prompt: input.prompt.body.clone(),
             image_png: input.image_png.clone(),

@@ -2,7 +2,7 @@ use crate::{
     credentials::CredentialStore,
     database::Database,
     error::{AppError, ErrorCode},
-    providers::{ProviderProtocol, validate_endpoint},
+    providers::{ProviderProtocol, ReasoningEffort, validate_endpoint},
 };
 use rusqlite::OptionalExtension;
 use secrecy::{ExposeSecret, SecretString};
@@ -63,6 +63,7 @@ pub struct ModelSnapshot {
     pub protocol: ProviderProtocol,
     pub base_url: String,
     pub model_id: String,
+    pub reasoning_effort: Option<ReasoningEffort>,
 }
 
 #[derive(Clone, Deserialize)]
@@ -75,6 +76,8 @@ pub struct ModelConfigInput {
     pub model_id: String,
     pub api_key: Option<String>,
     #[serde(default)]
+    pub reasoning_effort: Option<ReasoningEffort>,
+    #[serde(default)]
     pub clear_api_key: bool,
 }
 
@@ -86,6 +89,7 @@ pub struct ModelConfigSummary {
     pub protocol: ProviderProtocol,
     pub base_url: String,
     pub model_id: String,
+    pub reasoning_effort: Option<ReasoningEffort>,
     pub has_api_key: bool,
     pub is_active: bool,
 }
@@ -95,7 +99,28 @@ struct StoredModel {
     protocol: String,
     base_url: String,
     model_id: String,
+    reasoning_effort: Option<ReasoningEffort>,
     api_key: Option<String>,
+}
+
+fn parse_reasoning_effort(value: Option<&str>) -> Result<Option<ReasoningEffort>, AppError> {
+    match value {
+        None => Ok(None),
+        Some("low") => Ok(Some(ReasoningEffort::Low)),
+        Some("medium") => Ok(Some(ReasoningEffort::Medium)),
+        Some("high") => Ok(Some(ReasoningEffort::High)),
+        Some(_) => Err(AppError::storage("模型配置中的思考强度无效")),
+    }
+}
+
+fn model_reasoning_effort(
+    protocol: ProviderProtocol,
+    value: Option<String>,
+) -> Result<Option<ReasoningEffort>, AppError> {
+    if protocol != ProviderProtocol::OpenAi {
+        return Ok(None);
+    }
+    Ok(parse_reasoning_effort(value.as_deref())?.or(Some(ReasoningEffort::Low)))
 }
 
 pub fn load_app_snapshot(database: &Database) -> Result<AppSnapshot, AppError> {
@@ -385,32 +410,40 @@ fn validate_prompt(input: &mut PromptPresetInput) -> Result<(), AppError> {
 }
 
 pub fn load_active_model(database: &Database) -> Result<Option<ModelSnapshot>, AppError> {
-    database.read(|connection| {
+    let row = database.read(|connection| {
         connection
             .query_row(
-                "SELECT m.id, m.name, m.protocol, m.base_url, m.model_id
+                "SELECT m.id, m.name, m.protocol, m.base_url, m.model_id, m.reasoning_effort
                  FROM app_settings s JOIN model_configs m ON m.id = s.active_model_config_id
                  WHERE s.id = 1",
                 [],
                 |row| {
-                    let protocol: String = row.get(2)?;
-                    Ok(ModelSnapshot {
-                        id: row.get(0)?,
-                        name: row.get(1)?,
-                        protocol: ProviderProtocol::try_from(protocol.as_str()).map_err(|_| {
-                            rusqlite::Error::InvalidColumnType(
-                                2,
-                                "protocol".into(),
-                                rusqlite::types::Type::Text,
-                            )
-                        })?,
-                        base_url: row.get(3)?,
-                        model_id: row.get(4)?,
-                    })
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, String>(4)?,
+                        row.get::<_, Option<String>>(5)?,
+                    ))
                 },
             )
             .optional()
-    })
+    })?;
+    row.map(
+        |(id, name, protocol, base_url, model_id, reasoning_effort)| {
+            let protocol = ProviderProtocol::try_from(protocol.as_str())?;
+            Ok(ModelSnapshot {
+                id,
+                name,
+                protocol,
+                base_url,
+                model_id,
+                reasoning_effort: model_reasoning_effort(protocol, reasoning_effort)?,
+            })
+        },
+    )
+    .transpose()
 }
 
 pub fn list_model_configs(database: &Database) -> Result<Vec<ModelConfigSummary>, AppError> {
@@ -421,7 +454,7 @@ pub fn list_model_configs(database: &Database) -> Result<Vec<ModelConfigSummary>
             |row| row.get(0),
         )?;
         let mut statement = connection.prepare(
-            "SELECT id, name, protocol, base_url, model_id, api_key IS NOT NULL
+            "SELECT id, name, protocol, base_url, model_id, reasoning_effort, api_key IS NOT NULL
              FROM model_configs ORDER BY name COLLATE NOCASE, id",
         )?;
         let rows = statement.query_map([], |row| {
@@ -431,24 +464,29 @@ pub fn list_model_configs(database: &Database) -> Result<Vec<ModelConfigSummary>
                 row.get::<_, String>(2)?,
                 row.get::<_, String>(3)?,
                 row.get::<_, String>(4)?,
-                row.get::<_, bool>(5)?,
+                row.get::<_, Option<String>>(5)?,
+                row.get::<_, bool>(6)?,
             ))
         })?;
         rows.collect::<Result<Vec<_>, _>>()
             .map(|rows| (active, rows))
     })?;
     rows.into_iter()
-        .map(|(id, name, protocol, base_url, model_id, has_api_key)| {
-            Ok(ModelConfigSummary {
-                is_active: active.as_deref() == Some(id.as_str()),
-                id,
-                name,
-                protocol: ProviderProtocol::try_from(protocol.as_str())?,
-                base_url,
-                model_id,
-                has_api_key,
-            })
-        })
+        .map(
+            |(id, name, protocol, base_url, model_id, raw_reasoning_effort, has_api_key)| {
+                let protocol = ProviderProtocol::try_from(protocol.as_str())?;
+                Ok(ModelConfigSummary {
+                    is_active: active.as_deref() == Some(id.as_str()),
+                    id,
+                    name,
+                    protocol,
+                    base_url,
+                    model_id,
+                    reasoning_effort: model_reasoning_effort(protocol, raw_reasoning_effort)?,
+                    has_api_key,
+                })
+            },
+        )
         .collect()
 }
 
@@ -485,14 +523,15 @@ pub fn save_model_config(
     database.transaction(|transaction| {
         transaction.execute(
             "INSERT INTO model_configs (
-                id, name, protocol, base_url, model_id, api_key, credential_ref,
+                id, name, protocol, base_url, model_id, reasoning_effort, api_key, credential_ref,
                 test_status, tested_at, test_error_code, created_at, updated_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, 'untested', NULL, NULL, ?7, ?7)
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, 'untested', NULL, NULL, ?8, ?8)
              ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 protocol = excluded.protocol,
                 base_url = excluded.base_url,
                 model_id = excluded.model_id,
+                reasoning_effort = excluded.reasoning_effort,
                 api_key = excluded.api_key,
                 credential_ref = NULL,
                 test_status = 'untested',
@@ -505,6 +544,7 @@ pub fn save_model_config(
                 input.protocol.as_str(),
                 input.base_url,
                 input.model_id,
+                input.reasoning_effort.map(|effort| effort.as_str()),
                 api_key,
                 now,
             ],
@@ -579,6 +619,7 @@ pub fn duplicate_model_config(
                 base_url: original.base_url,
                 model_id: original.model_id,
                 api_key: original.api_key,
+                reasoning_effort: original.reasoning_effort,
                 clear_api_key: false,
             },
         );
@@ -647,52 +688,75 @@ pub fn migrate_model_credentials(
 }
 
 fn load_stored_model(database: &Database, id: &str) -> Result<Option<StoredModel>, AppError> {
-    database.read(|connection| {
+    let row = database.read(|connection| {
         connection
             .query_row(
-                "SELECT id, name, protocol, base_url, model_id, api_key
+                "SELECT name, protocol, base_url, model_id, reasoning_effort, api_key
                  FROM model_configs WHERE id = ?1",
                 [id],
                 |row| {
-                    Ok(StoredModel {
-                        name: row.get(1)?,
-                        protocol: row.get(2)?,
-                        base_url: row.get(3)?,
-                        model_id: row.get(4)?,
-                        api_key: row.get(5)?,
-                    })
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, Option<String>>(4)?,
+                        row.get::<_, Option<String>>(5)?,
+                    ))
                 },
             )
             .optional()
-    })
+    })?;
+    row.map(
+        |(name, protocol, base_url, model_id, raw_reasoning_effort, api_key)| {
+            let parsed_protocol = ProviderProtocol::try_from(protocol.as_str())?;
+            Ok(StoredModel {
+                name,
+                protocol,
+                base_url,
+                model_id,
+                reasoning_effort: model_reasoning_effort(parsed_protocol, raw_reasoning_effort)?,
+                api_key,
+            })
+        },
+    )
+    .transpose()
 }
 
 pub fn load_model(database: &Database, id: &str) -> Result<Option<ModelSnapshot>, AppError> {
-    database.read(|connection| {
+    let row = database.read(|connection| {
         connection
             .query_row(
-                "SELECT id, name, protocol, base_url, model_id
+                "SELECT id, name, protocol, base_url, model_id, reasoning_effort
                  FROM model_configs WHERE id = ?1",
                 [id],
                 |row| {
-                    let protocol: String = row.get(2)?;
-                    Ok(ModelSnapshot {
-                        id: row.get(0)?,
-                        name: row.get(1)?,
-                        protocol: ProviderProtocol::try_from(protocol.as_str()).map_err(|_| {
-                            rusqlite::Error::InvalidColumnType(
-                                2,
-                                "protocol".into(),
-                                rusqlite::types::Type::Text,
-                            )
-                        })?,
-                        base_url: row.get(3)?,
-                        model_id: row.get(4)?,
-                    })
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, String>(4)?,
+                        row.get::<_, Option<String>>(5)?,
+                    ))
                 },
             )
             .optional()
-    })
+    })?;
+    row.map(
+        |(id, name, protocol, base_url, model_id, raw_reasoning_effort)| {
+            let protocol = ProviderProtocol::try_from(protocol.as_str())?;
+            Ok(ModelSnapshot {
+                id,
+                name,
+                protocol,
+                base_url,
+                model_id,
+                reasoning_effort: model_reasoning_effort(protocol, raw_reasoning_effort)?,
+            })
+        },
+    )
+    .transpose()
 }
 
 pub fn load_model_api_key(database: &Database, id: &str) -> Result<Option<SecretString>, AppError> {
@@ -714,6 +778,8 @@ fn validate_model_input(input: &mut ModelConfigInput) -> Result<(), AppError> {
     input.name = input.name.trim().to_owned();
     input.base_url = input.base_url.trim().trim_end_matches('/').to_owned();
     input.model_id = input.model_id.trim().to_owned();
+    input.reasoning_effort = (input.protocol == ProviderProtocol::OpenAi)
+        .then_some(input.reasoning_effort.unwrap_or_default());
     if input.api_key.is_some() && input.clear_api_key {
         return Err(AppError::invalid("API Key 与清除选项不能同时提交"));
     }

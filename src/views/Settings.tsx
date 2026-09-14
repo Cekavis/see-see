@@ -12,6 +12,7 @@ import {
   type ModelConfigSummary,
   type ModelConnectionInput,
   type ModelProtocol,
+  type ReasoningEffort,
   type RemoteModel,
 } from "../ipc";
 
@@ -38,6 +39,7 @@ const emptyForm = (): ModelConfigInput => ({
   protocol: "openai",
   baseUrl: endpoints.openai,
   modelId: "",
+  reasoningEffort: "low",
   apiKey: "",
   clearApiKey: false,
 });
@@ -82,6 +84,10 @@ export function Settings({ api = ipc }: { api?: SettingsApi }) {
           protocol: form.protocol,
           baseUrl: form.baseUrl,
           modelId: form.modelId,
+          reasoningEffort:
+            form.protocol === "openai"
+              ? (form.reasoningEffort ?? "low")
+              : undefined,
           apiKey: form.apiKey || undefined,
         }
       : null;
@@ -132,6 +138,9 @@ export function Settings({ api = ipc }: { api?: SettingsApi }) {
                   </h3>
                   <p>
                     {config.protocol} · {config.modelId}
+                    {config.reasoningEffort
+                      ? ` · 思考 ${config.reasoningEffort}`
+                      : ""}
                   </p>
                   <p className="config-card__endpoint">{config.baseUrl}</p>
                   <p>{config.hasApiKey ? "已保存 Key" : "无 Key"}</p>
@@ -148,6 +157,7 @@ export function Settings({ api = ipc }: { api?: SettingsApi }) {
                         protocol: config.protocol,
                         baseUrl: config.baseUrl,
                         modelId: config.modelId,
+                        reasoningEffort: config.reasoningEffort ?? undefined,
                         apiKey: "",
                         clearApiKey: false,
                       });
@@ -236,7 +246,15 @@ export function Settings({ api = ipc }: { api?: SettingsApi }) {
                   const protocol = event.target.value as ModelProtocol;
                   setForm((current) =>
                     current
-                      ? { ...current, protocol, baseUrl: endpoints[protocol] }
+                      ? {
+                          ...current,
+                          protocol,
+                          baseUrl: endpoints[protocol],
+                          reasoningEffort:
+                            protocol === "openai"
+                              ? (current.reasoningEffort ?? "low")
+                              : undefined,
+                        }
                       : current,
                   );
                   setModels([]);
@@ -279,6 +297,28 @@ export function Settings({ api = ipc }: { api?: SettingsApi }) {
                 ))}
               </datalist>
             </Field>
+            {form.protocol === "openai" && (
+              <Field
+                label="思考强度"
+                htmlFor="model-reasoning-effort"
+                hint="仅 OpenAI 兼容接口生效；端点不支持该参数时请求会失败。"
+              >
+                <select
+                  id="model-reasoning-effort"
+                  value={form.reasoningEffort ?? "low"}
+                  onChange={(event) =>
+                    update(
+                      "reasoningEffort",
+                      event.target.value as ReasoningEffort,
+                    )
+                  }
+                >
+                  <option value="low">low</option>
+                  <option value="medium">medium</option>
+                  <option value="high">high</option>
+                </select>
+              </Field>
+            )}
             <Field
               label="API Key"
               htmlFor="model-key"

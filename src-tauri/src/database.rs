@@ -9,6 +9,8 @@ const HISTORY_CONFIGURATION_IDS_MIGRATION: &str =
     include_str!("../migrations/0004_history_configuration_ids.sql");
 const HISTORY_TOKEN_USAGE_MIGRATION: &str =
     include_str!("../migrations/0006_history_token_usage.sql");
+const MODEL_REASONING_EFFORT_MIGRATION: &str =
+    include_str!("../migrations/0007_model_reasoning_effort.sql");
 const LEGACY_DEFAULT_CAPTURE_SHORTCUT: &str = "Alt+Shift+A";
 pub const WINDOWS_DEFAULT_CAPTURE_SHORTCUT: &str = "Ctrl+Shift+X";
 pub const MACOS_DEFAULT_CAPTURE_SHORTCUT: &str = "Command+Shift+X";
@@ -91,6 +93,22 @@ impl Database {
                     [],
                 )
                 .map_err(|_| AppError::storage("无法清理旧模型测试结果"))?;
+        }
+        let has_reasoning_effort = {
+            let mut statement = connection
+                .prepare("PRAGMA table_info(model_configs)")
+                .map_err(|_| AppError::storage("无法检查模型配置数据库版本"))?;
+            let columns = statement
+                .query_map([], |row| row.get::<_, String>(1))
+                .map_err(|_| AppError::storage("无法检查模型配置数据库版本"))?;
+            columns
+                .filter_map(Result::ok)
+                .any(|column| column == "reasoning_effort")
+        };
+        if !has_reasoning_effort {
+            connection
+                .execute_batch(MODEL_REASONING_EFFORT_MIGRATION)
+                .map_err(|_| AppError::storage("无法升级模型思考强度配置"))?;
         }
         let has_history_thinking = {
             let mut statement = connection
@@ -182,7 +200,7 @@ impl Database {
                 .map_err(|_| AppError::storage("无法升级提示词快捷键"))?;
         }
         connection
-            .pragma_update(None, "user_version", 8)
+            .pragma_update(None, "user_version", 9)
             .map_err(|_| AppError::storage("无法记录数据库版本"))?;
         Ok(Self {
             connection: Mutex::new(connection),
@@ -279,7 +297,61 @@ mod tests {
             .unwrap();
 
         assert!(has_thinking);
-        assert_eq!(database.pragma_i64("user_version").unwrap(), 8);
+        assert_eq!(database.pragma_i64("user_version").unwrap(), 9);
+    }
+
+    #[test]
+    fn legacy_model_schema_adds_reasoning_effort_with_openai_default() {
+        let connection = Connection::open_in_memory().unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE model_configs (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                    protocol TEXT NOT NULL,
+                    base_url TEXT NOT NULL,
+                    model_id TEXT NOT NULL,
+                    api_key TEXT,
+                    credential_ref TEXT,
+                    test_status TEXT NOT NULL DEFAULT 'untested',
+                    tested_at TEXT,
+                    test_error_code TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                INSERT INTO model_configs (
+                    id, name, protocol, base_url, model_id, api_key, credential_ref,
+                    test_status, tested_at, test_error_code, created_at, updated_at
+                ) VALUES
+                    ('legacy-openai', '旧 OpenAI', 'openai', 'https://example.com/v1', 'vision', NULL, NULL,
+                     'untested', NULL, NULL, '2026-07-23T00:00:00Z', '2026-07-23T00:00:00Z'),
+                    ('legacy-anthropic', '旧 Anthropic', 'anthropic', 'https://example.com/v1', 'vision', NULL, NULL,
+                     'untested', NULL, NULL, '2026-07-23T00:00:00Z', '2026-07-23T00:00:00Z');",
+            )
+            .unwrap();
+        connection.pragma_update(None, "user_version", 8).unwrap();
+
+        let database = Database::initialize(connection).unwrap();
+        let values = database
+            .read(|connection| {
+                Ok((
+                    connection.query_row(
+                        "SELECT reasoning_effort FROM model_configs WHERE id = 'legacy-openai'",
+                        [],
+                        |row| row.get::<_, Option<String>>(0),
+                    )?,
+                    connection.query_row(
+                        "SELECT reasoning_effort FROM model_configs WHERE id = 'legacy-anthropic'",
+                        [],
+                        |row| row.get::<_, Option<String>>(0),
+                    )?,
+                ))
+            })
+            .unwrap();
+
+        assert_eq!(values.0.as_deref(), Some("low"));
+        assert_eq!(values.1, None);
+        assert_eq!(database.pragma_i64("user_version").unwrap(), 9);
     }
 
     #[test]
