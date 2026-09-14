@@ -1,4 +1,7 @@
-use super::{PreparedRequest, ProviderEvent, ProviderRequest, endpoint, image_data, secret_header};
+use super::{
+    PreparedRequest, ProviderEvent, ProviderRequest, endpoint, image_data, secret_header,
+    token_count, usage_event,
+};
 use crate::error::{AppError, ErrorCode};
 use reqwest::Method;
 use serde_json::json;
@@ -42,7 +45,7 @@ pub fn prepare(request: &ProviderRequest) -> Result<PreparedRequest, AppError> {
 pub fn parse(_event_name: Option<&str>, data: &str) -> Result<Vec<ProviderEvent>, AppError> {
     let value: serde_json::Value = serde_json::from_str(data)
         .map_err(|_| AppError::provider(ErrorCode::ProviderError, "Gemini 流格式无效", true))?;
-    Ok(value["candidates"]
+    let mut events = value["candidates"]
         .as_array()
         .into_iter()
         .flatten()
@@ -61,7 +64,23 @@ pub fn parse(_event_name: Option<&str>, data: &str) -> Result<Vec<ProviderEvent>
                 ProviderEvent::TextDelta(text)
             }
         })
-        .collect())
+        .collect::<Vec<_>>();
+    let usage = &value["usageMetadata"];
+    let candidates_tokens = usage.get("candidatesTokenCount").and_then(token_count);
+    let thoughts_tokens = usage.get("thoughtsTokenCount").and_then(token_count);
+    let output_tokens = match (candidates_tokens, thoughts_tokens) {
+        (Some(candidates), Some(thoughts)) => candidates.checked_add(thoughts),
+        (Some(candidates), None) => Some(candidates),
+        (None, Some(thoughts)) => Some(thoughts),
+        (None, None) => None,
+    };
+    if let Some(event) = usage_event(
+        usage.get("promptTokenCount").and_then(token_count),
+        output_tokens,
+    ) {
+        events.push(event);
+    }
+    Ok(events)
 }
 
 pub fn parse_models(data: &str) -> Result<Vec<RemoteModel>, AppError> {

@@ -38,6 +38,10 @@ pub enum AnalysisEvent {
         run_id: String,
         thinking: String,
         text: String,
+        #[serde(rename = "inputTokens")]
+        input_tokens: Option<i64>,
+        #[serde(rename = "outputTokens")]
+        output_tokens: Option<i64>,
         #[serde(rename = "savedToHistory")]
         saved_to_history: bool,
     },
@@ -45,8 +49,20 @@ pub enum AnalysisEvent {
         #[serde(rename = "runId")]
         run_id: String,
         error: AppError,
+        #[serde(rename = "inputTokens")]
+        input_tokens: Option<i64>,
+        #[serde(rename = "outputTokens")]
+        output_tokens: Option<i64>,
         #[serde(rename = "savedToHistory")]
         saved_to_history: bool,
+    },
+    Usage {
+        #[serde(rename = "runId")]
+        run_id: String,
+        #[serde(rename = "inputTokens")]
+        input_tokens: Option<i64>,
+        #[serde(rename = "outputTokens")]
+        output_tokens: Option<i64>,
     },
     Cancelled {
         #[serde(rename = "runId")]
@@ -63,6 +79,8 @@ pub struct AnalysisSnapshot {
     pub state: AnalysisState,
     pub thinking: String,
     pub text: String,
+    pub input_tokens: Option<i64>,
+    pub output_tokens: Option<i64>,
     pub saved_to_history: bool,
     pub error: Option<AppError>,
 }
@@ -81,6 +99,8 @@ impl AnalysisSnapshot {
             state,
             thinking: String::new(),
             text: String::new(),
+            input_tokens: None,
+            output_tokens: None,
             saved_to_history: false,
             error: None,
         }
@@ -143,6 +163,25 @@ impl AnalysisRun {
         })
     }
 
+    pub fn push_usage(
+        &mut self,
+        input_tokens: Option<i64>,
+        output_tokens: Option<i64>,
+    ) -> Result<AnalysisEvent, AppError> {
+        self.ensure_active()?;
+        if input_tokens.is_some() {
+            self.snapshot.input_tokens = input_tokens;
+        }
+        if output_tokens.is_some() {
+            self.snapshot.output_tokens = output_tokens;
+        }
+        Ok(AnalysisEvent::Usage {
+            run_id: self.snapshot.run_id.clone(),
+            input_tokens: self.snapshot.input_tokens,
+            output_tokens: self.snapshot.output_tokens,
+        })
+    }
+
     pub fn complete(&mut self, saved_to_history: bool) -> Result<AnalysisEvent, AppError> {
         self.ensure_active()?;
         self.terminal = true;
@@ -152,6 +191,8 @@ impl AnalysisRun {
             run_id: self.snapshot.run_id.clone(),
             thinking: self.snapshot.thinking.clone(),
             text: self.snapshot.text.clone(),
+            input_tokens: self.snapshot.input_tokens,
+            output_tokens: self.snapshot.output_tokens,
             saved_to_history,
         })
     }
@@ -169,6 +210,8 @@ impl AnalysisRun {
         Ok(AnalysisEvent::Failed {
             run_id: self.snapshot.run_id.clone(),
             error,
+            input_tokens: self.snapshot.input_tokens,
+            output_tokens: self.snapshot.output_tokens,
             saved_to_history,
         })
     }
@@ -294,6 +337,15 @@ impl ActiveAnalysis {
         self.emit(event)
     }
 
+    pub fn push_usage(
+        &self,
+        input_tokens: Option<i64>,
+        output_tokens: Option<i64>,
+    ) -> Result<(), AppError> {
+        let event = self.lock_run()?.push_usage(input_tokens, output_tokens)?;
+        self.emit(event)
+    }
+
     pub fn complete(&self, saved_to_history: bool) -> Result<(), AppError> {
         let event = self.lock_run()?.complete(saved_to_history)?;
         self.emit(event)
@@ -400,6 +452,12 @@ pub fn start_network_analysis(
             ProviderEvent::TextDelta(text) => {
                 let _ = active.push_text(text);
             }
+            ProviderEvent::Usage {
+                input_tokens,
+                output_tokens,
+            } => {
+                let _ = active.push_usage(input_tokens, output_tokens);
+            }
             ProviderEvent::Completed => {}
         });
         tokio::pin!(stream);
@@ -427,6 +485,14 @@ pub fn start_network_analysis(
                     status: HistoryStatus::Success,
                     thinking_text,
                     result_text: Some(text),
+                    input_tokens: active
+                        .snapshot()
+                        .ok()
+                        .and_then(|snapshot| snapshot.input_tokens),
+                    output_tokens: active
+                        .snapshot()
+                        .ok()
+                        .and_then(|snapshot| snapshot.output_tokens),
                     error_code: None,
                     error_message: None,
                     prompt_config_id: Some(input.prompt.id),
@@ -465,6 +531,14 @@ pub fn start_network_analysis(
                     status: HistoryStatus::Failed,
                     thinking_text,
                     result_text: None,
+                    input_tokens: active
+                        .snapshot()
+                        .ok()
+                        .and_then(|snapshot| snapshot.input_tokens),
+                    output_tokens: active
+                        .snapshot()
+                        .ok()
+                        .and_then(|snapshot| snapshot.output_tokens),
                     error_code: Some(error.code.as_str().into()),
                     error_message: Some(error.message_with_details()),
                     prompt_config_id: Some(input.prompt.id),

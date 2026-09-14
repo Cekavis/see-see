@@ -32,6 +32,8 @@ const item = {
   promptName: "日语学习解析",
   modelConfigName: "模型",
   modelId: "vision",
+  inputTokens: 123,
+  outputTokens: 45,
   startedAt: "2026-07-23T00:00:00Z",
   completedAt: "2026-07-23T00:00:01Z",
   hasImage: true,
@@ -158,6 +160,8 @@ describe("History", () => {
     expect(card?.firstElementChild).toBe(image);
     expect(card).toHaveTextContent("模型");
     expect(card).toHaveTextContent("日语学习解析");
+    expect(card).toHaveTextContent("输入 token：123");
+    expect(card).toHaveTextContent("输出 token：45");
     expect(service.getHistoryImage).toHaveBeenCalledWith("h1", "original");
 
     const styles = nodeProcess
@@ -265,6 +269,8 @@ describe("History", () => {
     const thinking = screen.getByText("思考过程").closest("details");
     expect(thinking).not.toHaveAttribute("open");
     expect(screen.getByText("先识别文字，再翻译")).toBeInTheDocument();
+    expect(screen.getByText("输入 token：123")).toBeInTheDocument();
+    expect(screen.getByText("输出 token：45")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "返回历史记录" }),
     ).toBeInTheDocument();

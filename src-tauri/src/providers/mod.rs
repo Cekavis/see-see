@@ -64,7 +64,25 @@ pub struct PreparedRequest {
 pub enum ProviderEvent {
     ThinkingDelta(String),
     TextDelta(String),
+    Usage {
+        input_tokens: Option<i64>,
+        output_tokens: Option<i64>,
+    },
     Completed,
+}
+
+pub(crate) fn token_count(value: &Value) -> Option<i64> {
+    value.as_u64().and_then(|value| i64::try_from(value).ok())
+}
+
+pub(crate) fn usage_event(
+    input_tokens: Option<i64>,
+    output_tokens: Option<i64>,
+) -> Option<ProviderEvent> {
+    (input_tokens.is_some() || output_tokens.is_some()).then_some(ProviderEvent::Usage {
+        input_tokens,
+        output_tokens,
+    })
 }
 
 #[derive(Default)]

@@ -65,6 +65,8 @@ export type AnalysisSnapshot = {
   state: "submitting" | "streaming" | "completed" | "failed" | "cancelled";
   thinking: string;
   text: string;
+  inputTokens: number | null;
+  outputTokens: number | null;
   savedToHistory: boolean;
   error: AppError | null;
 };
@@ -83,9 +85,24 @@ export type AnalysisEvent =
       runId: string;
       thinking: string;
       text: string;
+      inputTokens: number | null;
+      outputTokens: number | null;
       savedToHistory: boolean;
     }
-  | { type: "failed"; runId: string; error: AppError; savedToHistory: boolean }
+  | {
+      type: "failed";
+      runId: string;
+      error: AppError;
+      inputTokens: number | null;
+      outputTokens: number | null;
+      savedToHistory: boolean;
+    }
+  | {
+      type: "usage";
+      runId: string;
+      inputTokens: number | null;
+      outputTokens: number | null;
+    }
   | { type: "cancelled"; runId: string };
 
 export type ModelProtocol = "openai" | "anthropic" | "gemini";
@@ -150,6 +167,8 @@ export type HistoryListItem = {
   promptName: string;
   modelConfigName: string;
   modelId: string;
+  inputTokens: number | null;
+  outputTokens: number | null;
   startedAt: string;
   completedAt: string;
   hasImage: boolean;

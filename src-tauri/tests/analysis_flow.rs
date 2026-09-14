@@ -35,6 +35,22 @@ fn analysis_run_has_one_terminal_event() {
         run.push_text("好"),
         Ok(AnalysisEvent::Delta { .. })
     ));
+    assert_eq!(
+        run.push_usage(Some(123), None).unwrap(),
+        AnalysisEvent::Usage {
+            run_id: "run-1".into(),
+            input_tokens: Some(123),
+            output_tokens: None,
+        }
+    );
+    assert_eq!(
+        run.push_usage(None, Some(45)).unwrap(),
+        AnalysisEvent::Usage {
+            run_id: "run-1".into(),
+            input_tokens: Some(123),
+            output_tokens: Some(45),
+        }
+    );
     let completed = run.complete(false).unwrap();
     assert_eq!(
         completed,
@@ -42,6 +58,8 @@ fn analysis_run_has_one_terminal_event() {
             run_id: "run-1".into(),
             thinking: "先判断".into(),
             text: "你好".into(),
+            input_tokens: Some(123),
+            output_tokens: Some(45),
             saved_to_history: false
         }
     );
@@ -87,6 +105,7 @@ fn cancellation_is_terminal_and_never_claims_history_persistence() {
 #[test]
 fn failed_requests_are_not_retried_and_storage_failure_keeps_result_available() {
     let mut failed = AnalysisRun::new("run-3", "模型配置", "提示词配置");
+    failed.push_usage(Some(18), None).unwrap();
     let event = failed
         .fail(
             see_see_lib::error::AppError::provider(ErrorCode::Timeout, "超时", true),
@@ -96,6 +115,8 @@ fn failed_requests_are_not_retried_and_storage_failure_keeps_result_available() 
     assert!(matches!(
         event,
         AnalysisEvent::Failed {
+            input_tokens: Some(18),
+            output_tokens: None,
             saved_to_history: false,
             ..
         }
@@ -104,9 +125,12 @@ fn failed_requests_are_not_retried_and_storage_failure_keeps_result_available() 
     let mut completed = AnalysisRun::new("run-4", "模型配置", "提示词配置");
     completed.push_thinking("内部分析").unwrap();
     completed.push_text("仍可复制").unwrap();
+    completed.push_usage(Some(18), None).unwrap();
     completed.complete(false).unwrap();
     assert_eq!(completed.snapshot().thinking, "内部分析");
     assert_eq!(completed.snapshot().text, "仍可复制");
+    assert_eq!(completed.snapshot().input_tokens, Some(18));
+    assert_eq!(completed.snapshot().output_tokens, None);
     assert!(!completed.snapshot().saved_to_history);
 }
 
@@ -134,6 +158,8 @@ fn retry_resets_all_failures_and_keeps_the_source_image() {
     assert_eq!(snapshot.prompt_config_name, "重试提示词配置");
     assert!(snapshot.thinking.is_empty());
     assert!(snapshot.text.is_empty());
+    assert_eq!(snapshot.input_tokens, None);
+    assert_eq!(snapshot.output_tokens, None);
     assert_eq!(active.image_png(), vec![1, 2, 3]);
 
     let terminal = ActiveAnalysis::new("run-6", vec![], "模型配置", "提示词配置");

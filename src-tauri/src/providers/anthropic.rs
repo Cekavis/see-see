@@ -1,4 +1,7 @@
-use super::{PreparedRequest, ProviderEvent, ProviderRequest, endpoint, image_data, secret_header};
+use super::{
+    PreparedRequest, ProviderEvent, ProviderRequest, endpoint, image_data, secret_header,
+    token_count, usage_event,
+};
 use crate::error::{AppError, ErrorCode};
 use reqwest::Method;
 use serde_json::json;
@@ -34,11 +37,43 @@ pub fn parse(event_name: Option<&str>, data: &str) -> Result<Vec<ProviderEvent>,
     if event_name == Some("message_stop") {
         return Ok(vec![ProviderEvent::Completed]);
     }
-    if event_name != Some("content_block_delta") {
+    if !matches!(
+        event_name,
+        Some("message_start") | Some("message_delta") | Some("content_block_delta")
+    ) {
         return Ok(Vec::new());
     }
     let value: serde_json::Value = serde_json::from_str(data)
         .map_err(|_| AppError::provider(ErrorCode::ProviderError, "Anthropic 流格式无效", true))?;
+    if event_name == Some("message_start") {
+        return Ok(usage_event(
+            value
+                .get("message")
+                .and_then(|message| message.get("usage"))
+                .and_then(|usage| usage.get("input_tokens"))
+                .and_then(token_count),
+            value
+                .get("message")
+                .and_then(|message| message.get("usage"))
+                .and_then(|usage| usage.get("output_tokens"))
+                .and_then(token_count),
+        )
+        .into_iter()
+        .collect());
+    }
+    if event_name == Some("message_delta") {
+        let usage = value.get("usage");
+        return Ok(usage_event(
+            usage
+                .and_then(|usage| usage.get("input_tokens"))
+                .and_then(token_count),
+            usage
+                .and_then(|usage| usage.get("output_tokens"))
+                .and_then(token_count),
+        )
+        .into_iter()
+        .collect());
+    }
     let delta = &value["delta"];
     let event = match delta["type"].as_str() {
         Some("thinking_delta") => delta["thinking"]

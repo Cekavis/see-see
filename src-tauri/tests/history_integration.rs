@@ -50,6 +50,8 @@ fn insert(db: &Database, id: &str, result: &str, prompt: &str, status: HistorySt
             model_config_name: "模型".into(),
             protocol: "openai".into(),
             model_id: "vision".into(),
+            input_tokens: Some(123),
+            output_tokens: Some(45),
             started_at: format!("2026-07-23T00:00:0{id}Z"),
             completed_at: format!("2026-07-23T00:00:1{id}Z"),
         },
@@ -111,6 +113,14 @@ fn history_query_supports_cursor_escaped_search_and_filters() {
             .thinking_text
             .as_deref(),
         Some("思考 3")
+    );
+    assert_eq!(
+        get_history_detail(&db, "1").unwrap().input_tokens,
+        Some(123)
+    );
+    assert_eq!(
+        get_history_detail(&db, "1").unwrap().output_tokens,
+        Some(45)
     );
 }
 
@@ -211,6 +221,8 @@ fn history_setting_persists_and_disables_new_writes() {
         model_config_name: "模型".into(),
         protocol: "openai".into(),
         model_id: "vision".into(),
+        input_tokens: None,
+        output_tokens: None,
         started_at: "2026-07-23T00:00:00Z".into(),
         completed_at: "2026-07-23T00:00:01Z".into(),
     };

@@ -21,6 +21,8 @@ const snapshot = (overrides: Partial<ResultSnapshot> = {}): ResultSnapshot => ({
   state: "streaming",
   thinking: "",
   text: "逐步输出",
+  inputTokens: null,
+  outputTokens: null,
   savedToHistory: false,
   error: null,
   ...overrides,
@@ -36,6 +38,31 @@ describe("Result", () => {
 
     expect(screen.getByText("模型配置：视觉模型")).toBeInTheDocument();
     expect(screen.getByText("提示词配置：日语解析")).toBeInTheDocument();
+  });
+
+  it("shows token usage below the always-on-top control and formats missing values", () => {
+    const { rerender } = renderResult(
+      <Result
+        snapshot={snapshot({ inputTokens: 1024, outputTokens: 256 })}
+        alwaysOnTop
+      />,
+    );
+
+    expect(screen.getByText("输入 token：1,024")).toBeInTheDocument();
+    expect(screen.getByText("输出 token：256")).toBeInTheDocument();
+    const actions = document.querySelector(".result-view__header-actions");
+    expect(actions?.firstElementChild).toBe(
+      screen.getByRole("checkbox", { name: "窗口置顶" }).parentElement,
+    );
+    expect(actions?.lastElementChild).toHaveClass("token-usage");
+
+    rerender(
+      <NotificationProvider>
+        <Result snapshot={snapshot()} />
+      </NotificationProvider>,
+    );
+    expect(screen.getByText("输入 token：—")).toBeInTheDocument();
+    expect(screen.getByText("输出 token：—")).toBeInTheDocument();
   });
 
   it("omits configuration metadata until the analysis attaches", () => {

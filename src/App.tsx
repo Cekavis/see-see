@@ -47,6 +47,8 @@ function ResultView() {
     state: "submitting",
     thinking: "",
     text: "",
+    inputTokens: null,
+    outputTokens: null,
     savedToHistory: false,
     error: null,
   });
@@ -136,6 +138,8 @@ export function updateAnalysisSnapshot(
       state: "submitting",
       thinking: "",
       text: "",
+      inputTokens: null,
+      outputTokens: null,
       savedToHistory: false,
       error: null,
     };
@@ -151,12 +155,20 @@ export function updateAnalysisSnapshot(
       state: "streaming",
       thinking: current.thinking + event.text,
     };
+  if (event.type === "usage")
+    return {
+      ...current,
+      inputTokens: event.inputTokens ?? current.inputTokens,
+      outputTokens: event.outputTokens ?? current.outputTokens,
+    };
   if (event.type === "completed")
     return {
       ...current,
       state: "completed",
       thinking: event.thinking,
       text: event.text,
+      inputTokens: event.inputTokens,
+      outputTokens: event.outputTokens,
       savedToHistory: event.savedToHistory,
     };
   if (event.type === "failed")
@@ -164,6 +176,8 @@ export function updateAnalysisSnapshot(
       ...current,
       state: "failed",
       error: event.error,
+      inputTokens: event.inputTokens,
+      outputTokens: event.outputTokens,
       savedToHistory: event.savedToHistory,
     };
   return {
@@ -188,6 +202,8 @@ export function mergeAttachedAnalysisSnapshot(
       current.promptConfigName ||
       current.thinking ||
       current.text ||
+      current.inputTokens !== null ||
+      current.outputTokens !== null ||
       current.error,
     );
   return hasLiveUpdate ? current : attached;

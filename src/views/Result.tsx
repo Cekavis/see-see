@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "../components/Button";
 import { useNotifications } from "../components/Notifications";
+import { TokenUsage } from "../components/TokenUsage";
 import { getErrorMessage, type AppError } from "../ipc";
 
 export type ResultSnapshot = {
@@ -10,6 +11,8 @@ export type ResultSnapshot = {
   state: "submitting" | "streaming" | "completed" | "failed" | "cancelled";
   thinking: string;
   text: string;
+  inputTokens: number | null;
+  outputTokens: number | null;
   savedToHistory: boolean;
   error: AppError | null;
 };
@@ -98,26 +101,32 @@ export function Result({
             </div>
           )}
         </div>
-        <label className="toggle">
-          <input
-            type="checkbox"
-            checked={alwaysOnTop}
-            onChange={(event) => {
-              if (!onAlwaysOnTop) return;
-              try {
-                const result = onAlwaysOnTop(event.target.checked);
-                if (result instanceof Promise) {
-                  void result.catch((value: unknown) =>
-                    notifications.error(getErrorMessage(value)),
-                  );
+        <div className="result-view__header-actions">
+          <label className="toggle">
+            <input
+              type="checkbox"
+              checked={alwaysOnTop}
+              onChange={(event) => {
+                if (!onAlwaysOnTop) return;
+                try {
+                  const result = onAlwaysOnTop(event.target.checked);
+                  if (result instanceof Promise) {
+                    void result.catch((value: unknown) =>
+                      notifications.error(getErrorMessage(value)),
+                    );
+                  }
+                } catch (value) {
+                  notifications.error(getErrorMessage(value));
                 }
-              } catch (value) {
-                notifications.error(getErrorMessage(value));
-              }
-            }}
+              }}
+            />
+            窗口置顶
+          </label>
+          <TokenUsage
+            inputTokens={snapshot.inputTokens}
+            outputTokens={snapshot.outputTokens}
           />
-          窗口置顶
-        </label>
+        </div>
       </header>
       <div className="result-view__content">
         <ThinkingDisclosure

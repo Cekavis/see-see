@@ -48,6 +48,8 @@ pub struct HistoryInput {
     pub model_config_name: String,
     pub protocol: String,
     pub model_id: String,
+    pub input_tokens: Option<i64>,
+    pub output_tokens: Option<i64>,
     pub started_at: String,
     pub completed_at: String,
 }
@@ -72,6 +74,8 @@ pub struct HistoryListItem {
     pub prompt_name: String,
     pub model_config_name: String,
     pub model_id: String,
+    pub input_tokens: Option<i64>,
+    pub output_tokens: Option<i64>,
     pub started_at: String,
     pub completed_at: String,
     pub has_image: bool,
@@ -100,6 +104,8 @@ pub struct HistoryEntryDetail {
     pub model_config_name: String,
     pub protocol: String,
     pub model_id: String,
+    pub input_tokens: Option<i64>,
+    pub output_tokens: Option<i64>,
     pub started_at: String,
     pub completed_at: String,
     pub has_image: bool,
@@ -142,8 +148,8 @@ pub fn save_history(
             "INSERT INTO history_entries (
                 id, status, thinking_text, result_text, error_code, error_message, prompt_config_id,
                 prompt_name, prompt_body, model_config_id, model_config_name, protocol, model_id,
-                started_at, completed_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+                input_tokens, output_tokens, started_at, completed_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)
              ON CONFLICT(id) DO UPDATE SET
                 status = excluded.status,
                 thinking_text = excluded.thinking_text,
@@ -157,6 +163,8 @@ pub fn save_history(
                 model_config_name = excluded.model_config_name,
                 protocol = excluded.protocol,
                 model_id = excluded.model_id,
+                input_tokens = excluded.input_tokens,
+                output_tokens = excluded.output_tokens,
                 started_at = excluded.started_at,
                 completed_at = excluded.completed_at",
             rusqlite::params![
@@ -173,6 +181,8 @@ pub fn save_history(
                 input.model_config_name,
                 input.protocol,
                 input.model_id,
+                input.input_tokens,
+                input.output_tokens,
                 input.started_at,
                 input.completed_at,
             ],
@@ -228,7 +238,8 @@ pub fn query_history(database: &Database, query: HistoryQuery) -> Result<History
     let mut items = database.read(|connection| {
         let mut statement = connection.prepare(
             "SELECT h.id, h.status, substr(h.result_text, 1, 240), h.error_message,
-                    h.prompt_name, h.model_config_name, h.model_id, h.started_at, h.completed_at,
+                    h.prompt_name, h.model_config_name, h.model_id, h.input_tokens, h.output_tokens,
+                    h.started_at, h.completed_at,
                     EXISTS(SELECT 1 FROM history_images i WHERE i.history_id = h.id)
              FROM history_entries h
              WHERE (?1 IS NULL OR h.result_text LIKE ?1 ESCAPE '\\')
@@ -257,9 +268,11 @@ pub fn query_history(database: &Database, query: HistoryQuery) -> Result<History
                     row.get::<_, String>(4)?,
                     row.get::<_, String>(5)?,
                     row.get::<_, String>(6)?,
-                    row.get::<_, String>(7)?,
-                    row.get::<_, String>(8)?,
-                    row.get::<_, bool>(9)?,
+                    row.get::<_, Option<i64>>(7)?,
+                    row.get::<_, Option<i64>>(8)?,
+                    row.get::<_, String>(9)?,
+                    row.get::<_, String>(10)?,
+                    row.get::<_, bool>(11)?,
                 ))
             },
         )?;
@@ -278,6 +291,8 @@ pub fn query_history(database: &Database, query: HistoryQuery) -> Result<History
                 prompt_name,
                 model_config_name,
                 model_id,
+                input_tokens,
+                output_tokens,
                 started_at,
                 completed_at,
                 has_image,
@@ -290,6 +305,8 @@ pub fn query_history(database: &Database, query: HistoryQuery) -> Result<History
                     prompt_name,
                     model_config_name,
                     model_id,
+                    input_tokens,
+                    output_tokens,
                     started_at,
                     completed_at,
                     has_image,
@@ -315,7 +332,7 @@ pub fn get_history_detail(database: &Database, id: &str) -> Result<HistoryEntryD
                     "SELECT h.id, h.status, h.result_text, h.error_code, h.error_message,
                         h.thinking_text, h.prompt_config_id, h.prompt_name, h.prompt_body,
                         h.model_config_id, h.model_config_name, h.protocol, h.model_id,
-                        h.started_at, h.completed_at,
+                        h.input_tokens, h.output_tokens, h.started_at, h.completed_at,
                         EXISTS(SELECT 1 FROM history_images i WHERE i.history_id = h.id)
                  FROM history_entries h WHERE h.id = ?1",
                     [id],
@@ -335,9 +352,11 @@ pub fn get_history_detail(database: &Database, id: &str) -> Result<HistoryEntryD
                             row.get::<_, String>(10)?,
                             row.get::<_, String>(11)?,
                             row.get::<_, String>(12)?,
-                            row.get::<_, String>(13)?,
-                            row.get::<_, String>(14)?,
-                            row.get::<_, bool>(15)?,
+                            row.get::<_, Option<i64>>(13)?,
+                            row.get::<_, Option<i64>>(14)?,
+                            row.get::<_, String>(15)?,
+                            row.get::<_, String>(16)?,
+                            row.get::<_, bool>(17)?,
                         ))
                     },
                 )
@@ -358,6 +377,8 @@ pub fn get_history_detail(database: &Database, id: &str) -> Result<HistoryEntryD
                 model_config_name,
                 protocol,
                 model_id,
+                input_tokens,
+                output_tokens,
                 started_at,
                 completed_at,
                 has_image,
@@ -376,6 +397,8 @@ pub fn get_history_detail(database: &Database, id: &str) -> Result<HistoryEntryD
                     model_config_name,
                     protocol,
                     model_id,
+                    input_tokens,
+                    output_tokens,
                     started_at,
                     completed_at,
                     has_image,

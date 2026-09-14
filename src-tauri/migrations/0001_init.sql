@@ -47,6 +47,8 @@ CREATE TABLE IF NOT EXISTS history_entries (
     model_config_name TEXT NOT NULL,
     protocol TEXT NOT NULL,
     model_id TEXT NOT NULL,
+    input_tokens INTEGER,
+    output_tokens INTEGER,
     started_at TEXT NOT NULL,
     completed_at TEXT NOT NULL,
     CHECK (

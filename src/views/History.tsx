@@ -11,6 +11,7 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorNotice } from "../components/ErrorNotice";
 import { useNotifications } from "../components/Notifications";
+import { TokenUsage } from "../components/TokenUsage";
 import { ThinkingDisclosure } from "./Result";
 import {
   getErrorMessage,
@@ -265,14 +266,20 @@ export function History({ api = ipc }: { api?: HistoryApi }) {
                 alt="原始截图"
               />
             )}
-            <dl>
-              <dt>提示词</dt>
-              <dd>{detail.promptName}</dd>
-              <dt>模型</dt>
-              <dd>
-                {detail.modelConfigName} · {detail.modelId}
-              </dd>
-            </dl>
+            <div className="history-detail__meta">
+              <dl>
+                <dt>提示词</dt>
+                <dd>{detail.promptName}</dd>
+                <dt>模型</dt>
+                <dd>
+                  {detail.modelConfigName} · {detail.modelId}
+                </dd>
+              </dl>
+              <TokenUsage
+                inputTokens={detail.inputTokens}
+                outputTokens={detail.outputTokens}
+              />
+            </div>
             <ThinkingDisclosure text={detail.thinkingText} />
             {detail.status === "success" ? (
               <pre className="result-view__text">{detail.resultText}</pre>
@@ -447,11 +454,17 @@ export function History({ api = ipc }: { api?: HistoryApi }) {
               <article className="history-item" key={item.id}>
                 <HistoryImage api={api} item={item} />
                 <div className="history-item__content">
-                  <p className="history-item__meta">
-                    {item.status === "success" ? "成功" : "失败"} ·{" "}
-                    {item.modelConfigName} · {item.promptName} ·{" "}
-                    {new Date(item.startedAt).toLocaleString()}
-                  </p>
+                  <div className="history-item__meta-row">
+                    <p className="history-item__meta">
+                      {item.status === "success" ? "成功" : "失败"} ·{" "}
+                      {item.modelConfigName} · {item.promptName} ·{" "}
+                      {new Date(item.startedAt).toLocaleString()}
+                    </p>
+                    <TokenUsage
+                      inputTokens={item.inputTokens}
+                      outputTokens={item.outputTokens}
+                    />
+                  </div>
                   <pre className="history-item__summary">
                     {item.resultPreview ?? item.errorMessage ?? "无结果"}
                   </pre>

@@ -50,6 +50,8 @@ fn provider_requests_match_contracts_without_exposing_keys_in_json() {
         gemini.body["generationConfig"]["thinkingConfig"]["includeThoughts"],
         true
     );
+    let openai = build_http_request(&request(ProviderProtocol::OpenAi)).unwrap();
+    assert_eq!(openai.body["stream_options"]["include_usage"], true);
 }
 
 #[test]
@@ -119,6 +121,65 @@ fn provider_thinking_events_are_normalized_separately() {
     );
 }
 
+#[test]
+fn provider_usage_events_are_normalized_separately() {
+    let openai = parse_stream_event(
+        ProviderProtocol::OpenAi,
+        None,
+        r#"{"choices":[],"usage":{"prompt_tokens":123,"completion_tokens":45}}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        openai,
+        vec![ProviderEvent::Usage {
+            input_tokens: Some(123),
+            output_tokens: Some(45),
+        }]
+    );
+
+    let anthropic_start = parse_stream_event(
+        ProviderProtocol::Anthropic,
+        Some("message_start"),
+        r#"{"message":{"usage":{"input_tokens":67,"output_tokens":0}}}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        anthropic_start,
+        vec![ProviderEvent::Usage {
+            input_tokens: Some(67),
+            output_tokens: Some(0),
+        }]
+    );
+
+    let anthropic_delta = parse_stream_event(
+        ProviderProtocol::Anthropic,
+        Some("message_delta"),
+        r#"{"usage":{"output_tokens":89}}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        anthropic_delta,
+        vec![ProviderEvent::Usage {
+            input_tokens: None,
+            output_tokens: Some(89),
+        }]
+    );
+
+    let gemini = parse_stream_event(
+        ProviderProtocol::Gemini,
+        None,
+        r#"{"usageMetadata":{"promptTokenCount":11,"candidatesTokenCount":20,"thoughtsTokenCount":10}}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        gemini,
+        vec![ProviderEvent::Usage {
+            input_tokens: Some(11),
+            output_tokens: Some(30),
+        }]
+    );
+}
+
 #[tokio::test]
 async fn leading_think_tags_are_split_across_stream_chunks() {
     let server = MockServer::start().await;
@@ -164,6 +225,42 @@ async fn leading_think_tags_are_split_across_stream_chunks() {
             ProviderEvent::Completed,
         ]
     );
+}
+
+#[tokio::test]
+async fn truncated_stream_keeps_partial_text_without_inventing_usage() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(
+                    "data: {\"choices\":[{\"delta\":{\"content\":\"部分结果\"}}]}\n\n",
+                ),
+        )
+        .mount(&server)
+        .await;
+
+    let mut events = Vec::new();
+    let answer = stream_text(
+        &see_see_lib::providers::client().unwrap(),
+        &ProviderRequest {
+            protocol: ProviderProtocol::OpenAi,
+            base_url: format!("{}/v1", server.uri()),
+            model_id: "vision-model".into(),
+            api_key: None,
+            prompt: "OK".into(),
+            image_png: connection_test_png(),
+            stream: true,
+        },
+        |event| events.push(event),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(answer, "部分结果");
+    assert_eq!(events, vec![ProviderEvent::TextDelta("部分结果".into())]);
 }
 
 #[test]

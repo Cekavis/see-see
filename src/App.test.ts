@@ -48,6 +48,8 @@ const resultSnapshot: AnalysisSnapshot = {
   state: "streaming",
   thinking: "",
   text: "结果",
+  inputTokens: null,
+  outputTokens: null,
   savedToHistory: false,
   error: null,
 };
@@ -150,6 +152,8 @@ describe("analysis event state", () => {
       state: "streaming",
       thinking: "",
       text: "第一路",
+      inputTokens: null,
+      outputTokens: null,
       savedToHistory: false,
       error: null,
     };
@@ -168,6 +172,8 @@ describe("analysis event state", () => {
       state: "streaming",
       thinking: "",
       text: "已收到增量",
+      inputTokens: null,
+      outputTokens: null,
       savedToHistory: false,
       error: null,
     };
@@ -186,6 +192,8 @@ describe("analysis event state", () => {
       state: "failed",
       thinking: "old thinking",
       text: "partial",
+      inputTokens: 40,
+      outputTokens: 12,
       savedToHistory: true,
       error: {
         code: "timeout",
@@ -209,6 +217,8 @@ describe("analysis event state", () => {
       state: "submitting",
       thinking: "",
       text: "",
+      inputTokens: null,
+      outputTokens: null,
       savedToHistory: false,
       error: null,
     });
@@ -222,6 +232,8 @@ describe("analysis event state", () => {
       state: "submitting",
       thinking: "",
       text: "",
+      inputTokens: null,
+      outputTokens: null,
       savedToHistory: false,
       error: null,
     };
@@ -243,12 +255,27 @@ describe("analysis event state", () => {
       text: "答案",
     });
     expect(answer).toMatchObject({ thinking: "分析", text: "答案" });
+    const usage = updateAnalysisSnapshot(answer, {
+      type: "usage",
+      runId: "run-1",
+      inputTokens: 99,
+      outputTokens: 33,
+    });
+    expect(usage).toMatchObject({
+      state: "streaming",
+      thinking: "分析",
+      text: "答案",
+      inputTokens: 99,
+      outputTokens: 33,
+    });
     expect(
-      updateAnalysisSnapshot(answer, {
+      updateAnalysisSnapshot(usage, {
         type: "completed",
         runId: "run-1",
         thinking: "完整分析",
         text: "完整答案",
+        inputTokens: 99,
+        outputTokens: 33,
         savedToHistory: true,
       }),
     ).toMatchObject({

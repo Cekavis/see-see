@@ -7,6 +7,8 @@ const PLAINTEXT_KEY_MIGRATION: &str = include_str!("../migrations/0002_plaintext
 const HISTORY_THINKING_MIGRATION: &str = include_str!("../migrations/0003_history_thinking.sql");
 const HISTORY_CONFIGURATION_IDS_MIGRATION: &str =
     include_str!("../migrations/0004_history_configuration_ids.sql");
+const HISTORY_TOKEN_USAGE_MIGRATION: &str =
+    include_str!("../migrations/0006_history_token_usage.sql");
 const LEGACY_DEFAULT_CAPTURE_SHORTCUT: &str = "Alt+Shift+A";
 pub const WINDOWS_DEFAULT_CAPTURE_SHORTCUT: &str = "Ctrl+Shift+X";
 pub const MACOS_DEFAULT_CAPTURE_SHORTCUT: &str = "Command+Shift+X";
@@ -126,6 +128,36 @@ impl Database {
                 .execute_batch(HISTORY_CONFIGURATION_IDS_MIGRATION)
                 .map_err(|_| AppError::storage("无法升级历史配置存储"))?;
         }
+        let has_input_tokens = history_columns
+            .iter()
+            .any(|column| column == "input_tokens");
+        let has_output_tokens = history_columns
+            .iter()
+            .any(|column| column == "output_tokens");
+        match (has_input_tokens, has_output_tokens) {
+            (false, false) => {
+                connection
+                    .execute_batch(HISTORY_TOKEN_USAGE_MIGRATION)
+                    .map_err(|_| AppError::storage("无法升级历史用量存储"))?;
+            }
+            (false, true) => {
+                connection
+                    .execute(
+                        "ALTER TABLE history_entries ADD COLUMN input_tokens INTEGER",
+                        [],
+                    )
+                    .map_err(|_| AppError::storage("无法升级历史用量存储"))?;
+            }
+            (true, false) => {
+                connection
+                    .execute(
+                        "ALTER TABLE history_entries ADD COLUMN output_tokens INTEGER",
+                        [],
+                    )
+                    .map_err(|_| AppError::storage("无法升级历史用量存储"))?;
+            }
+            (true, true) => {}
+        }
         if previous_version < 4 {
             connection
                 .execute(
@@ -150,7 +182,7 @@ impl Database {
                 .map_err(|_| AppError::storage("无法升级提示词快捷键"))?;
         }
         connection
-            .pragma_update(None, "user_version", 7)
+            .pragma_update(None, "user_version", 8)
             .map_err(|_| AppError::storage("无法记录数据库版本"))?;
         Ok(Self {
             connection: Mutex::new(connection),
@@ -247,7 +279,7 @@ mod tests {
             .unwrap();
 
         assert!(has_thinking);
-        assert_eq!(database.pragma_i64("user_version").unwrap(), 7);
+        assert_eq!(database.pragma_i64("user_version").unwrap(), 8);
     }
 
     #[test]
@@ -313,11 +345,21 @@ mod tests {
                 )
             })
             .unwrap();
+        let usage = database
+            .read(|connection| {
+                connection.query_row(
+                    "SELECT input_tokens, output_tokens FROM history_entries WHERE id = 'legacy'",
+                    [],
+                    |row| Ok((row.get::<_, Option<i64>>(0)?, row.get::<_, Option<i64>>(1)?)),
+                )
+            })
+            .unwrap();
 
         assert_eq!(
             references.0.as_deref(),
             Some("00000000-0000-4000-8000-000000000001")
         );
         assert_eq!(references.1.as_deref(), Some("model-legacy"));
+        assert_eq!(usage, (None, None));
     }
 }
