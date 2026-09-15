@@ -106,9 +106,13 @@ struct StoredModel {
 fn parse_reasoning_effort(value: Option<&str>) -> Result<Option<ReasoningEffort>, AppError> {
     match value {
         None => Ok(None),
+        Some("none") => Ok(Some(ReasoningEffort::None)),
+        Some("minimal") => Ok(Some(ReasoningEffort::Minimal)),
         Some("low") => Ok(Some(ReasoningEffort::Low)),
         Some("medium") => Ok(Some(ReasoningEffort::Medium)),
         Some("high") => Ok(Some(ReasoningEffort::High)),
+        Some("xhigh") => Ok(Some(ReasoningEffort::XHigh)),
+        Some("max") => Ok(Some(ReasoningEffort::Max)),
         Some(_) => Err(AppError::storage("模型配置中的思考强度无效")),
     }
 }
@@ -117,7 +121,7 @@ fn model_reasoning_effort(
     protocol: ProviderProtocol,
     value: Option<String>,
 ) -> Result<Option<ReasoningEffort>, AppError> {
-    if protocol != ProviderProtocol::OpenAi {
+    if !protocol.supports_reasoning() {
         return Ok(None);
     }
     Ok(parse_reasoning_effort(value.as_deref())?.or(Some(ReasoningEffort::Low)))
@@ -778,7 +782,9 @@ fn validate_model_input(input: &mut ModelConfigInput) -> Result<(), AppError> {
     input.name = input.name.trim().to_owned();
     input.base_url = input.base_url.trim().trim_end_matches('/').to_owned();
     input.model_id = input.model_id.trim().to_owned();
-    input.reasoning_effort = (input.protocol == ProviderProtocol::OpenAi)
+    input.reasoning_effort = input
+        .protocol
+        .supports_reasoning()
         .then_some(input.reasoning_effort.unwrap_or_default());
     if input.api_key.is_some() && input.clear_api_key {
         return Err(AppError::invalid("API Key 与清除选项不能同时提交"));

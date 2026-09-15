@@ -111,19 +111,38 @@ fn duplicate_preserves_connection_values_and_current_selection() {
 }
 
 #[test]
-fn reasoning_effort_defaults_for_openai_and_is_ignored_for_other_protocols() {
+fn reasoning_effort_defaults_for_openai_protocols_and_is_ignored_for_other_protocols() {
     let db = Database::open_in_memory().unwrap();
 
-    let mut default_input = input("默认思考强度", None);
-    default_input.reasoning_effort = None;
-    let default_config = save_model_config(&db, default_input).unwrap();
-    assert_eq!(default_config.reasoning_effort, Some(ReasoningEffort::Low));
+    for (protocol, name) in [
+        (ProviderProtocol::OpenAi, "默认 Chat 强度"),
+        (ProviderProtocol::OpenAiResponses, "默认 Responses 强度"),
+    ] {
+        let mut default_input = input(name, None);
+        default_input.protocol = protocol;
+        default_input.reasoning_effort = None;
+        let default_config = save_model_config(&db, default_input).unwrap();
+        assert_eq!(default_config.reasoning_effort, Some(ReasoningEffort::Low));
+        assert_eq!(
+            load_model(&db, &default_config.id)
+                .unwrap()
+                .unwrap()
+                .reasoning_effort,
+            Some(ReasoningEffort::Low)
+        );
+    }
+
+    let mut extended_input = input("扩展思考强度", None);
+    extended_input.protocol = ProviderProtocol::OpenAiResponses;
+    extended_input.reasoning_effort = Some(ReasoningEffort::Max);
+    let extended = save_model_config(&db, extended_input).unwrap();
+    assert_eq!(extended.reasoning_effort, Some(ReasoningEffort::Max));
     assert_eq!(
-        load_model(&db, &default_config.id)
+        load_model(&db, &extended.id)
             .unwrap()
             .unwrap()
             .reasoning_effort,
-        Some(ReasoningEffort::Low)
+        Some(ReasoningEffort::Max)
     );
 
     let mut anthropic_input = input("Anthropic 配置", None);

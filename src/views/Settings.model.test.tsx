@@ -26,7 +26,9 @@ function api(overrides: Partial<SettingsApi> = {}): SettingsApi {
       baseUrl: input.baseUrl,
       modelId: input.modelId,
       reasoningEffort:
-        input.protocol === "openai" ? (input.reasoningEffort ?? "low") : null,
+        input.protocol === "openai" || input.protocol === "openai-responses"
+          ? (input.reasoningEffort ?? "low")
+          : null,
       hasApiKey: Boolean(input.apiKey),
     })),
     duplicateModelConfig: vi.fn().mockResolvedValue({
@@ -132,6 +134,35 @@ describe("model settings", () => {
     await waitFor(() =>
       expect(service.saveModelConfig).toHaveBeenCalledWith(
         expect.objectContaining({ reasoningEffort: "high" }),
+      ),
+    );
+  });
+
+  it("supports the Responses API with the expanded reasoning effort options", async () => {
+    const service = api();
+    renderSettings(service);
+    openNewEditor();
+    fillRequiredFields();
+
+    fireEvent.change(screen.getByLabelText("协议"), {
+      target: { value: "openai-responses" },
+    });
+    expect(screen.getByLabelText("协议")).toHaveValue("openai-responses");
+    expect(screen.getByLabelText("API 端点")).toHaveValue(
+      "https://api.openai.com/v1",
+    );
+
+    const effort = screen.getByLabelText("思考强度");
+    expect(effort).toHaveValue("low");
+    fireEvent.change(effort, { target: { value: "xhigh" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存配置" }));
+
+    await waitFor(() =>
+      expect(service.saveModelConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          protocol: "openai-responses",
+          reasoningEffort: "xhigh",
+        }),
       ),
     );
   });

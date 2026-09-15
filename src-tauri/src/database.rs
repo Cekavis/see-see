@@ -11,6 +11,7 @@ const HISTORY_TOKEN_USAGE_MIGRATION: &str =
     include_str!("../migrations/0006_history_token_usage.sql");
 const MODEL_REASONING_EFFORT_MIGRATION: &str =
     include_str!("../migrations/0007_model_reasoning_effort.sql");
+const MODEL_PROTOCOL_MIGRATION: &str = include_str!("../migrations/0008_openai_responses.sql");
 const LEGACY_DEFAULT_CAPTURE_SHORTCUT: &str = "Alt+Shift+A";
 pub const WINDOWS_DEFAULT_CAPTURE_SHORTCUT: &str = "Ctrl+Shift+X";
 pub const MACOS_DEFAULT_CAPTURE_SHORTCUT: &str = "Command+Shift+X";
@@ -19,6 +20,13 @@ pub const MACOS_DEFAULT_CAPTURE_SHORTCUT: &str = "Command+Shift+X";
 pub const DEFAULT_CAPTURE_SHORTCUT: &str = MACOS_DEFAULT_CAPTURE_SHORTCUT;
 #[cfg(not(target_os = "macos"))]
 pub const DEFAULT_CAPTURE_SHORTCUT: &str = WINDOWS_DEFAULT_CAPTURE_SHORTCUT;
+
+fn model_config_ids(connection: &Connection) -> Result<Vec<String>, rusqlite::Error> {
+    let mut statement = connection.prepare("SELECT id FROM model_configs ORDER BY id")?;
+    statement
+        .query_map([], |row| row.get::<_, String>(0))?
+        .collect()
+}
 
 pub struct Database {
     connection: Mutex<Connection>,
@@ -146,6 +154,28 @@ impl Database {
                 .execute_batch(HISTORY_CONFIGURATION_IDS_MIGRATION)
                 .map_err(|_| AppError::storage("无法升级历史配置存储"))?;
         }
+        if previous_version < 10 {
+            let model_config_ids_before = model_config_ids(&connection)
+                .map_err(|_| AppError::storage("无法校验模型配置迁移前的数据"))?;
+            connection
+                .execute_batch(MODEL_PROTOCOL_MIGRATION)
+                .map_err(|_| AppError::storage("无法升级 OpenAI Responses 配置"))?;
+            let model_config_ids_after = model_config_ids(&connection)
+                .map_err(|_| AppError::storage("无法校验模型配置迁移后的数据"))?;
+            if model_config_ids_before.len() != model_config_ids_after.len()
+                || model_config_ids_before != model_config_ids_after
+            {
+                return Err(AppError::storage("模型配置迁移丢失了配置行或 ID"));
+            }
+            let foreign_key_violations = connection
+                .query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .map_err(|_| AppError::storage("无法校验模型配置迁移"))?;
+            if foreign_key_violations != 0 {
+                return Err(AppError::storage("模型配置迁移破坏了本地数据关联"));
+            }
+        }
         let has_input_tokens = history_columns
             .iter()
             .any(|column| column == "input_tokens");
@@ -200,7 +230,7 @@ impl Database {
                 .map_err(|_| AppError::storage("无法升级提示词快捷键"))?;
         }
         connection
-            .pragma_update(None, "user_version", 9)
+            .pragma_update(None, "user_version", 10)
             .map_err(|_| AppError::storage("无法记录数据库版本"))?;
         Ok(Self {
             connection: Mutex::new(connection),
@@ -297,7 +327,7 @@ mod tests {
             .unwrap();
 
         assert!(has_thinking);
-        assert_eq!(database.pragma_i64("user_version").unwrap(), 9);
+        assert_eq!(database.pragma_i64("user_version").unwrap(), 10);
     }
 
     #[test]
@@ -351,7 +381,94 @@ mod tests {
 
         assert_eq!(values.0.as_deref(), Some("low"));
         assert_eq!(values.1, None);
-        assert_eq!(database.pragma_i64("user_version").unwrap(), 9);
+        assert_eq!(database.pragma_i64("user_version").unwrap(), 10);
+    }
+
+    #[test]
+    fn current_model_schema_migration_preserves_rows_and_expands_protocols() {
+        let connection = Connection::open_in_memory().unwrap();
+        connection.execute_batch(INITIAL_SCHEMA).unwrap();
+        connection
+            .execute(
+                "INSERT INTO model_configs (
+                    id, name, protocol, base_url, model_id, reasoning_effort, api_key,
+                    credential_ref, test_status, tested_at, test_error_code, created_at, updated_at
+                 ) VALUES (?1, ?2, 'openai', ?3, ?4, 'high', ?5, NULL, 'untested', NULL, NULL, ?6, ?6)",
+                rusqlite::params![
+                    "migration-model",
+                    "迁移模型",
+                    "https://example.com/v1",
+                    "vision",
+                    "secret",
+                    "2026-09-15T00:00:00Z",
+                ],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "UPDATE app_settings SET active_model_config_id = 'migration-model' WHERE id = 1",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO history_entries (
+                    id, status, result_text, prompt_name, prompt_body, model_config_id,
+                    model_config_name, protocol, model_id, started_at, completed_at
+                 ) VALUES ('migration-history', 'success', '结果', '提示词', '正文',
+                    'migration-model', '迁移模型', 'openai', 'vision',
+                    '2026-09-15T00:00:00Z', '2026-09-15T00:00:01Z')",
+                [],
+            )
+            .unwrap();
+        connection.pragma_update(None, "user_version", 9).unwrap();
+
+        let database = Database::initialize(connection).unwrap();
+        database
+            .transaction(|transaction| {
+                transaction.execute(
+                    "UPDATE model_configs SET protocol = 'openai-responses', reasoning_effort = 'xhigh' WHERE id = 'migration-model'",
+                    [],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+
+        let values = database
+            .read(|connection| {
+                Ok((
+                    connection.query_row(
+                        "SELECT protocol, reasoning_effort, api_key FROM model_configs WHERE id = 'migration-model'",
+                        [],
+                        |row| {
+                            Ok((
+                                row.get::<_, String>(0)?,
+                                row.get::<_, String>(1)?,
+                                row.get::<_, String>(2)?,
+                            ))
+                        },
+                    )?,
+                    connection.query_row(
+                        "SELECT active_model_config_id FROM app_settings WHERE id = 1",
+                        [],
+                        |row| row.get::<_, String>(0),
+                    )?,
+                    connection.query_row(
+                        "SELECT model_config_id FROM history_entries WHERE id = 'migration-history'",
+                        [],
+                        |row| row.get::<_, Option<String>>(0),
+                    )?,
+                ))
+            })
+            .unwrap();
+
+        assert_eq!(
+            values.0,
+            ("openai-responses".into(), "xhigh".into(), "secret".into())
+        );
+        assert_eq!(values.1, "migration-model");
+        assert_eq!(values.2, Some("migration-model".into()));
+        assert_eq!(database.pragma_i64("user_version").unwrap(), 10);
     }
 
     #[test]

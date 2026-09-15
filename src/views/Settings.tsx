@@ -30,9 +30,21 @@ export type SettingsApi = {
 
 const endpoints: Record<ModelProtocol, string> = {
   openai: "https://api.openai.com/v1",
+  "openai-responses": "https://api.openai.com/v1",
   anthropic: "https://api.anthropic.com/v1",
   gemini: "https://generativelanguage.googleapis.com/v1beta",
 };
+
+const protocolLabels: Record<ModelProtocol, string> = {
+  openai: "OpenAI Chat Completions",
+  "openai-responses": "OpenAI Responses API",
+  anthropic: "Anthropic Messages",
+  gemini: "Gemini GenerateContent",
+};
+
+function supportsReasoning(protocol: ModelProtocol) {
+  return protocol === "openai" || protocol === "openai-responses";
+}
 
 const emptyForm = (): ModelConfigInput => ({
   name: "",
@@ -84,10 +96,9 @@ export function Settings({ api = ipc }: { api?: SettingsApi }) {
           protocol: form.protocol,
           baseUrl: form.baseUrl,
           modelId: form.modelId,
-          reasoningEffort:
-            form.protocol === "openai"
-              ? (form.reasoningEffort ?? "low")
-              : undefined,
+          reasoningEffort: supportsReasoning(form.protocol)
+            ? (form.reasoningEffort ?? "low")
+            : undefined,
           apiKey: form.apiKey || undefined,
         }
       : null;
@@ -137,7 +148,7 @@ export function Settings({ api = ipc }: { api?: SettingsApi }) {
                     {config.isActive ? " · 当前" : ""}
                   </h3>
                   <p>
-                    {config.protocol} · {config.modelId}
+                    {protocolLabels[config.protocol]} · {config.modelId}
                     {config.reasoningEffort
                       ? ` · 思考 ${config.reasoningEffort}`
                       : ""}
@@ -250,19 +261,20 @@ export function Settings({ api = ipc }: { api?: SettingsApi }) {
                           ...current,
                           protocol,
                           baseUrl: endpoints[protocol],
-                          reasoningEffort:
-                            protocol === "openai"
-                              ? (current.reasoningEffort ?? "low")
-                              : undefined,
+                          reasoningEffort: supportsReasoning(protocol)
+                            ? (current.reasoningEffort ?? "low")
+                            : undefined,
                         }
                       : current,
                   );
                   setModels([]);
                 }}
               >
-                <option value="openai">OpenAI Chat Completions</option>
-                <option value="anthropic">Anthropic Messages</option>
-                <option value="gemini">Gemini GenerateContent</option>
+                {Object.entries(protocolLabels).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
               </select>
             </Field>
             <Field
@@ -297,11 +309,11 @@ export function Settings({ api = ipc }: { api?: SettingsApi }) {
                 ))}
               </datalist>
             </Field>
-            {form.protocol === "openai" && (
+            {supportsReasoning(form.protocol) && (
               <Field
                 label="思考强度"
                 htmlFor="model-reasoning-effort"
-                hint="仅 OpenAI 兼容接口生效；端点不支持该参数时请求会失败。"
+                hint="仅 OpenAI 协议生效；具体模型或端点不支持所选档位时请求会失败。"
               >
                 <select
                   id="model-reasoning-effort"
@@ -313,9 +325,13 @@ export function Settings({ api = ipc }: { api?: SettingsApi }) {
                     )
                   }
                 >
+                  <option value="none">none</option>
+                  <option value="minimal">minimal</option>
                   <option value="low">low</option>
                   <option value="medium">medium</option>
                   <option value="high">high</option>
+                  <option value="xhigh">xhigh</option>
+                  <option value="max">max</option>
                 </select>
               </Field>
             )}

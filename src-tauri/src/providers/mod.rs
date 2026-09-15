@@ -1,6 +1,7 @@
 pub mod anthropic;
 pub mod gemini;
 pub mod openai;
+pub mod openai_responses;
 
 use crate::error::{AppError, ErrorCode};
 use base64::{Engine, engine::general_purpose::STANDARD};
@@ -16,6 +17,8 @@ use url::{Host, Url};
 #[serde(rename_all = "lowercase")]
 pub enum ProviderProtocol {
     OpenAi,
+    #[serde(rename = "openai-responses")]
+    OpenAiResponses,
     Anthropic,
     Gemini,
 }
@@ -23,18 +26,26 @@ pub enum ProviderProtocol {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ReasoningEffort {
+    None,
+    Minimal,
     #[default]
     Low,
     Medium,
     High,
+    XHigh,
+    Max,
 }
 
 impl ReasoningEffort {
     pub fn as_str(self) -> &'static str {
         match self {
+            Self::None => "none",
+            Self::Minimal => "minimal",
             Self::Low => "low",
             Self::Medium => "medium",
             Self::High => "high",
+            Self::XHigh => "xhigh",
+            Self::Max => "max",
         }
     }
 }
@@ -45,6 +56,7 @@ impl TryFrom<&str> for ProviderProtocol {
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         match value {
             "openai" => Ok(Self::OpenAi),
+            "openai-responses" => Ok(Self::OpenAiResponses),
             "anthropic" => Ok(Self::Anthropic),
             "gemini" => Ok(Self::Gemini),
             _ => Err(AppError::invalid("未知模型协议")),
@@ -56,9 +68,14 @@ impl ProviderProtocol {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::OpenAi => "openai",
+            Self::OpenAiResponses => "openai-responses",
             Self::Anthropic => "anthropic",
             Self::Gemini => "gemini",
         }
+    }
+
+    pub fn supports_reasoning(self) -> bool {
+        matches!(self, Self::OpenAi | Self::OpenAiResponses)
     }
 }
 
@@ -256,6 +273,7 @@ pub fn build_http_request(request: &ProviderRequest) -> Result<PreparedRequest, 
     validate_endpoint(&request.base_url)?;
     match request.protocol {
         ProviderProtocol::OpenAi => openai::prepare(request),
+        ProviderProtocol::OpenAiResponses => openai_responses::prepare(request),
         ProviderProtocol::Anthropic => anthropic::prepare(request),
         ProviderProtocol::Gemini => gemini::prepare(request),
     }
@@ -268,6 +286,7 @@ pub fn parse_stream_event(
 ) -> Result<Vec<ProviderEvent>, AppError> {
     match protocol {
         ProviderProtocol::OpenAi => openai::parse(event_name, data),
+        ProviderProtocol::OpenAiResponses => openai_responses::parse(event_name, data),
         ProviderProtocol::Anthropic => anthropic::parse(event_name, data),
         ProviderProtocol::Gemini => gemini::parse(event_name, data),
     }
@@ -279,6 +298,7 @@ pub fn parse_model_list(
 ) -> Result<Vec<RemoteModel>, AppError> {
     match protocol {
         ProviderProtocol::OpenAi => openai::parse_models(data),
+        ProviderProtocol::OpenAiResponses => openai_responses::parse_models(data),
         ProviderProtocol::Anthropic => anthropic::parse_models(data),
         ProviderProtocol::Gemini => gemini::parse_models(data),
     }
@@ -302,7 +322,7 @@ pub async fn list_models(
     };
     let mut builder = client.get(endpoint(base_url, "models")?);
     match protocol {
-        ProviderProtocol::OpenAi => {
+        ProviderProtocol::OpenAi | ProviderProtocol::OpenAiResponses => {
             if let Some(key) = secret_header(&request) {
                 builder = builder.bearer_auth(key);
             }
@@ -518,7 +538,7 @@ fn provider_response_details(status: u16, body: &str) -> String {
     format!("HTTP {status}\n{body}")
 }
 
-fn sanitize_provider_response(body: &str) -> String {
+pub(crate) fn sanitize_provider_response(body: &str) -> String {
     let Ok(mut value) = serde_json::from_str::<Value>(body) else {
         if contains_sensitive_marker(body) {
             return "[响应包含敏感信息，已隐藏]".into();

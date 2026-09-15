@@ -105,8 +105,10 @@ export type AnalysisEvent =
     }
   | { type: "cancelled"; runId: string };
 
-export type ModelProtocol = "openai" | "anthropic" | "gemini";
-export type ReasoningEffort = "low" | "medium" | "high";
+export type ModelProtocol =
+  "openai" | "openai-responses" | "anthropic" | "gemini";
+export type ReasoningEffort =
+  "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
 export type ModelConfigInput = {
   id?: string;

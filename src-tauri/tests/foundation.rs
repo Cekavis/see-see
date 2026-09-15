@@ -24,6 +24,7 @@ fn error_serialization_is_stable_and_redacted() {
 fn provider_protocol_json_matches_the_ipc_contract() {
     for (protocol, json) in [
         (ProviderProtocol::OpenAi, "\"openai\""),
+        (ProviderProtocol::OpenAiResponses, "\"openai-responses\""),
         (ProviderProtocol::Anthropic, "\"anthropic\""),
         (ProviderProtocol::Gemini, "\"gemini\""),
     ] {
@@ -53,18 +54,17 @@ fn provider_protocol_json_matches_the_ipc_contract() {
         }))
         .is_ok(),
     );
-    assert_eq!(
-        serde_json::to_string(&ReasoningEffort::Low).unwrap(),
-        "\"low\""
-    );
-    assert_eq!(
-        serde_json::to_string(&ReasoningEffort::Medium).unwrap(),
-        "\"medium\""
-    );
-    assert_eq!(
-        serde_json::to_string(&ReasoningEffort::High).unwrap(),
-        "\"high\""
-    );
+    for (effort, json) in [
+        (ReasoningEffort::None, "\"none\""),
+        (ReasoningEffort::Minimal, "\"minimal\""),
+        (ReasoningEffort::Low, "\"low\""),
+        (ReasoningEffort::Medium, "\"medium\""),
+        (ReasoningEffort::High, "\"high\""),
+        (ReasoningEffort::XHigh, "\"xhigh\""),
+        (ReasoningEffort::Max, "\"max\""),
+    ] {
+        assert_eq!(serde_json::to_string(&effort).unwrap(), json);
+    }
 }
 
 #[test]
