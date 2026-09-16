@@ -19,6 +19,7 @@ export type ResultSnapshot = {
 
 type Props = {
   snapshot: ResultSnapshot;
+  imageUrl?: string;
   alwaysOnTop?: boolean;
   onCancel?: () => void | Promise<unknown>;
   onRetry?: () => void | Promise<unknown>;
@@ -47,6 +48,7 @@ export function ThinkingDisclosure({
 
 export function Result({
   snapshot,
+  imageUrl,
   alwaysOnTop = false,
   onCancel,
   onRetry,
@@ -128,6 +130,11 @@ export function Result({
           />
         </div>
       </header>
+      {imageUrl && (
+        <div className="result-view__image-row">
+          <img className="result-view__image" src={imageUrl} alt="原始截图" />
+        </div>
+      )}
       <div className="result-view__content">
         <ThinkingDisclosure
           key={`${snapshot.runId}:${active && !hasAnswer ? "thinking" : "answer"}`}

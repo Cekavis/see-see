@@ -309,13 +309,32 @@ fn macos_capture_and_result_windows_use_distinct_space_policies() {
 }
 
 #[test]
-fn result_window_defaults_are_compact_and_keep_accessible_minimums() {
+fn result_window_defaults_leave_room_for_the_image_preview() {
     let size = result_window_size();
     assert!(size.width >= size.min_width);
     assert!(size.height >= size.min_height);
     assert!(size.width <= 480.0);
-    assert!(size.height <= 520.0);
-    assert_eq!((size.min_width, size.min_height), (420.0, 360.0));
+    assert!(size.height <= 760.0);
+    assert_eq!((size.width, size.height), (460.0, 750.0));
+    assert_eq!((size.min_width, size.min_height), (420.0, 540.0));
+}
+
+#[test]
+fn result_image_command_is_registered_and_scoped_to_the_requested_run() {
+    let commands = include_str!("../src/commands.rs");
+    assert!(commands.contains("pub fn get_analysis_image("));
+    assert!(commands.contains("active_analysis(&app, &run_id)?"));
+    assert!(commands.contains("active.image_png()"));
+
+    let lib = include_str!("../src/lib.rs");
+    let handler = lib
+        .split_once(".invoke_handler")
+        .unwrap()
+        .1
+        .split_once("])")
+        .unwrap()
+        .0;
+    assert!(handler.contains("commands::get_analysis_image"));
 }
 
 #[test]

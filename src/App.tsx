@@ -52,8 +52,31 @@ function ResultView() {
     savedToHistory: false,
     error: null,
   });
+  const [imageUrl, setImageUrl] = useState<string>();
   const [alwaysOnTop, setAlwaysOnTop] = useState(false);
   const alwaysOnTopEventReceived = useRef(false);
+
+  useEffect(() => {
+    if (!runId || typeof URL.createObjectURL !== "function") return;
+    let active = true;
+    let objectUrl: string | undefined;
+    void ipc
+      .getAnalysisImage(runId)
+      .then((buffer) => {
+        if (!active) return;
+        objectUrl = URL.createObjectURL(
+          new Blob([buffer], { type: "image/png" }),
+        );
+        setImageUrl(objectUrl);
+      })
+      .catch((value: unknown) => {
+        if (active) notifications.error(getErrorMessage(value));
+      });
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [notifications, runId]);
 
   useEffect(() => {
     const channel = new Channel<AnalysisEvent>();
@@ -112,6 +135,7 @@ function ResultView() {
   return (
     <Result
       snapshot={snapshot}
+      imageUrl={imageUrl}
       alwaysOnTop={alwaysOnTop}
       onCancel={() => ipc.cancelAnalysis(runId)}
       onRetry={() => ipc.retryAnalysis(runId)}

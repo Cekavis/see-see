@@ -209,6 +209,8 @@ export const ipc = {
     invoke<void>("cancel_capture", { sessionId }),
   attachAnalysis: (runId: string, onEvent: Channel<AnalysisEvent>) =>
     invoke<AnalysisSnapshot>("attach_analysis", { runId, onEvent }),
+  getAnalysisImage: (runId: string) =>
+    invoke<ArrayBuffer>("get_analysis_image", { runId }),
   cancelAnalysis: (runId: string) => invoke<void>("cancel_analysis", { runId }),
   retryAnalysis: (runId: string) => invoke<void>("retry_analysis", { runId }),
   closeResult: (runId: string) => invoke<void>("close_result", { runId }),

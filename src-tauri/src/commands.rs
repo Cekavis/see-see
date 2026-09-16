@@ -410,6 +410,12 @@ pub fn attach_analysis(
 }
 
 #[tauri::command]
+pub fn get_analysis_image(app: AppHandle, run_id: String) -> Result<Response, AppError> {
+    let active = active_analysis(&app, &run_id)?;
+    Ok(Response::new(active.image_png()))
+}
+
+#[tauri::command]
 pub fn cancel_analysis(app: AppHandle, run_id: String) -> Result<(), AppError> {
     active_analysis(&app, &run_id)?.cancel()
 }

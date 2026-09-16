@@ -76,6 +76,18 @@ describe("Result", () => {
     expect(screen.queryByText(/提示词配置：/)).not.toBeInTheDocument();
   });
 
+  it("shows the original screenshot preview above the result content", () => {
+    renderResult(
+      <Result snapshot={snapshot()} imageUrl="blob:original-screenshot" />,
+    );
+
+    const image = screen.getByRole("img", { name: "原始截图" });
+    expect(image).toHaveAttribute("src", "blob:original-screenshot");
+    expect(image.closest(".result-view")?.children[1]).toBe(
+      image.closest(".result-view__image-row"),
+    );
+  });
+
   it("keeps the footer visible while the result text scrolls", () => {
     const styles = nodeProcess
       .getBuiltinModule("node:fs")
@@ -87,15 +99,18 @@ describe("Result", () => {
     const textRule = styles.match(/\.result-view__text\s*\{([^}]*)\}/)?.[1];
 
     expect(resultViewRule).toMatch(
-      /grid-template-rows:\s*auto minmax\(0, 1fr\) auto;/,
-    );
-    expect(resultViewRule).not.toMatch(
       /grid-template-rows:\s*auto auto minmax\(0, 1fr\) auto;/,
     );
+    const imageRule = styles.match(/\.result-view__image\s*\{([^}]*)\}/)?.[1];
     expect(contentRule).toMatch(/display:\s*flex;/);
     expect(contentRule).toMatch(/flex-direction:\s*column;/);
     expect(contentRule).toMatch(/overflow:\s*hidden;/);
     expect(textRule).toMatch(/overflow:\s*auto;/);
+    expect(imageRule).toMatch(/width:\s*auto;/);
+    expect(imageRule).toMatch(/max-width:\s*100%;/);
+    expect(imageRule).toMatch(/height:\s*auto;/);
+    expect(imageRule).toMatch(/max-height:\s*220px;/);
+    expect(imageRule).not.toMatch(/aspect-ratio:/);
     expect(styles).not.toMatch(
       /\.result-view__content\s*>\s*\.result-view__text\s*\{[^}]*overflow:\s*visible;/,
     );

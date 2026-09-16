@@ -85,6 +85,7 @@ describe("result window shared settings", () => {
       return unlisten;
     });
     vi.spyOn(ipc, "attachAnalysis").mockResolvedValue(resultSnapshot);
+    vi.spyOn(ipc, "getAnalysisImage").mockResolvedValue(new ArrayBuffer(0));
     vi.spyOn(ipc, "getAppSnapshot").mockResolvedValue(appSnapshot);
   });
 
@@ -105,6 +106,53 @@ describe("result window shared settings", () => {
 
     unmount();
     expect(unlisten).toHaveBeenCalledOnce();
+  });
+
+  it("loads and cleans up the image belonging to the current run", async () => {
+    const createObjectUrl = vi.fn(() => "blob:run-1");
+    const revokeObjectUrl = vi.fn();
+    const originalCreateObjectUrl = URL.createObjectURL;
+    const originalRevokeObjectUrl = URL.revokeObjectURL;
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: createObjectUrl,
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: revokeObjectUrl,
+    });
+    vi.spyOn(ipc, "getAnalysisImage").mockResolvedValue(new ArrayBuffer(2));
+
+    const { unmount } = render(
+      createElement(NotificationProvider, null, createElement(App)),
+    );
+
+    const image = await screen.findByRole("img", { name: "原始截图" });
+    expect(image).toHaveAttribute("src", "blob:run-1");
+    expect(ipc.getAnalysisImage).toHaveBeenCalledWith("run-1");
+    expect(createObjectUrl).toHaveBeenCalledOnce();
+
+    unmount();
+    expect(revokeObjectUrl).toHaveBeenCalledWith("blob:run-1");
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: originalCreateObjectUrl,
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: originalRevokeObjectUrl,
+    });
+  });
+
+  it("keeps the result usable when the image cannot be retrieved", async () => {
+    vi.spyOn(ipc, "getAnalysisImage").mockRejectedValue(
+      new Error("图片加载失败"),
+    );
+
+    render(createElement(NotificationProvider, null, createElement(App)));
+
+    expect(await screen.findByText("结果")).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toHaveTextContent("图片加载失败");
   });
 });
 

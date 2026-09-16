@@ -69,9 +69,9 @@ pub fn install_native_close_shortcuts(
 }
 
 const RESULT_DEFAULT_WIDTH: f64 = 460.0;
-const RESULT_DEFAULT_HEIGHT: f64 = 500.0;
+const RESULT_DEFAULT_HEIGHT: f64 = 750.0;
 const RESULT_MIN_WIDTH: f64 = 420.0;
-const RESULT_MIN_HEIGHT: f64 = 360.0;
+const RESULT_MIN_HEIGHT: f64 = 540.0;
 const RESULT_WINDOW_PREFIX: &str = "result-";
 
 const CAN_JOIN_ALL_SPACES: usize = 1 << 0;

@@ -45,3 +45,15 @@ describe("IPC result navigation", () => {
     expect(invoke).toHaveBeenCalledWith("open_main_window", { runId: "run-1" });
   });
 });
+
+describe("IPC result image", () => {
+  it("passes the current analysis identity when loading the screenshot", async () => {
+    invoke.mockResolvedValue(new ArrayBuffer(2));
+
+    await ipc.getAnalysisImage("run-1");
+
+    expect(invoke).toHaveBeenCalledWith("get_analysis_image", {
+      runId: "run-1",
+    });
+  });
+});

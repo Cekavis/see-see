@@ -193,6 +193,7 @@ pub fn run() {
             commands::finish_capture,
             commands::cancel_capture,
             commands::attach_analysis,
+            commands::get_analysis_image,
             commands::cancel_analysis,
             commands::retry_analysis,
             commands::close_result,
