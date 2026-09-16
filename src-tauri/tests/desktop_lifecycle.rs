@@ -4,14 +4,16 @@ use see_see_lib::{
     commands::{AnalysisStarted, finish_capture, open_main_window, resubmit_history},
     error::{AppError, ErrorCode},
     settings::{replace_shortcut, sanitize_log_line},
+    state::ResultWindowDimensions,
     windowing::{
         WindowRole, ignores_window_cycle, is_stationary, joins_all_spaces, policy_for,
-        result_run_id, result_window_label, result_window_size, supports_full_screen_space,
+        result_run_id, result_window_dimensions_from_physical, result_window_label,
+        result_window_size, supports_full_screen_space,
     },
 };
 use std::cell::RefCell;
 use std::future::Future;
-use tauri::AppHandle;
+use tauri::{AppHandle, PhysicalSize};
 
 #[test]
 fn result_window_creation_stays_out_of_synchronous_windows_commands() {
@@ -310,13 +312,34 @@ fn macos_capture_and_result_windows_use_distinct_space_policies() {
 
 #[test]
 fn result_window_defaults_leave_room_for_the_image_preview() {
-    let size = result_window_size();
+    let size = result_window_size(None);
     assert!(size.width >= size.min_width);
     assert!(size.height >= size.min_height);
     assert!(size.width <= 480.0);
-    assert!(size.height <= 760.0);
-    assert_eq!((size.width, size.height), (460.0, 750.0));
+    assert!(size.height <= 560.0);
+    assert_eq!((size.width, size.height), (460.0, 540.0));
     assert_eq!((size.min_width, size.min_height), (420.0, 540.0));
+}
+
+#[test]
+fn result_window_uses_valid_remembered_dimensions_and_ignores_undersized_values() {
+    let remembered = result_window_size(Some(ResultWindowDimensions::new(720, 680)));
+    assert_eq!((remembered.width, remembered.height), (720.0, 680.0));
+
+    let fallback = result_window_size(Some(ResultWindowDimensions::new(419, 539)));
+    assert_eq!((fallback.width, fallback.height), (460.0, 540.0));
+}
+
+#[test]
+fn result_window_resize_converts_physical_size_to_valid_logical_dimensions() {
+    assert_eq!(
+        result_window_dimensions_from_physical(&PhysicalSize::new(1080, 810), 1.5),
+        Some(ResultWindowDimensions::new(720, 540))
+    );
+    assert_eq!(
+        result_window_dimensions_from_physical(&PhysicalSize::new(419, 540), 1.0),
+        None
+    );
 }
 
 #[test]
@@ -363,6 +386,33 @@ fn result_window_moves_update_position_only_for_result_windows() {
 }
 
 #[test]
+fn result_window_resizes_are_remembered_and_flushed_for_result_windows_only() {
+    let lib = include_str!("../src/lib.rs");
+    let event_handler = lib
+        .split_once(".on_window_event(|window, event|")
+        .unwrap()
+        .1
+        .split_once(".invoke_handler")
+        .unwrap()
+        .0;
+
+    assert!(event_handler.contains("WindowEvent::Resized"));
+    assert!(event_handler.contains("result_window_dimensions_from_physical"));
+    assert!(event_handler.contains("remember_result_window_size"));
+    assert!(event_handler.contains("persist_result_window_size"));
+
+    let commands = include_str!("../src/commands.rs");
+    let quit = commands
+        .split_once("pub fn quit_app(")
+        .unwrap()
+        .1
+        .split_once("fn connection_key(")
+        .unwrap()
+        .0;
+    assert!(quit.contains("persist_result_window_size"));
+}
+
+#[test]
 fn result_window_placement_prefers_remembered_position_before_showing() {
     let commands = include_str!("../src/commands.rs");
     let create = commands
@@ -373,6 +423,7 @@ fn result_window_placement_prefers_remembered_position_before_showing() {
         .unwrap()
         .0;
     assert!(create.contains("result_window_position"));
+    assert!(create.contains("result_window_size"));
     assert!(create.contains("present_result_window(&window, position)"));
 
     let windowing = include_str!("../src/windowing.rs");

@@ -42,6 +42,19 @@ pub struct RuntimeState {
     pub capture_reservation: Option<String>,
     pub analysis: HashMap<String, Arc<ActiveAnalysis>>,
     pub result_window_position: Option<ResultWindowPosition>,
+    pub result_window_size: Option<ResultWindowDimensions>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ResultWindowDimensions {
+    pub width: u32,
+    pub height: u32,
+}
+
+impl ResultWindowDimensions {
+    pub const fn new(width: u32, height: u32) -> Self {
+        Self { width, height }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -103,6 +116,10 @@ impl RuntimeState {
     pub fn remember_result_window_position(&mut self, position: ResultWindowPosition) {
         self.result_window_position = Some(position);
     }
+
+    pub fn remember_result_window_size(&mut self, size: ResultWindowDimensions) {
+        self.result_window_size = Some(size);
+    }
 }
 
 pub struct AppState {
@@ -117,17 +134,33 @@ impl AppState {
         credentials: Arc<dyn CredentialStore>,
     ) -> Result<Self, crate::error::AppError> {
         crate::settings::migrate_model_credentials(&database, credentials.as_ref())?;
+        let result_window_size = crate::settings::load_result_window_size(&database)?;
         Ok(Self {
             database,
             http: Mutex::new(client()?),
-            runtime: Mutex::new(RuntimeState::default()),
+            runtime: Mutex::new(RuntimeState {
+                result_window_size,
+                ..RuntimeState::default()
+            }),
         })
+    }
+
+    pub fn persist_result_window_size(&self) -> Result<(), AppError> {
+        let size = self
+            .runtime
+            .lock()
+            .map_err(|_| AppError::storage("运行状态不可用"))?
+            .result_window_size;
+        if let Some(size) = size {
+            crate::settings::save_result_window_size(&self.database, size)?;
+        }
+        Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{AnalysisState, ResultWindowPosition, RuntimeState};
+    use super::{AnalysisState, ResultWindowDimensions, ResultWindowPosition, RuntimeState};
     use crate::{analysis::ActiveAnalysis, capture::CaptureSession};
     use std::{collections::HashMap, sync::Arc};
 
@@ -143,6 +176,7 @@ mod tests {
             capture_reservation: None,
             analysis: HashMap::new(),
             result_window_position: None,
+            result_window_size: None,
         };
 
         assert!(runtime.take_capture("stale").is_err());
@@ -221,6 +255,24 @@ mod tests {
         assert_eq!(
             runtime.result_window_position,
             Some(ResultWindowPosition::new(-40, 80))
+        );
+    }
+
+    #[test]
+    fn result_window_size_defaults_to_empty_and_latest_resize_wins() {
+        let mut runtime = RuntimeState::default();
+        assert_eq!(runtime.result_window_size, None);
+
+        runtime.remember_result_window_size(ResultWindowDimensions::new(720, 680));
+        assert_eq!(
+            runtime.result_window_size,
+            Some(ResultWindowDimensions::new(720, 680))
+        );
+
+        runtime.remember_result_window_size(ResultWindowDimensions::new(800, 600));
+        assert_eq!(
+            runtime.result_window_size,
+            Some(ResultWindowDimensions::new(800, 600))
         );
     }
 

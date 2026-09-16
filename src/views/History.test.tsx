@@ -169,14 +169,20 @@ describe("History", () => {
       .readFileSync(`${nodeProcess.cwd()}/src/styles.css`, "utf8");
     const itemRule = styles.match(/\.history-item\s*\{([^}]*)\}/)?.[1];
     const imageRule = styles.match(/\.history-item__image\s*\{([^}]*)\}/)?.[1];
+    const detailImageRule = styles.match(
+      /\.history-detail__image\s*\{([^}]*)\}/,
+    )?.[1];
 
     expect(itemRule).toMatch(/grid-template-columns:\s*minmax\(0, 1fr\);/);
     expect(imageRule).toMatch(/width:\s*auto;/);
     expect(imageRule).toMatch(/max-width:\s*100%;/);
     expect(imageRule).toMatch(/height:\s*auto;/);
-    expect(imageRule).toMatch(/max-height:\s*280px;/);
+    expect(imageRule).toMatch(/max-height:\s*60px;/);
     expect(imageRule).not.toMatch(/aspect-ratio:/);
     expect(imageRule).not.toMatch(/min-height:/);
+    expect(detailImageRule).toMatch(/max-width:\s*100%;/);
+    expect(detailImageRule).toMatch(/max-height:\s*60px;/);
+    expect(detailImageRule).toMatch(/object-fit:\s*contain;/);
   });
 
   it("paginates with bounded cursor queries and selectable page sizes", async () => {

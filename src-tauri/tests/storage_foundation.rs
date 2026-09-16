@@ -1,7 +1,8 @@
 use see_see_lib::{
     database::Database,
     history::{HistoryInput, HistoryStatus, save_history},
-    settings::load_app_snapshot,
+    settings::{load_app_snapshot, load_result_window_size, save_result_window_size},
+    state::ResultWindowDimensions,
 };
 
 fn tiny_png() -> Vec<u8> {
@@ -23,7 +24,31 @@ fn database_defaults_and_pragmas_match_the_plan() {
     assert_eq!(snapshot.prompt_count, 2);
     assert_eq!(db.pragma_i64("foreign_keys").unwrap(), 1);
     assert_eq!(db.pragma_i64("secure_delete").unwrap(), 1);
-    assert_eq!(db.pragma_i64("user_version").unwrap(), 10);
+    assert_eq!(db.pragma_i64("user_version").unwrap(), 11);
+    assert_eq!(load_result_window_size(&db).unwrap(), None);
+}
+
+#[test]
+fn result_window_size_persists_after_reopening_the_database() {
+    let path = std::env::temp_dir().join(format!(
+        "see-see-result-window-{}.sqlite3",
+        uuid::Uuid::new_v4()
+    ));
+    let dimensions = ResultWindowDimensions::new(720, 680);
+
+    {
+        let db = Database::open(&path).unwrap();
+        save_result_window_size(&db, dimensions).unwrap();
+        assert_eq!(load_result_window_size(&db).unwrap(), Some(dimensions));
+    }
+
+    let reopened = Database::open(&path).unwrap();
+    assert_eq!(
+        load_result_window_size(&reopened).unwrap(),
+        Some(dimensions)
+    );
+    drop(reopened);
+    std::fs::remove_file(path).unwrap();
 }
 
 #[test]

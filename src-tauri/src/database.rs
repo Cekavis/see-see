@@ -12,6 +12,8 @@ const HISTORY_TOKEN_USAGE_MIGRATION: &str =
 const MODEL_REASONING_EFFORT_MIGRATION: &str =
     include_str!("../migrations/0007_model_reasoning_effort.sql");
 const MODEL_PROTOCOL_MIGRATION: &str = include_str!("../migrations/0008_openai_responses.sql");
+const RESULT_WINDOW_SIZE_MIGRATION: &str =
+    include_str!("../migrations/0009_result_window_size.sql");
 const LEGACY_DEFAULT_CAPTURE_SHORTCUT: &str = "Alt+Shift+A";
 pub const WINDOWS_DEFAULT_CAPTURE_SHORTCUT: &str = "Ctrl+Shift+X";
 pub const MACOS_DEFAULT_CAPTURE_SHORTCUT: &str = "Command+Shift+X";
@@ -61,21 +63,50 @@ impl Database {
         connection
             .execute_batch(INITIAL_SCHEMA)
             .map_err(|_| AppError::storage("无法初始化本地数据库"))?;
-        let has_onboarding = {
+        let app_settings_columns = {
             let mut statement = connection
                 .prepare("PRAGMA table_info(app_settings)")
                 .map_err(|_| AppError::storage("无法检查数据库版本"))?;
             let columns = statement
                 .query_map([], |row| row.get::<_, String>(1))
                 .map_err(|_| AppError::storage("无法检查数据库版本"))?;
-            columns
-                .filter_map(Result::ok)
-                .any(|column| column == "onboarding_completed")
+            columns.filter_map(Result::ok).collect::<Vec<_>>()
         };
+        let has_onboarding = app_settings_columns
+            .iter()
+            .any(|column| column == "onboarding_completed");
         if !has_onboarding {
             connection
                 .execute("ALTER TABLE app_settings ADD COLUMN onboarding_completed INTEGER NOT NULL DEFAULT 0 CHECK (onboarding_completed IN (0, 1))", [])
                 .map_err(|_| AppError::storage("无法升级本地数据库"))?;
+        }
+        let has_result_window_width = app_settings_columns
+            .iter()
+            .any(|column| column == "result_window_width");
+        let has_result_window_height = app_settings_columns
+            .iter()
+            .any(|column| column == "result_window_height");
+        match (has_result_window_width, has_result_window_height) {
+            (false, false) => connection
+                .execute_batch(RESULT_WINDOW_SIZE_MIGRATION)
+                .map_err(|_| AppError::storage("无法升级结果窗口大小存储"))?,
+            (false, true) => {
+                connection
+                    .execute(
+                        "ALTER TABLE app_settings ADD COLUMN result_window_width INTEGER",
+                        [],
+                    )
+                    .map_err(|_| AppError::storage("无法升级结果窗口大小存储"))?;
+            }
+            (true, false) => {
+                connection
+                    .execute(
+                        "ALTER TABLE app_settings ADD COLUMN result_window_height INTEGER",
+                        [],
+                    )
+                    .map_err(|_| AppError::storage("无法升级结果窗口大小存储"))?;
+            }
+            (true, true) => {}
         }
         let has_plaintext_api_key = {
             let mut statement = connection
@@ -230,7 +261,7 @@ impl Database {
                 .map_err(|_| AppError::storage("无法升级提示词快捷键"))?;
         }
         connection
-            .pragma_update(None, "user_version", 10)
+            .pragma_update(None, "user_version", 11)
             .map_err(|_| AppError::storage("无法记录数据库版本"))?;
         Ok(Self {
             connection: Mutex::new(connection),
@@ -314,6 +345,56 @@ mod tests {
     }
 
     #[test]
+    fn legacy_settings_schema_adds_result_window_dimensions() {
+        let connection = Connection::open_in_memory().unwrap();
+        connection.execute_batch(INITIAL_SCHEMA).unwrap();
+        connection
+            .execute_batch(
+                "PRAGMA foreign_keys=OFF;
+                ALTER TABLE app_settings RENAME TO app_settings_current;
+                CREATE TABLE app_settings (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    active_model_config_id TEXT REFERENCES model_configs(id) ON DELETE SET NULL,
+                    active_prompt_id TEXT REFERENCES prompt_presets(id) ON DELETE SET NULL,
+                    capture_shortcut TEXT NOT NULL,
+                    save_history INTEGER NOT NULL CHECK (save_history IN (0, 1)),
+                    autostart INTEGER NOT NULL CHECK (autostart IN (0, 1)),
+                    result_always_on_top INTEGER NOT NULL CHECK (result_always_on_top IN (0, 1)),
+                    onboarding_completed INTEGER NOT NULL DEFAULT 0 CHECK (onboarding_completed IN (0, 1)),
+                    updated_at TEXT NOT NULL
+                );
+                INSERT INTO app_settings (
+                    id, active_model_config_id, active_prompt_id, capture_shortcut,
+                    save_history, autostart, result_always_on_top, onboarding_completed, updated_at
+                ) SELECT
+                    id, active_model_config_id, active_prompt_id, capture_shortcut,
+                    save_history, autostart, result_always_on_top, onboarding_completed, updated_at
+                  FROM app_settings_current;
+                DROP TABLE app_settings_current;",
+            )
+            .unwrap();
+        connection.pragma_update(None, "user_version", 10).unwrap();
+
+        let database = Database::initialize(connection).unwrap();
+        let columns = database
+            .read(|connection| {
+                let mut statement = connection.prepare("PRAGMA table_info(app_settings)")?;
+                statement
+                    .query_map([], |row| row.get::<_, String>(1))?
+                    .collect::<Result<Vec<_>, _>>()
+            })
+            .unwrap();
+
+        assert!(columns.iter().any(|column| column == "result_window_width"));
+        assert!(
+            columns
+                .iter()
+                .any(|column| column == "result_window_height")
+        );
+        assert_eq!(database.pragma_i64("user_version").unwrap(), 11);
+    }
+
+    #[test]
     fn legacy_history_schema_adds_the_thinking_column() {
         let database = legacy_database(DEFAULT_CAPTURE_SHORTCUT);
         let has_thinking = database
@@ -327,7 +408,7 @@ mod tests {
             .unwrap();
 
         assert!(has_thinking);
-        assert_eq!(database.pragma_i64("user_version").unwrap(), 10);
+        assert_eq!(database.pragma_i64("user_version").unwrap(), 11);
     }
 
     #[test]
@@ -381,7 +462,7 @@ mod tests {
 
         assert_eq!(values.0.as_deref(), Some("low"));
         assert_eq!(values.1, None);
-        assert_eq!(database.pragma_i64("user_version").unwrap(), 10);
+        assert_eq!(database.pragma_i64("user_version").unwrap(), 11);
     }
 
     #[test]
@@ -468,7 +549,7 @@ mod tests {
         );
         assert_eq!(values.1, "migration-model");
         assert_eq!(values.2, Some("migration-model".into()));
-        assert_eq!(database.pragma_i64("user_version").unwrap(), 10);
+        assert_eq!(database.pragma_i64("user_version").unwrap(), 11);
     }
 
     #[test]

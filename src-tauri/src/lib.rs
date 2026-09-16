@@ -162,14 +162,26 @@ pub fn run() {
                 ));
             }
 
+            if windowing::result_run_id(window.label()).is_some()
+                && let WindowEvent::Resized(size) = event
+                && let Ok(scale_factor) = window.scale_factor()
+                && let Some(dimensions) =
+                    windowing::result_window_dimensions_from_physical(size, scale_factor)
+                && let Ok(mut runtime) = window.app_handle().state::<AppState>().runtime.lock()
+            {
+                runtime.remember_result_window_size(dimensions);
+            }
+
             if let WindowEvent::CloseRequested { api, .. } = event {
                 if should_hide_on_close(window.label()) {
                     api.prevent_close();
                     let _ = window.hide();
                 } else if let Some(run_id) = windowing::result_run_id(window.label()) {
-                    let active = window
-                        .app_handle()
-                        .state::<AppState>()
+                    let state = window.app_handle().state::<AppState>();
+                    if let Err(error) = state.persist_result_window_size() {
+                        log::warn!("无法保存结果窗口大小: {error}");
+                    }
+                    let active = state
                         .runtime
                         .lock()
                         .ok()

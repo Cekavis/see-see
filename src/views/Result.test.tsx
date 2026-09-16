@@ -109,7 +109,7 @@ describe("Result", () => {
     expect(imageRule).toMatch(/width:\s*auto;/);
     expect(imageRule).toMatch(/max-width:\s*100%;/);
     expect(imageRule).toMatch(/height:\s*auto;/);
-    expect(imageRule).toMatch(/max-height:\s*220px;/);
+    expect(imageRule).toMatch(/max-height:\s*60px;/);
     expect(imageRule).not.toMatch(/aspect-ratio:/);
     expect(styles).not.toMatch(
       /\.result-view__content\s*>\s*\.result-view__text\s*\{[^}]*overflow:\s*visible;/,

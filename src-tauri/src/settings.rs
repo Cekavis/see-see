@@ -3,6 +3,7 @@ use crate::{
     database::Database,
     error::{AppError, ErrorCode},
     providers::{ProviderProtocol, ReasoningEffort, validate_endpoint},
+    state::ResultWindowDimensions,
 };
 use rusqlite::OptionalExtension;
 use secrecy::{ExposeSecret, SecretString};
@@ -155,6 +156,46 @@ pub fn load_app_snapshot(database: &Database) -> Result<AppSnapshot, AppError> {
             model_config_count,
             screen_permission: crate::capture::screen_permission_status(),
         })
+    })
+}
+
+pub fn load_result_window_size(
+    database: &Database,
+) -> Result<Option<ResultWindowDimensions>, AppError> {
+    database.read(|connection| {
+        let (width, height) = connection.query_row(
+            "SELECT result_window_width, result_window_height FROM app_settings WHERE id = 1",
+            [],
+            |row| Ok((row.get::<_, Option<i64>>(0)?, row.get::<_, Option<i64>>(1)?)),
+        )?;
+        Ok(
+            match (
+                width.and_then(|value| u32::try_from(value).ok()),
+                height.and_then(|value| u32::try_from(value).ok()),
+            ) {
+                (Some(width), Some(height)) => Some(ResultWindowDimensions::new(width, height)),
+                _ => None,
+            },
+        )
+    })
+}
+
+pub fn save_result_window_size(
+    database: &Database,
+    dimensions: ResultWindowDimensions,
+) -> Result<(), AppError> {
+    database.transaction(|transaction| {
+        transaction.execute(
+            "UPDATE app_settings
+             SET result_window_width = ?1, result_window_height = ?2, updated_at = ?3
+             WHERE id = 1",
+            rusqlite::params![
+                i64::from(dimensions.width),
+                i64::from(dimensions.height),
+                crate::analysis::now()
+            ],
+        )?;
+        Ok(())
     })
 }
 

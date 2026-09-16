@@ -32,6 +32,8 @@ CREATE TABLE IF NOT EXISTS app_settings (
     autostart INTEGER NOT NULL CHECK (autostart IN (0, 1)),
     result_always_on_top INTEGER NOT NULL CHECK (result_always_on_top IN (0, 1)),
     onboarding_completed INTEGER NOT NULL DEFAULT 0 CHECK (onboarding_completed IN (0, 1)),
+    result_window_width INTEGER,
+    result_window_height INTEGER,
     updated_at TEXT NOT NULL
 );
 

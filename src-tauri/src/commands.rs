@@ -806,6 +806,9 @@ pub async fn export_sanitized_logs(app: AppHandle) -> Result<ExportResult, AppEr
 
 #[tauri::command]
 pub fn quit_app(app: AppHandle) {
+    if let Err(error) = app.state::<AppState>().persist_result_window_size() {
+        log::warn!("无法保存结果窗口大小: {error}");
+    }
     let actives = app
         .state::<AppState>()
         .runtime
@@ -898,16 +901,18 @@ fn create_capture_windows(
 }
 
 fn create_result_window(app: &AppHandle, run_id: &str) -> Result<(), AppError> {
-    let position = app
-        .state::<AppState>()
-        .runtime
-        .lock()
-        .map_err(|_| AppError::storage("运行状态不可用"))?
-        .result_window_position;
+    let (position, remembered_size) = {
+        let state = app.state::<AppState>();
+        let runtime = state
+            .runtime
+            .lock()
+            .map_err(|_| AppError::storage("运行状态不可用"))?;
+        (runtime.result_window_position, runtime.result_window_size)
+    };
     let always_on_top = settings::load_app_snapshot(&app.state::<AppState>().database)?
         .settings
         .result_always_on_top;
-    let size = windowing::result_window_size();
+    let size = windowing::result_window_size(remembered_size);
     let window = WebviewWindowBuilder::new(
         app,
         windowing::result_window_label(run_id),

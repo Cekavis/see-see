@@ -1,6 +1,8 @@
-use crate::error::AppError;
-use crate::state::ResultWindowPosition;
-use tauri::{PhysicalPosition, WebviewWindow};
+use crate::{
+    error::AppError,
+    state::{ResultWindowDimensions, ResultWindowPosition},
+};
+use tauri::{PhysicalPosition, PhysicalSize, WebviewWindow};
 
 #[cfg(target_os = "windows")]
 pub fn install_native_close_shortcuts(
@@ -69,7 +71,7 @@ pub fn install_native_close_shortcuts(
 }
 
 const RESULT_DEFAULT_WIDTH: f64 = 460.0;
-const RESULT_DEFAULT_HEIGHT: f64 = 750.0;
+const RESULT_DEFAULT_HEIGHT: f64 = 540.0;
 const RESULT_MIN_WIDTH: f64 = 420.0;
 const RESULT_MIN_HEIGHT: f64 = 540.0;
 const RESULT_WINDOW_PREFIX: &str = "result-";
@@ -99,13 +101,45 @@ pub struct ResultWindowSize {
     pub min_height: f64,
 }
 
-pub fn result_window_size() -> ResultWindowSize {
+pub fn result_window_size(preferred: Option<ResultWindowDimensions>) -> ResultWindowSize {
+    let dimensions = preferred.filter(valid_result_window_dimensions);
     ResultWindowSize {
-        width: RESULT_DEFAULT_WIDTH,
-        height: RESULT_DEFAULT_HEIGHT,
+        width: dimensions
+            .map(|dimensions| f64::from(dimensions.width))
+            .unwrap_or(RESULT_DEFAULT_WIDTH),
+        height: dimensions
+            .map(|dimensions| f64::from(dimensions.height))
+            .unwrap_or(RESULT_DEFAULT_HEIGHT),
         min_width: RESULT_MIN_WIDTH,
         min_height: RESULT_MIN_HEIGHT,
     }
+}
+
+pub fn result_window_dimensions_from_physical(
+    size: &PhysicalSize<u32>,
+    scale_factor: f64,
+) -> Option<ResultWindowDimensions> {
+    if !scale_factor.is_finite() || scale_factor <= 0.0 {
+        return None;
+    }
+
+    let logical = size.to_logical::<f64>(scale_factor);
+    let width = logical.width.round();
+    let height = logical.height.round();
+    if !width.is_finite()
+        || !height.is_finite()
+        || !(0.0..=f64::from(u32::MAX)).contains(&width)
+        || !(0.0..=f64::from(u32::MAX)).contains(&height)
+    {
+        return None;
+    }
+
+    let dimensions = ResultWindowDimensions::new(width as u32, height as u32);
+    valid_result_window_dimensions(&dimensions).then_some(dimensions)
+}
+
+fn valid_result_window_dimensions(dimensions: &ResultWindowDimensions) -> bool {
+    dimensions.width >= RESULT_MIN_WIDTH as u32 && dimensions.height >= RESULT_MIN_HEIGHT as u32
 }
 
 pub fn result_window_label(run_id: &str) -> String {
