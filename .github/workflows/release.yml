@@ -145,8 +145,7 @@ jobs:
           prerelease: false
           retryAttempts: 2
           releaseAssetNamePattern: "See-See_[version]_[platform]_[arch][setup][ext]"
-          uploadUpdaterJson: true
-          updaterJsonPreferNsis: true
+          uploadUpdaterJson: false
           args: ${{ matrix.args }}
 
       - name: Remove macOS signing keychain
@@ -170,7 +169,7 @@ jobs:
           assets="$(gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name')"
           version="${{ needs.prepare.outputs.version }}"
 
-          expected_assets="$(cat <<EOF
+          expected_installers="$(cat <<EOF
           See-See_${version}_darwin_aarch64.app.tar.gz
           See-See_${version}_darwin_aarch64.app.tar.gz.sig
           See-See_${version}_darwin_aarch64.dmg
@@ -181,30 +180,106 @@ jobs:
           See-See_${version}_windows_x64-setup.exe.sig
           See-See_${version}_windows_x64.msi
           See-See_${version}_windows_x64.msi.sig
+          EOF
+          )"
+          actual_installers="$(grep -v '^latest\.json$' <<< "$assets")"
+          diff \
+            <(sort <<< "$expected_installers") \
+            <(sort <<< "$actual_installers")
+
+          test "$(grep -c '\.dmg$' <<< "$actual_installers")" -eq 2
+          test "$(grep -c '\.msi$' <<< "$actual_installers")" -eq 1
+          test "$(grep -c -- '-setup\.exe$' <<< "$actual_installers")" -eq 1
+          test "$(grep -c '\.app\.tar\.gz$' <<< "$actual_installers")" -eq 2
+          test "$(grep -c '\.app\.tar\.gz\.sig$' <<< "$actual_installers")" -eq 2
+
+          release_id="$(gh release view "$GITHUB_REF_NAME" --json databaseId --jq .databaseId)"
+          release_assets="$(gh api "repos/$GH_REPO/releases/$release_id/assets?per_page=100")"
+          asset_api_url() {
+            local asset_name="$1"
+            jq -er --arg name "$asset_name" \
+              '.[] | select(.name == $name) | .url' <<< "$release_assets"
+          }
+          download_signature() {
+            local asset_name="$1"
+            local destination="$2"
+            local asset_id
+            asset_id="$(jq -er --arg name "$asset_name" \
+              '.[] | select(.name == $name) | .id' <<< "$release_assets")"
+            gh api --header 'Accept: application/octet-stream' \
+              "repos/$GH_REPO/releases/assets/$asset_id" > "$destination"
+            test -s "$destination"
+          }
+
+          arm_archive="See-See_${version}_darwin_aarch64.app.tar.gz"
+          arm_signature="See-See_${version}_darwin_aarch64.app.tar.gz.sig"
+          x64_archive="See-See_${version}_darwin_x64.app.tar.gz"
+          x64_signature="See-See_${version}_darwin_x64.app.tar.gz.sig"
+          nsis_archive="See-See_${version}_windows_x64-setup.exe"
+          nsis_signature="See-See_${version}_windows_x64-setup.exe.sig"
+          msi_archive="See-See_${version}_windows_x64.msi"
+          msi_signature="See-See_${version}_windows_x64.msi.sig"
+          mkdir -p "$RUNNER_TEMP/release"
+          download_signature "$arm_signature" "$RUNNER_TEMP/release/$arm_signature"
+          download_signature "$x64_signature" "$RUNNER_TEMP/release/$x64_signature"
+          download_signature "$nsis_signature" "$RUNNER_TEMP/release/$nsis_signature"
+          download_signature "$msi_signature" "$RUNNER_TEMP/release/$msi_signature"
+
+          latest_json="$RUNNER_TEMP/release/latest.json"
+          jq -n \
+            --arg version "$version" \
+            --arg pub_date "$(date -u +'%Y-%m-%dT%H:%M:%S.000Z')" \
+            --rawfile arm_signature "$RUNNER_TEMP/release/$arm_signature" \
+            --arg arm_url "$(asset_api_url "$arm_archive")" \
+            --rawfile x64_signature "$RUNNER_TEMP/release/$x64_signature" \
+            --arg x64_url "$(asset_api_url "$x64_archive")" \
+            --rawfile nsis_signature "$RUNNER_TEMP/release/$nsis_signature" \
+            --arg nsis_url "$(asset_api_url "$nsis_archive")" \
+            --rawfile msi_signature "$RUNNER_TEMP/release/$msi_signature" \
+            --arg msi_url "$(asset_api_url "$msi_archive")" \
+            '{
+              version: $version,
+              notes: "",
+              pub_date: $pub_date,
+              platforms: {
+                "darwin-aarch64": {signature: $arm_signature, url: $arm_url},
+                "darwin-aarch64-app": {signature: $arm_signature, url: $arm_url},
+                "darwin-x86_64": {signature: $x64_signature, url: $x64_url},
+                "darwin-x86_64-app": {signature: $x64_signature, url: $x64_url},
+                "windows-x86_64": {signature: $nsis_signature, url: $nsis_url},
+                "windows-x86_64-nsis": {signature: $nsis_signature, url: $nsis_url},
+                "windows-x86_64-msi": {signature: $msi_signature, url: $msi_url}
+              }
+            }' > "$latest_json"
+          gh release upload "$GITHUB_REF_NAME" "$latest_json" --clobber
+
+          assets="$(gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name')"
+          expected_assets="$(cat <<EOF
+          $expected_installers
           latest.json
           EOF
           )"
           diff \
             <(sort <<< "$expected_assets") \
             <(sort <<< "$assets")
-
-          test "$(grep -c '\.dmg$' <<< "$assets")" -eq 2
-          test "$(grep -c '\.msi$' <<< "$assets")" -eq 1
-          test "$(grep -c -- '-setup\.exe$' <<< "$assets")" -eq 1
-          test "$(grep -c '\.app\.tar\.gz$' <<< "$assets")" -eq 2
-          test "$(grep -c '\.app\.tar\.gz\.sig$' <<< "$assets")" -eq 2
           test "$(grep -c 'latest\.json$' <<< "$assets")" -eq 1
 
-          mkdir -p "$RUNNER_TEMP/release"
-          gh release download "$GITHUB_REF_NAME" --pattern latest.json --dir "$RUNNER_TEMP/release"
-          latest_json="$RUNNER_TEMP/release/latest.json"
-          jq -e '
+          jq -e --arg version "$version" '
+            .version == $version and
             .platforms["windows-x86_64"].url and
             .platforms["windows-x86_64"].signature and
+            .platforms["windows-x86_64-nsis"].url and
+            .platforms["windows-x86_64-nsis"].signature and
+            .platforms["windows-x86_64-msi"].url and
+            .platforms["windows-x86_64-msi"].signature and
             .platforms["darwin-aarch64"].url and
             .platforms["darwin-aarch64"].signature and
+            .platforms["darwin-aarch64-app"].url and
+            .platforms["darwin-aarch64-app"].signature and
             .platforms["darwin-x86_64"].url and
-            .platforms["darwin-x86_64"].signature
+            .platforms["darwin-x86_64"].signature and
+            .platforms["darwin-x86_64-app"].url and
+            .platforms["darwin-x86_64-app"].signature
           ' "$latest_json" > /dev/null
 
           gh release edit "$GITHUB_REF_NAME" --draft=false --latest
