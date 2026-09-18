@@ -9,6 +9,7 @@ pub mod history;
 pub mod providers;
 pub mod settings;
 pub mod state;
+pub mod webdav;
 pub mod windowing;
 
 use credentials::SystemCredentialStore;
@@ -232,6 +233,10 @@ pub fn run() {
             commands::clear_history,
             commands::set_save_history,
             commands::get_settings,
+            commands::get_webdav_settings,
+            commands::save_webdav_settings,
+            commands::upload_configuration,
+            commands::download_configuration,
             commands::set_autostart,
             commands::open_login_items_settings,
             commands::complete_onboarding,

@@ -27,7 +27,7 @@ Reuse the project rule that remote endpoints require HTTPS, with HTTP allowed on
 
 ### Snapshot contents and credentials
 
-The snapshot is versioned JSON with model metadata, prompt name/body, and the active model identifier. It intentionally omits prompt shortcuts, model API Keys, WebDAV credentials, history, and unrelated desktop settings. API Keys stay local and must be entered on each platform.
+The snapshot is versioned JSON with complete model configuration (including API Keys, as explicitly confirmed by the user), prompt name/body, and the active model identifier. It omits prompt shortcuts, WebDAV credentials, history, and unrelated desktop settings. The UI states that the remote file contains API Keys; tests use fictional credentials only.
 
 ### Download merge behavior
 
@@ -37,9 +37,11 @@ Parse and validate the whole document before opening a database transaction. Mat
 
 Store non-secret fields in `app_settings` and use one stable keyring entry for the single WebDAV password. The UI receives only `hasPassword`; an empty password input retains the saved value, while an explicit clear action deletes it.
 
+The installed `keyring` 3.6.3 crate has no default native backend: its local `Cargo.toml` and `src/lib.rs` select a mock store unless platform features are enabled. Enable `apple-native` and `windows-native` and explicitly test persistence across independent processes on an unlocked desktop. Preserve whitespace in passwords and roll back credential changes if the corresponding database update fails.
+
 ## Alternatives considered
 
-- **Sync API Keys**: rejected because repository security rules prohibit exporting credentials and it would expose provider secrets to the WebDAV account.
+- **Exclude API Keys**: rejected following the user's explicit confirmation that a downloaded model must include its API Key.
 - **Add a new WebDAV crate**: rejected because existing `reqwest` supports custom methods, Basic auth, proxies, and TLS already used by the application.
 - **Replace all local configs on download**: rejected because it could delete device-specific configs and is not needed for cross-platform merge.
 - **Put the password in SQLite**: rejected because the project already has a system credential store abstraction and the password should not be persisted as application data.

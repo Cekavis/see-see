@@ -5,7 +5,9 @@
 3. Save the connection settings. The password is remembered by the operating system credential store and is never shown again.
 4. Click **上传配置** on the source device.
 5. On another Windows or macOS device, enter the same WebDAV settings and click **下载配置**.
-6. Confirm the model and prompt lists are available. Prompt shortcuts and model API Keys remain device-local and must be configured locally.
+6. Confirm the model and prompt lists, including model API Keys, are available. Prompt shortcuts remain device-local; existing shortcuts survive download, and new prompts have no shortcut.
+
+The remote JSON contains model API Keys. Use a trusted HTTPS WebDAV service. Download asks for confirmation before merging matching configurations; local-only models and prompts remain present.
 
 ## Validation commands
 
@@ -18,3 +20,5 @@ powershell.exe -Command "npm run format:check"
 ```
 
 Manual UI review should cover a normal desktop settings width and a narrow window, including initial loading, saved-password state, disabled buttons during sync, success counts, and failure recovery.
+
+Implementation validation, local package installation, and remaining acceptance gaps are recorded in [validation.md](validation.md).

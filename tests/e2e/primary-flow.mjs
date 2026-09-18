@@ -50,6 +50,20 @@ export async function runPrimaryFlow(page) {
           testBridge.calls.push({ command, args });
           if (command === "plugin:event|listen") return Promise.resolve(1);
           if (command === "plugin:event|unlisten") return Promise.resolve();
+          if (command === "save_webdav_settings") {
+            const previous = testBridge.results.get_webdav_settings;
+            const { url, username, remoteRoot, password, clearPassword } =
+              args.input;
+            const saved = {
+              url,
+              username,
+              remoteRoot,
+              hasPassword:
+                !clearPassword && (Boolean(password) || previous.hasPassword),
+            };
+            testBridge.results.get_webdav_settings = saved;
+            return Promise.resolve(saved);
+          }
           return Object.hasOwn(testBridge.results, command)
             ? Promise.resolve(testBridge.results[command])
             : Promise.reject(
@@ -62,6 +76,14 @@ export async function runPrimaryFlow(page) {
       initialResults: {
         get_app_snapshot: snapshot,
         get_settings: snapshot.settings,
+        get_webdav_settings: {
+          url: "",
+          username: "",
+          remoteRoot: "see-see",
+          hasPassword: false,
+        },
+        upload_configuration: { models: 1, prompts: 2 },
+        download_configuration: { models: 1, prompts: 2 },
         list_model_configs: [],
         list_prompt_presets: [],
         save_model_config: { id: "model-1" },
@@ -114,6 +136,52 @@ export async function runPrimaryFlow(page) {
     navDisplay: "flex",
     noPageOverflow: true,
   });
+  const remoteRoot = page.getByLabel("远程根目录", { exact: true });
+  await remoteRoot.waitFor({ state: "visible" });
+  assert.equal(await remoteRoot.inputValue(), "see-see");
+  assert.equal(
+    await page
+      .getByRole("button", { name: "上传配置", exact: true })
+      .isEnabled(),
+    false,
+  );
+  await page
+    .getByLabel("WebDAV 地址", { exact: true })
+    .fill("https://dav.example.com/dav");
+  await page.getByLabel("用户名", { exact: true }).fill("sync-test-user");
+  await page.getByLabel("密码", { exact: true }).fill("fixture-password");
+  await remoteRoot.fill("shared/see-see");
+  await page
+    .getByRole("button", { name: "保存 WebDAV 设置", exact: true })
+    .click();
+  await page.getByText("WebDAV 设置已保存", { exact: true }).waitFor();
+  assert.equal(await page.getByLabel("密码", { exact: true }).inputValue(), "");
+  await page.getByRole("button", { name: "上传配置", exact: true }).click();
+  await page
+    .getByText("配置上传完成：模型 1 个，提示词 2 个", { exact: true })
+    .waitFor();
+  await page.getByRole("button", { name: "下载配置", exact: true }).click();
+  const downloadDialog = page.getByRole("dialog", { name: "下载并合并配置" });
+  await downloadDialog.waitFor({ state: "visible" });
+  await downloadDialog
+    .getByRole("button", { name: "取消", exact: true })
+    .click();
+  assert.equal(
+    await page.evaluate(
+      () =>
+        window.__SEE_SEE_TEST__.calls.filter(
+          (call) => call.command === "download_configuration",
+        ).length,
+    ),
+    0,
+  );
+  await page.getByRole("button", { name: "下载配置", exact: true }).click();
+  await downloadDialog
+    .getByRole("button", { name: "下载并合并", exact: true })
+    .click();
+  await page
+    .getByText("配置下载完成：模型 1 个，提示词 2 个", { exact: true })
+    .waitFor();
   await page.setViewportSize({ width: 1024, height: 720 });
 
   assert.equal(
@@ -145,7 +213,31 @@ export async function runPrimaryFlow(page) {
     }
   }
 
+  await sidebar.getByRole("button", { name: "常规", exact: true }).click();
+  await remoteRoot.waitFor({ state: "visible" });
+  assert.equal(await remoteRoot.inputValue(), "shared/see-see");
+  assert.equal(await page.getByLabel("密码", { exact: true }).inputValue(), "");
+  await page.getByLabel("清除已保存密码").waitFor({ state: "visible" });
   const calls = await page.evaluate(() => window.__SEE_SEE_TEST__.calls);
+  assert.equal(
+    calls.filter((call) => call.command === "upload_configuration").length,
+    1,
+  );
+  assert.equal(
+    calls.filter((call) => call.command === "download_configuration").length,
+    1,
+  );
+  assert.deepEqual(
+    calls.find((call) => call.command === "save_webdav_settings")?.args,
+    {
+      input: {
+        url: "https://dav.example.com/dav",
+        username: "sync-test-user",
+        remoteRoot: "shared/see-see",
+        password: "fixture-password",
+      },
+    },
+  );
   assert.equal(calls.filter((call) => call.command === "open_view").length, 0);
   assert.equal(
     calls.filter((call) => call.command === "begin_capture").length,

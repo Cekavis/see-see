@@ -16,6 +16,7 @@ import { History } from "./History";
 import { Onboarding } from "./Onboarding";
 import { Prompts } from "./Prompts";
 import { Settings } from "./Settings";
+import { WebdavSettings } from "./WebdavSettings";
 
 export type SettingsSection =
   "general" | "models" | "prompts" | "history" | "about";
@@ -33,6 +34,8 @@ const sections: Array<{
 ];
 
 function General({ onSelect }: { onSelect: (value: SettingsSection) => void }) {
+  const [configurationRevision, setConfigurationRevision] = useState(0);
+
   return (
     <section
       className="settings-section"
@@ -42,8 +45,11 @@ function General({ onSelect }: { onSelect: (value: SettingsSection) => void }) {
         <h1 id="general-section-title">常规</h1>
       </header>
       <div className="settings-groups">
-        <Onboarding onSelectSection={onSelect} />
+        <Onboarding key={configurationRevision} onSelectSection={onSelect} />
         <DesktopSettings />
+        <WebdavSettings
+          onDownloaded={() => setConfigurationRevision((value) => value + 1)}
+        />
       </div>
     </section>
   );

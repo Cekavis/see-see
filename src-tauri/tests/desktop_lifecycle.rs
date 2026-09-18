@@ -77,7 +77,7 @@ fn analysis_uses_a_streaming_client_without_changing_model_request_client() {
     assert!(create < reset);
     assert!(reset < start);
 
-    let model_requests = commands
+    let non_streaming_requests = commands
         .split_once("pub async fn list_remote_models(")
         .unwrap()
         .1
@@ -85,12 +85,12 @@ fn analysis_uses_a_streaming_client_without_changing_model_request_client() {
         .unwrap()
         .0;
     assert_eq!(
-        model_requests
+        non_streaming_requests
             .matches("let http = http_client(&state)?;")
             .count(),
-        2
+        4 // Model listing/testing and WebDAV upload/download share this client.
     );
-    assert!(!model_requests.contains("&state.http"));
+    assert!(!non_streaming_requests.contains("&state.http"));
 }
 
 #[test]

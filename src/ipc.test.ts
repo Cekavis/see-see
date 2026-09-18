@@ -57,3 +57,36 @@ describe("IPC result image", () => {
     });
   });
 });
+
+describe("IPC WebDAV configuration sync", () => {
+  it("uses typed settings and sync command payloads", async () => {
+    invoke.mockResolvedValue({
+      url: "https://dav.example.test/root",
+      username: "alice",
+      remoteRoot: "see-see",
+      hasPassword: true,
+    });
+
+    await ipc.getWebdavSettings();
+    await ipc.saveWebdavSettings({
+      url: "https://dav.example.test/root",
+      username: "alice",
+      remoteRoot: "see-see",
+      password: "secret",
+    });
+    await ipc.uploadConfiguration();
+    await ipc.downloadConfiguration();
+
+    expect(invoke).toHaveBeenCalledWith("get_webdav_settings");
+    expect(invoke).toHaveBeenCalledWith("save_webdav_settings", {
+      input: {
+        url: "https://dav.example.test/root",
+        username: "alice",
+        remoteRoot: "see-see",
+        password: "secret",
+      },
+    });
+    expect(invoke).toHaveBeenCalledWith("upload_configuration");
+    expect(invoke).toHaveBeenCalledWith("download_configuration");
+  });
+});

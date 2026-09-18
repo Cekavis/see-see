@@ -7,6 +7,10 @@ import { SettingsShell } from "./SettingsShell";
 const mocks = vi.hoisted(() => ({
   getAppSnapshot: vi.fn(),
   getSettings: vi.fn(),
+  getWebdavSettings: vi.fn(),
+  saveWebdavSettings: vi.fn(),
+  uploadConfiguration: vi.fn(),
+  downloadConfiguration: vi.fn(),
   listModelConfigs: vi.fn(),
   listPromptPresets: vi.fn(),
   queryHistory: vi.fn(),
@@ -44,6 +48,20 @@ describe("SettingsShell", () => {
       screenPermission: "granted",
     });
     mocks.getSettings.mockResolvedValue(settings);
+    mocks.getWebdavSettings.mockResolvedValue({
+      url: "",
+      username: "",
+      remoteRoot: "see-see",
+      hasPassword: false,
+    });
+    mocks.saveWebdavSettings.mockResolvedValue({
+      url: "",
+      username: "",
+      remoteRoot: "see-see",
+      hasPassword: false,
+    });
+    mocks.uploadConfiguration.mockResolvedValue({ models: 0, prompts: 0 });
+    mocks.downloadConfiguration.mockResolvedValue({ models: 0, prompts: 0 });
     mocks.listModelConfigs.mockResolvedValue([]);
     mocks.listPromptPresets.mockResolvedValue([]);
     mocks.queryHistory.mockResolvedValue({ items: [], nextCursor: null });
@@ -114,6 +132,51 @@ describe("SettingsShell", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "关于" }));
     expect(await screen.findByText(packageJson.version)).toBeInTheDocument();
+  });
+
+  it("refreshes first-device readiness after a WebDAV download", async () => {
+    const incompleteSettings = {
+      ...settings,
+      activeModelConfigId: null,
+      onboardingCompleted: false,
+    };
+    mocks.getAppSnapshot
+      .mockResolvedValueOnce({
+        settings: incompleteSettings,
+        promptCount: 0,
+        modelConfigCount: 0,
+        activeModelConfigId: null,
+        screenPermission: "granted",
+      })
+      .mockResolvedValue({
+        settings: { ...incompleteSettings, activeModelConfigId: "m1" },
+        promptCount: 1,
+        modelConfigCount: 1,
+        activeModelConfigId: "m1",
+        screenPermission: "granted",
+      });
+    mocks.getWebdavSettings.mockResolvedValue({
+      url: "https://dav.example.test/",
+      username: "alice",
+      remoteRoot: "see-see",
+      hasPassword: true,
+    });
+    mocks.downloadConfiguration.mockResolvedValue({ models: 1, prompts: 1 });
+    render(
+      <NotificationProvider>
+        <SettingsShell />
+      </NotificationProvider>,
+    );
+
+    expect(await screen.findByText("尚未配置可用模型")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "完成设置" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "下载配置" }));
+    fireEvent.click(screen.getByRole("button", { name: "下载并合并" }));
+
+    expect(await screen.findByText("已选择模型")).toBeInTheDocument();
+    expect(screen.getByText("已配置提示词")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "完成设置" })).toBeEnabled();
+    expect(mocks.getAppSnapshot).toHaveBeenCalledTimes(2);
   });
 
   it("checks for updates and shows current or available release details", async () => {

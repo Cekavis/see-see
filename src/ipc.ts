@@ -157,6 +157,26 @@ export type PromptPreset = {
   captureShortcut: string | null;
 };
 
+export type WebdavSettings = {
+  url: string;
+  username: string;
+  remoteRoot: string;
+  hasPassword: boolean;
+};
+
+export type WebdavSettingsInput = {
+  url: string;
+  username: string;
+  remoteRoot: string;
+  password?: string;
+  clearPassword?: boolean;
+};
+
+export type ConfigSyncResult = {
+  models: number;
+  prompts: number;
+};
+
 export type HistoryStatus = "success" | "failed";
 export type HistoryQuery = {
   text?: string;
@@ -241,6 +261,12 @@ export const ipc = {
     invoke<void>("delete_prompt_preset", { id }),
   setPromptShortcut: (id: string, shortcut: string | null) =>
     invoke<PromptPreset>("set_prompt_shortcut", { id, shortcut }),
+  getWebdavSettings: () => invoke<WebdavSettings>("get_webdav_settings"),
+  saveWebdavSettings: (input: WebdavSettingsInput) =>
+    invoke<WebdavSettings>("save_webdav_settings", { input }),
+  uploadConfiguration: () => invoke<ConfigSyncResult>("upload_configuration"),
+  downloadConfiguration: () =>
+    invoke<ConfigSyncResult>("download_configuration"),
   queryHistory: (query: HistoryQuery) =>
     invoke<HistoryPage>("query_history", { query }),
   getHistoryEntry: (id: string) =>

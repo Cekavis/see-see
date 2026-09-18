@@ -126,6 +126,8 @@ pub struct AppState {
     pub database: Database,
     pub http: Mutex<Client>,
     pub runtime: Mutex<RuntimeState>,
+    pub credentials: Arc<dyn CredentialStore>,
+    pub configuration_sync: tokio::sync::Mutex<()>,
 }
 
 impl AppState {
@@ -142,6 +144,8 @@ impl AppState {
                 result_window_size,
                 ..RuntimeState::default()
             }),
+            credentials,
+            configuration_sync: tokio::sync::Mutex::new(()),
         })
     }
 

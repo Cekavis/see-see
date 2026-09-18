@@ -6,9 +6,12 @@ use crate::{
     error::{AppError, ErrorCode},
     history::{self, HistoryEntryDetail, HistoryImageVariant, HistoryPage, HistoryQuery},
     providers::{self, ProviderProtocol, ProviderRequest, ReasoningEffort, RemoteModel},
-    settings::{self, ModelConfigInput, ModelConfigSummary, PromptPreset, PromptPresetInput},
+    settings::{
+        self, ConfigSyncResult, ModelConfigInput, ModelConfigSummary, PromptPreset,
+        PromptPresetInput, WebdavSettings, WebdavSettingsInput,
+    },
     state::AppState,
-    windowing,
+    webdav, windowing,
 };
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
@@ -680,6 +683,65 @@ pub fn set_save_history(app: AppHandle, value: bool) -> Result<settings::AppSett
 #[tauri::command]
 pub fn get_settings(app: AppHandle) -> Result<settings::AppSettings, AppError> {
     Ok(settings::load_app_snapshot(&app.state::<AppState>().database)?.settings)
+}
+
+#[tauri::command]
+pub fn get_webdav_settings(app: AppHandle) -> Result<WebdavSettings, AppError> {
+    let state = app.state::<AppState>();
+    settings::load_webdav_settings(&state.database, state.credentials.as_ref())
+}
+
+#[tauri::command]
+pub fn save_webdav_settings(
+    app: AppHandle,
+    input: WebdavSettingsInput,
+) -> Result<WebdavSettings, AppError> {
+    let state = app.state::<AppState>();
+    let _operation = state
+        .configuration_sync
+        .try_lock()
+        .map_err(|_| already_running("WebDAV 操作正在进行，请稍后重试"))?;
+    settings::save_webdav_settings(&state.database, state.credentials.as_ref(), input)
+}
+
+#[tauri::command]
+pub async fn upload_configuration(app: AppHandle) -> Result<ConfigSyncResult, AppError> {
+    let state = app.state::<AppState>();
+    let _operation = state
+        .configuration_sync
+        .try_lock()
+        .map_err(|_| already_running("WebDAV 操作正在进行，请稍后重试"))?;
+    let connection = settings::load_webdav_settings(&state.database, state.credentials.as_ref())?;
+    let password = state
+        .credentials
+        .get(settings::WEBDAV_PASSWORD_CREDENTIAL_KEY)?;
+    let snapshot = settings::export_configuration_snapshot(&state.database)?;
+    let payload =
+        serde_json::to_vec(&snapshot).map_err(|_| AppError::storage("无法生成 WebDAV 配置文件"))?;
+    let http = http_client(&state)?;
+    webdav::upload(&http, &connection, password.as_ref(), &payload).await?;
+    Ok(ConfigSyncResult {
+        models: snapshot.models.len(),
+        prompts: snapshot.prompts.len(),
+    })
+}
+
+#[tauri::command]
+pub async fn download_configuration(app: AppHandle) -> Result<ConfigSyncResult, AppError> {
+    let state = app.state::<AppState>();
+    let _operation = state
+        .configuration_sync
+        .try_lock()
+        .map_err(|_| already_running("WebDAV 操作正在进行，请稍后重试"))?;
+    let connection = settings::load_webdav_settings(&state.database, state.credentials.as_ref())?;
+    let password = state
+        .credentials
+        .get(settings::WEBDAV_PASSWORD_CREDENTIAL_KEY)?;
+    let http = http_client(&state)?;
+    let payload = webdav::download(&http, &connection, password.as_ref()).await?;
+    let snapshot = serde_json::from_slice::<settings::ConfigSyncSnapshot>(&payload)
+        .map_err(|_| AppError::invalid("WebDAV 配置文件格式无效"))?;
+    settings::apply_configuration_snapshot(&state.database, &snapshot)
 }
 
 #[tauri::command]

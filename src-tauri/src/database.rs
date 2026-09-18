@@ -14,6 +14,7 @@ const MODEL_REASONING_EFFORT_MIGRATION: &str =
 const MODEL_PROTOCOL_MIGRATION: &str = include_str!("../migrations/0008_openai_responses.sql");
 const RESULT_WINDOW_SIZE_MIGRATION: &str =
     include_str!("../migrations/0009_result_window_size.sql");
+const WEBDAV_SETTINGS_MIGRATION: &str = include_str!("../migrations/0010_webdav_settings.sql");
 const LEGACY_DEFAULT_CAPTURE_SHORTCUT: &str = "Alt+Shift+A";
 pub const WINDOWS_DEFAULT_CAPTURE_SHORTCUT: &str = "Ctrl+Shift+X";
 pub const MACOS_DEFAULT_CAPTURE_SHORTCUT: &str = "Command+Shift+X";
@@ -107,6 +108,52 @@ impl Database {
                     .map_err(|_| AppError::storage("无法升级结果窗口大小存储"))?;
             }
             (true, true) => {}
+        }
+        let webdav_columns = {
+            let mut statement = connection
+                .prepare("PRAGMA table_info(app_settings)")
+                .map_err(|_| AppError::storage("无法检查 WebDAV 设置数据库版本"))?;
+            let columns = statement
+                .query_map([], |row| row.get::<_, String>(1))
+                .map_err(|_| AppError::storage("无法检查 WebDAV 设置数据库版本"))?;
+            columns.filter_map(Result::ok).collect::<Vec<_>>()
+        };
+        let has_webdav_url = webdav_columns.iter().any(|column| column == "webdav_url");
+        let has_webdav_username = webdav_columns
+            .iter()
+            .any(|column| column == "webdav_username");
+        let has_webdav_remote_root = webdav_columns
+            .iter()
+            .any(|column| column == "webdav_remote_root");
+        if !(has_webdav_url || has_webdav_username || has_webdav_remote_root) {
+            connection
+                .execute_batch(WEBDAV_SETTINGS_MIGRATION)
+                .map_err(|_| AppError::storage("无法升级 WebDAV 设置存储"))?;
+        } else {
+            if !has_webdav_url {
+                connection
+                    .execute(
+                        "ALTER TABLE app_settings ADD COLUMN webdav_url TEXT NOT NULL DEFAULT ''",
+                        [],
+                    )
+                    .map_err(|_| AppError::storage("无法升级 WebDAV 设置存储"))?;
+            }
+            if !has_webdav_username {
+                connection
+                    .execute(
+                        "ALTER TABLE app_settings ADD COLUMN webdav_username TEXT NOT NULL DEFAULT ''",
+                        [],
+                    )
+                    .map_err(|_| AppError::storage("无法升级 WebDAV 设置存储"))?;
+            }
+            if !has_webdav_remote_root {
+                connection
+                    .execute(
+                        "ALTER TABLE app_settings ADD COLUMN webdav_remote_root TEXT NOT NULL DEFAULT 'see-see'",
+                        [],
+                    )
+                    .map_err(|_| AppError::storage("无法升级 WebDAV 设置存储"))?;
+            }
         }
         let has_plaintext_api_key = {
             let mut statement = connection
@@ -261,7 +308,7 @@ impl Database {
                 .map_err(|_| AppError::storage("无法升级提示词快捷键"))?;
         }
         connection
-            .pragma_update(None, "user_version", 11)
+            .pragma_update(None, "user_version", 12)
             .map_err(|_| AppError::storage("无法记录数据库版本"))?;
         Ok(Self {
             connection: Mutex::new(connection),
@@ -391,7 +438,7 @@ mod tests {
                 .iter()
                 .any(|column| column == "result_window_height")
         );
-        assert_eq!(database.pragma_i64("user_version").unwrap(), 11);
+        assert_eq!(database.pragma_i64("user_version").unwrap(), 12);
     }
 
     #[test]
@@ -408,7 +455,7 @@ mod tests {
             .unwrap();
 
         assert!(has_thinking);
-        assert_eq!(database.pragma_i64("user_version").unwrap(), 11);
+        assert_eq!(database.pragma_i64("user_version").unwrap(), 12);
     }
 
     #[test]
@@ -462,7 +509,7 @@ mod tests {
 
         assert_eq!(values.0.as_deref(), Some("low"));
         assert_eq!(values.1, None);
-        assert_eq!(database.pragma_i64("user_version").unwrap(), 11);
+        assert_eq!(database.pragma_i64("user_version").unwrap(), 12);
     }
 
     #[test]
@@ -549,7 +596,7 @@ mod tests {
         );
         assert_eq!(values.1, "migration-model");
         assert_eq!(values.2, Some("migration-model".into()));
-        assert_eq!(database.pragma_i64("user_version").unwrap(), 11);
+        assert_eq!(database.pragma_i64("user_version").unwrap(), 12);
     }
 
     #[test]

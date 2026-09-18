@@ -24,7 +24,7 @@ fn database_defaults_and_pragmas_match_the_plan() {
     assert_eq!(snapshot.prompt_count, 2);
     assert_eq!(db.pragma_i64("foreign_keys").unwrap(), 1);
     assert_eq!(db.pragma_i64("secure_delete").unwrap(), 1);
-    assert_eq!(db.pragma_i64("user_version").unwrap(), 11);
+    assert_eq!(db.pragma_i64("user_version").unwrap(), 12);
     assert_eq!(load_result_window_size(&db).unwrap(), None);
 }
 
