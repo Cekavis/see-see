@@ -157,6 +157,23 @@ describe("result window shared settings", () => {
 });
 
 describe("window close shortcuts", () => {
+  it.each(["main", "result-run-1"])("closes %s with Command+W", (label) => {
+    expect(
+      shouldCloseWindowOnKeydown(label, key({ key: "w", metaKey: true })),
+    ).toBe(true);
+    expect(
+      shouldCloseWindowOnKeydown(label, key({ code: "KeyW", metaKey: true })),
+    ).toBe(true);
+    for (const modifier of [{ altKey: true }, { shiftKey: true }]) {
+      expect(
+        shouldCloseWindowOnKeydown(
+          label,
+          key({ key: "w", metaKey: true, ...modifier }),
+        ),
+      ).toBe(false);
+    }
+  });
+
   it("closes result windows with Escape or Ctrl+W", () => {
     expect(
       shouldCloseWindowOnKeydown("result-run-1", key({ key: "Escape" })),

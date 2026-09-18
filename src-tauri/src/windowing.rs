@@ -4,6 +4,71 @@ use crate::{
 };
 use tauri::{PhysicalPosition, PhysicalSize, WebviewWindow};
 
+#[cfg(target_os = "macos")]
+fn should_close_on_macos_keydown(
+    label: &str,
+    key_code: u16,
+    flags: objc2_app_kit::NSEventModifierFlags,
+) -> bool {
+    use objc2_app_kit::NSEventModifierFlags as Flags;
+
+    let modifiers = flags & (Flags::Command | Flags::Control | Flags::Option | Flags::Shift);
+    let result = result_run_id(label).is_some();
+    let escape = result && key_code == 53 && modifiers.is_empty();
+    let close = (label == "main" || result)
+        && key_code == 13 // ANSI W, independent of the active input method.
+        && modifiers.intersects(Flags::Command | Flags::Control)
+        && !modifiers.intersects(Flags::Option | Flags::Shift);
+    escape || close
+}
+
+#[cfg(target_os = "macos")]
+pub fn install_macos_close_shortcuts(app: &tauri::AppHandle) -> Result<(), AppError> {
+    use block2::RcBlock;
+    use objc2::{MainThreadMarker, rc::Retained};
+    use objc2_app_kit::{NSEvent, NSEventMask};
+    use std::ptr::NonNull;
+    use tauri::Manager;
+
+    let app = app.clone();
+    let handler = RcBlock::new(move |event: NonNull<NSEvent>| {
+        // AppKit invokes local monitors on the main thread with a live event.
+        let event_ref = unsafe { event.as_ref() };
+        let Some(mtm) = MainThreadMarker::new() else {
+            return event.as_ptr();
+        };
+        let Some(native_window) = event_ref.window(mtm) else {
+            return event.as_ptr();
+        };
+        for window in app.webview_windows().values() {
+            if !should_close_on_macos_keydown(
+                window.label(),
+                event_ref.keyCode(),
+                event_ref.modifierFlags(),
+            ) || window.ns_window().ok()
+                != Some(Retained::as_ptr(&native_window).cast_mut().cast())
+            {
+                continue;
+            }
+            // Consume repeats so holding the keys cannot close the next result.
+            if !event_ref.isARepeat()
+                && let Err(error) = window.close()
+            {
+                log::error!("无法关闭窗口: {error}");
+            }
+            return std::ptr::null_mut();
+        }
+        event.as_ptr()
+    });
+    // Register once during setup. AppKit owns this monitor for the app's lifetime;
+    // it captures no transient windows. Return only the original event or nil.
+    unsafe {
+        NSEvent::addLocalMonitorForEventsMatchingMask_handler(NSEventMask::KeyDown, &handler)
+    }
+    .ok_or_else(|| AppError::invalid("无法配置 macOS 窗口快捷键"))?;
+    Ok(())
+}
+
 #[cfg(target_os = "windows")]
 pub fn install_native_close_shortcuts(
     window: &WebviewWindow,
@@ -325,5 +390,45 @@ pub fn present_result_window(
         window
             .set_focus()
             .map_err(|_| AppError::invalid("无法显示结果窗口"))
+    }
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod tests {
+    use super::should_close_on_macos_keydown;
+    use objc2_app_kit::NSEventModifierFlags as Flags;
+
+    #[test]
+    fn macos_close_keys_respect_window_scope_and_modifiers() {
+        for flags in [Flags::empty(), Flags::CapsLock] {
+            assert!(should_close_on_macos_keydown("result-run-1", 53, flags));
+            assert!(!should_close_on_macos_keydown("main", 53, flags));
+            for modifier in [Flags::Command, Flags::Control, Flags::Option, Flags::Shift] {
+                assert!(!should_close_on_macos_keydown(
+                    "result-run-1",
+                    53,
+                    flags | modifier
+                ));
+            }
+        }
+        for label in ["main", "result-run-1", "result-run-2"] {
+            for modifier in [Flags::Command, Flags::Control] {
+                assert!(should_close_on_macos_keydown(label, 13, modifier));
+                assert!(should_close_on_macos_keydown(
+                    label,
+                    13,
+                    modifier | Flags::CapsLock
+                ));
+                for extra in [Flags::Option, Flags::Shift] {
+                    assert!(!should_close_on_macos_keydown(label, 13, modifier | extra));
+                }
+                assert!(!should_close_on_macos_keydown(label, 12, modifier));
+            }
+            assert!(!should_close_on_macos_keydown(label, 13, Flags::empty()));
+        }
+        for label in ["capture-1", "settings", "result-"] {
+            assert!(!should_close_on_macos_keydown(label, 53, Flags::empty()));
+            assert!(!should_close_on_macos_keydown(label, 13, Flags::Command));
+        }
     }
 }
