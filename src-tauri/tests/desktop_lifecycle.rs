@@ -1,7 +1,10 @@
 use see_see_lib::{
     autostart::{SystemAutostartStatus, confirm_enabled},
     capture::PhysicalRect,
-    commands::{AnalysisStarted, finish_capture, open_main_window, resubmit_history},
+    commands::{
+        AnalysisStarted, finish_capture, open_main_window, resubmit_history,
+        retry_analysis_with_model,
+    },
     error::{AppError, ErrorCode},
     settings::{replace_shortcut, sanitize_log_line},
     state::ResultWindowDimensions,
@@ -34,6 +37,15 @@ fn result_window_creation_stays_out_of_synchronous_windows_commands() {
     }
 
     assert_resubmit_async(resubmit_history);
+
+    fn assert_model_retry_async<F, Fut>(_: F)
+    where
+        F: Fn(AppHandle, String, String) -> Fut,
+        Fut: Future<Output = Result<AnalysisStarted, AppError>>,
+    {
+    }
+
+    assert_model_retry_async(retry_analysis_with_model);
 }
 
 #[test]

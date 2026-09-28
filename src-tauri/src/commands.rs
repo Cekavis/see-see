@@ -434,6 +434,21 @@ pub fn retry_analysis(app: AppHandle, run_id: String) -> Result<(), AppError> {
 }
 
 #[tauri::command]
+pub async fn retry_analysis_with_model(
+    app: AppHandle,
+    run_id: String,
+    model_config_id: String,
+) -> Result<AnalysisStarted, AppError> {
+    let active = active_analysis(&app, &run_id)?;
+    let state = app.state::<AppState>();
+    let model = settings::load_model(&state.database, &model_config_id)?
+        .ok_or_else(|| AppError::new(ErrorCode::NotFound, "模型配置不存在", false, None))?;
+    let api_key = settings::load_model_api_key(&state.database, &model.id)?;
+    let input = active.retry_input_with_model(model, api_key)?;
+    start_analysis(app, input)
+}
+
+#[tauri::command]
 pub fn close_result(app: AppHandle, run_id: String) -> Result<(), AppError> {
     let state = app.state::<AppState>();
     let active = match active_analysis(&app, &run_id) {

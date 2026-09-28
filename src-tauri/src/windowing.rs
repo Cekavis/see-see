@@ -4,6 +4,15 @@ use crate::{
 };
 use tauri::{PhysicalPosition, PhysicalSize, WebviewWindow};
 
+#[cfg(any(target_os = "windows", target_os = "macos"))]
+fn dispatch_result_escape(window: &WebviewWindow) -> Result<(), tauri::Error> {
+    // Let the webview dismiss its modal first; App handles closing when none is open.
+    window.eval(
+        "document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', \
+         { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true }));",
+    )
+}
+
 #[cfg(target_os = "macos")]
 fn should_close_on_macos_keydown(
     label: &str,
@@ -51,10 +60,15 @@ pub fn install_macos_close_shortcuts(app: &tauri::AppHandle) -> Result<(), AppEr
                 continue;
             }
             // Consume repeats so holding the keys cannot close the next result.
-            if !event_ref.isARepeat()
-                && let Err(error) = window.close()
-            {
-                log::error!("无法关闭窗口: {error}");
+            if !event_ref.isARepeat() {
+                let result = if event_ref.keyCode() == 53 {
+                    dispatch_result_escape(window)
+                } else {
+                    window.close()
+                };
+                if let Err(error) = result {
+                    log::error!("无法处理窗口快捷键: {error}");
+                }
             }
             return std::ptr::null_mut();
         }
@@ -110,7 +124,14 @@ pub fn install_native_close_shortcuts(
                     || (result && key == VK_ESCAPE.0 as u32 && !has_modifier);
                 if close {
                     unsafe { args.SetHandled(true)? };
-                    let _ = target.close();
+                    let action = if result && key == VK_ESCAPE.0 as u32 {
+                        dispatch_result_escape(&target)
+                    } else {
+                        target.close()
+                    };
+                    if let Err(error) = action {
+                        log::error!("无法处理窗口快捷键: {error}");
+                    }
                 }
                 Ok(())
             }));

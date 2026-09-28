@@ -79,13 +79,16 @@ function ResultView() {
   }, [notifications, runId]);
 
   useEffect(() => {
+    let active = true;
     const channel = new Channel<AnalysisEvent>();
     channel.onmessage = (event) => {
+      if (!active) return;
       setSnapshot((current) => updateAnalysisSnapshot(current, event));
     };
     void ipc
       .attachAnalysis(runId, channel)
       .then((next) => {
+        if (!active) return;
         if (next.runId !== runId) {
           notifications.error("分析任务标识不匹配");
           return;
@@ -94,7 +97,13 @@ function ResultView() {
           mergeAttachedAnalysisSnapshot(current, next, runId),
         );
       })
-      .catch((value: unknown) => notifications.error(getErrorMessage(value)));
+      .catch((value: unknown) => {
+        if (active) notifications.error(getErrorMessage(value));
+      });
+
+    return () => {
+      active = false;
+    };
   }, [notifications, runId]);
 
   useEffect(() => {
@@ -139,6 +148,10 @@ function ResultView() {
       alwaysOnTop={alwaysOnTop}
       onCancel={() => ipc.cancelAnalysis(runId)}
       onRetry={() => ipc.retryAnalysis(runId)}
+      onLoadModels={ipc.listModelConfigs}
+      onRetryWithModel={(modelConfigId) =>
+        ipc.retryAnalysisWithModel(runId, modelConfigId)
+      }
       onCopy={(text) => ipc.copyText(text)}
       onOpenMain={() => ipc.openMainWindow(runId)}
       onAlwaysOnTop={(value) => {
@@ -274,6 +287,12 @@ export function App() {
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
       if (!shouldCloseWindowOnKeydown(label, event)) return;
+      if (
+        (event.key === "Escape" || event.code === "Escape") &&
+        document.querySelector("dialog[open]")
+      ) {
+        return;
+      }
       event.preventDefault();
       event.stopPropagation();
       void currentWindow.close().catch((error: unknown) => {

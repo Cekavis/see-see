@@ -211,6 +211,7 @@ pub fn run() {
             commands::get_analysis_image,
             commands::cancel_analysis,
             commands::retry_analysis,
+            commands::retry_analysis_with_model,
             commands::close_result,
             commands::open_main_window,
             commands::set_result_always_on_top,

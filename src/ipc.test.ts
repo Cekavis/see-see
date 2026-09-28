@@ -46,6 +46,23 @@ describe("IPC result navigation", () => {
   });
 });
 
+describe("IPC result model retry", () => {
+  it("passes the source run and selected model and returns the new run", async () => {
+    invoke.mockResolvedValue({ runId: "run-2" });
+
+    await expect(
+      ipc.retryAnalysisWithModel("run-1", "model-2"),
+    ).resolves.toEqual({
+      runId: "run-2",
+    });
+
+    expect(invoke).toHaveBeenCalledWith("retry_analysis_with_model", {
+      runId: "run-1",
+      modelConfigId: "model-2",
+    });
+  });
+});
+
 describe("IPC result image", () => {
   it("passes the current analysis identity when loading the screenshot", async () => {
     invoke.mockResolvedValue(new ArrayBuffer(2));

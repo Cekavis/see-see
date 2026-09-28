@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { NotificationProvider } from "../components/Notifications";
+import type { ModelConfigSummary } from "../ipc";
 import { Result, type ResultSnapshot } from "./Result";
 
 const nodeProcess = (
@@ -32,7 +33,60 @@ function renderResult(node: React.ReactNode) {
   return render(<NotificationProvider>{node}</NotificationProvider>);
 }
 
+const alternateModel: ModelConfigSummary = {
+  id: "model-2",
+  name: "备用视觉模型",
+  protocol: "openai",
+  baseUrl: "https://example.test/v1",
+  modelId: "vision-alternate",
+  reasoningEffort: null,
+  hasApiKey: true,
+  isActive: false,
+};
+
 describe("Result", () => {
+  it.each<ResultSnapshot["state"]>([
+    "submitting",
+    "streaming",
+    "completed",
+    "failed",
+    "cancelled",
+  ])(
+    "starts a selected-model retry from %s without replacing the source",
+    async (state) => {
+      const onLoadModels = vi.fn().mockResolvedValue([alternateModel]);
+      const onRetryWithModel = vi.fn().mockResolvedValue({ runId: "run-2" });
+      const onRetry = vi.fn();
+      const onCancel = vi.fn();
+      renderResult(
+        <Result
+          snapshot={snapshot({ state })}
+          onLoadModels={onLoadModels}
+          onRetryWithModel={onRetryWithModel}
+          onRetry={onRetry}
+          onCancel={onCancel}
+        />,
+      );
+
+      const trigger = screen.getByRole("button", { name: "换模型重试" });
+      expect(trigger.closest("footer")).not.toBeNull();
+      expect(onLoadModels).not.toHaveBeenCalled();
+      fireEvent.click(trigger);
+      fireEvent.click(
+        await screen.findByRole("button", { name: /备用视觉模型/ }),
+      );
+
+      await waitFor(() =>
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+      );
+      expect(onRetryWithModel).toHaveBeenCalledExactlyOnceWith("model-2");
+      expect(onRetry).not.toHaveBeenCalled();
+      expect(onCancel).not.toHaveBeenCalled();
+      expect(screen.getByText("逐步输出")).toBeInTheDocument();
+      expect(screen.getByText("模型配置：视觉模型")).toBeInTheDocument();
+    },
+  );
+
   it("shows the model and prompt configurations used by the run", () => {
     renderResult(<Result snapshot={snapshot()} />);
 

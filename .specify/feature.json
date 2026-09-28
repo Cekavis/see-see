@@ -1,3 +1,1 @@
-{
-  "feature_directory": "specs/018-webdav-config-sync"
-}
+{ "feature_directory": "specs/019-result-model-retry" }

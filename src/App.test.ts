@@ -1,10 +1,16 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { createElement } from "react";
+import { createElement, StrictMode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NotificationProvider } from "./components/Notifications";
-import type { AnalysisSnapshot } from "./ipc";
+import type { AnalysisEvent, AnalysisSnapshot } from "./ipc";
 import {
   App,
   RESULT_ALWAYS_ON_TOP_CHANGED,
@@ -78,7 +84,7 @@ describe("result window shared settings", () => {
     unlisten.mockReset();
     vi.mocked(getCurrentWebviewWindow).mockReturnValue({
       label: "result-run-1",
-      close: vi.fn(),
+      close: vi.fn().mockResolvedValue(undefined),
     } as unknown as ReturnType<typeof getCurrentWebviewWindow>);
     vi.mocked(listen).mockImplementation(async (_event, handler) => {
       onAlwaysOnTopChanged = handler as (event: { payload: boolean }) => void;
@@ -88,6 +94,153 @@ describe("result window shared settings", () => {
     vi.spyOn(ipc, "getAnalysisImage").mockResolvedValue(new ArrayBuffer(0));
     vi.spyOn(ipc, "getAppSnapshot").mockResolvedValue(appSnapshot);
   });
+
+  it("retries using the current window run and the model selected in the chooser", async () => {
+    vi.spyOn(ipc, "listModelConfigs").mockResolvedValue([
+      {
+        id: "model-2",
+        name: "另一模型",
+        protocol: "gemini",
+        baseUrl: "https://example.test",
+        modelId: "vision-2",
+        reasoningEffort: null,
+        hasApiKey: true,
+        isActive: false,
+      },
+    ]);
+    const retry = vi.spyOn(ipc, "retryAnalysisWithModel").mockResolvedValue({
+      runId: "run-2",
+    });
+    const { unmount } = render(
+      createElement(NotificationProvider, null, createElement(App)),
+    );
+
+    await screen.findByText("模型配置：模型配置");
+    fireEvent.click(screen.getByRole("button", { name: "换模型重试" }));
+    fireEvent.click(await screen.findByRole("button", { name: /另一模型/ }));
+
+    await waitFor(() => expect(retry).toHaveBeenCalledWith("run-1", "model-2"));
+    expect(screen.getByText("结果")).toBeInTheDocument();
+    expect(window.location.search).toBe("?run=run-1");
+    unmount();
+  });
+
+  it("dismisses the model chooser with Escape before allowing the result window to close", async () => {
+    vi.spyOn(ipc, "listModelConfigs").mockResolvedValue([
+      {
+        id: "model-2",
+        name: "另一模型",
+        protocol: "gemini",
+        baseUrl: "https://example.test",
+        modelId: "vision-2",
+        reasoningEffort: null,
+        hasApiKey: true,
+        isActive: false,
+      },
+    ]);
+    const currentWindow = getCurrentWebviewWindow();
+    render(createElement(NotificationProvider, null, createElement(App)));
+    const trigger = screen.getByRole("button", { name: "换模型重试" });
+    trigger.focus();
+    fireEvent.click(trigger);
+
+    const model = await screen.findByRole("button", { name: "另一模型" });
+    model.focus();
+    fireEvent.keyDown(model, { key: "Escape", code: "Escape" });
+
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(currentWindow.close).not.toHaveBeenCalled();
+    expect(trigger).toHaveFocus();
+
+    fireEvent.keyDown(trigger, { key: "Escape", code: "Escape" });
+    expect(currentWindow.close).toHaveBeenCalledOnce();
+  });
+
+  it("applies each streamed delta once under StrictMode while preserving repeated tokens", async () => {
+    const attach = vi.mocked(ipc.attachAnalysis).mockResolvedValue({
+      ...resultSnapshot,
+      state: "submitting",
+      text: "",
+    });
+    render(
+      createElement(
+        StrictMode,
+        null,
+        createElement(NotificationProvider, null, createElement(App)),
+      ),
+    );
+
+    await screen.findByText("模型配置：模型配置");
+    expect(attach).toHaveBeenCalledTimes(2);
+    const channels = attach.mock.calls.map(([, channel]) => channel);
+    const broadcast = (event: AnalysisEvent) => {
+      act(() => {
+        channels.forEach((channel) => channel.onmessage(event));
+      });
+    };
+
+    for (const text of ["思", "思", "考"]) {
+      broadcast({ type: "thinkingDelta", runId: "run-1", text });
+    }
+    expect(screen.getByText("思思考")).toBeInTheDocument();
+
+    for (const text of ["a", "a", "b"]) {
+      broadcast({ type: "delta", runId: "run-1", text });
+    }
+    expect(screen.getByText("aab")).toBeInTheDocument();
+    expect(screen.getByText("思思考")).toBeInTheDocument();
+  });
+
+  it.each(["snapshot", "mismatched snapshot", "failure"] as const)(
+    "ignores a stale attach %s after StrictMode cleanup",
+    async (outcome) => {
+      let resolveStale!: (value: AnalysisSnapshot) => void;
+      let rejectStale!: (reason: Error) => void;
+      let resolveCurrent!: (value: AnalysisSnapshot) => void;
+      const stale = new Promise<AnalysisSnapshot>((resolve, reject) => {
+        resolveStale = resolve;
+        rejectStale = reject;
+      });
+      const current = new Promise<AnalysisSnapshot>((resolve) => {
+        resolveCurrent = resolve;
+      });
+      const attach = vi
+        .mocked(ipc.attachAnalysis)
+        .mockReturnValueOnce(stale)
+        .mockReturnValueOnce(current);
+      render(
+        createElement(
+          StrictMode,
+          null,
+          createElement(NotificationProvider, null, createElement(App)),
+        ),
+      );
+      expect(attach).toHaveBeenCalledTimes(2);
+
+      await act(async () => {
+        if (outcome === "failure") {
+          rejectStale(new Error("过期订阅失败"));
+        } else {
+          resolveStale({
+            ...resultSnapshot,
+            runId: outcome === "snapshot" ? "run-1" : "run-old",
+            text: "过期结果",
+          });
+        }
+      });
+
+      expect(screen.queryByText("过期结果")).not.toBeInTheDocument();
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+      await act(async () => {
+        resolveCurrent({ ...resultSnapshot, text: "当前结果" });
+      });
+      expect(screen.getByText("当前结果")).toBeInTheDocument();
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    },
+  );
 
   it("updates the checkbox from the shared always-on-top event", async () => {
     const { unmount } = render(

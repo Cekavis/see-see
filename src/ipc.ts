@@ -233,6 +233,11 @@ export const ipc = {
     invoke<ArrayBuffer>("get_analysis_image", { runId }),
   cancelAnalysis: (runId: string) => invoke<void>("cancel_analysis", { runId }),
   retryAnalysis: (runId: string) => invoke<void>("retry_analysis", { runId }),
+  retryAnalysisWithModel: (runId: string, modelConfigId: string) =>
+    invoke<{ runId: string }>("retry_analysis_with_model", {
+      runId,
+      modelConfigId,
+    }),
   closeResult: (runId: string) => invoke<void>("close_result", { runId }),
   openMainWindow: (runId: string) =>
     invoke<void>("open_main_window", { runId }),

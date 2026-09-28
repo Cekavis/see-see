@@ -1,8 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "../components/Button";
+import { ModelRetryDialog } from "../components/ModelRetryDialog";
 import { useNotifications } from "../components/Notifications";
 import { TokenUsage } from "../components/TokenUsage";
-import { getErrorMessage, type AppError } from "../ipc";
+import {
+  getErrorMessage,
+  type AppError,
+  type ModelConfigSummary,
+} from "../ipc";
 
 export type ResultSnapshot = {
   runId: string;
@@ -23,6 +28,8 @@ type Props = {
   alwaysOnTop?: boolean;
   onCancel?: () => void | Promise<unknown>;
   onRetry?: () => void | Promise<unknown>;
+  onLoadModels?: () => Promise<ModelConfigSummary[]>;
+  onRetryWithModel?: (modelConfigId: string) => Promise<unknown>;
   onCopy?: (text: string) => void | Promise<unknown>;
   onOpenMain?: () => void | Promise<unknown>;
   onAlwaysOnTop?: (value: boolean) => void | Promise<unknown>;
@@ -52,12 +59,15 @@ export function Result({
   alwaysOnTop = false,
   onCancel,
   onRetry,
+  onLoadModels,
+  onRetryWithModel,
   onCopy,
   onOpenMain,
   onAlwaysOnTop,
 }: Props) {
   const notifications = useNotifications();
   const [retrying, setRetrying] = useState(false);
+  const [choosingModel, setChoosingModel] = useState(false);
   const publishedError = useRef<string | undefined>(undefined);
   const active =
     snapshot.state === "submitting" || snapshot.state === "streaming";
@@ -211,6 +221,11 @@ export function Result({
             {retrying ? "正在重试…" : "重试"}
           </Button>
         )}
+        {onLoadModels && onRetryWithModel && (
+          <Button aria-haspopup="dialog" onClick={() => setChoosingModel(true)}>
+            换模型重试
+          </Button>
+        )}
         <Button
           disabled={!snapshot.text}
           onClick={() => {
@@ -235,6 +250,14 @@ export function Result({
           复制全文
         </Button>
       </footer>
+      {onLoadModels && onRetryWithModel && (
+        <ModelRetryDialog
+          open={choosingModel}
+          loadModels={onLoadModels}
+          onSelect={onRetryWithModel}
+          onClose={() => setChoosingModel(false)}
+        />
+      )}
     </main>
   );
 }

@@ -2,7 +2,7 @@ use secrecy::{ExposeSecret, SecretString};
 use see_see_lib::{
     analysis::{ActiveAnalysis, AnalysisEvent, AnalysisInput, AnalysisRun, AnalysisSnapshot},
     error::ErrorCode,
-    providers::ProviderProtocol,
+    providers::{ProviderProtocol, ReasoningEffort},
     settings::{ModelSnapshot, PromptSnapshot},
     state::AnalysisState,
 };
@@ -217,4 +217,160 @@ fn retry_uses_the_original_request_snapshot_after_configuration_changes() {
     assert_eq!(active.snapshot().unwrap().run_id, "run-snapshot");
     assert_eq!(active.snapshot().unwrap().model_config_name, "原模型");
     assert_eq!(active.snapshot().unwrap().prompt_config_name, "原提示词");
+}
+
+fn model_retry_source_input(save_history: bool) -> AnalysisInput {
+    AnalysisInput {
+        image_png: vec![9, 8, 7],
+        prompt: PromptSnapshot {
+            id: "prompt-original".into(),
+            name: "原提示词".into(),
+            body: "请按原提示词回答".into(),
+        },
+        model: ModelSnapshot {
+            id: "model-original".into(),
+            name: "原模型".into(),
+            protocol: ProviderProtocol::Anthropic,
+            base_url: "https://original.example/v1".into(),
+            model_id: "vision-original".into(),
+            reasoning_effort: None,
+        },
+        api_key: Some(SecretString::from("source-test-key")),
+        save_history,
+        started_at: "2026-08-31T00:00:00Z".into(),
+    }
+}
+
+fn selected_retry_model() -> ModelSnapshot {
+    ModelSnapshot {
+        id: "model-selected".into(),
+        name: "所选模型".into(),
+        protocol: ProviderProtocol::OpenAiResponses,
+        base_url: "https://selected.example/v1".into(),
+        model_id: "vision-selected".into(),
+        reasoning_effort: Some(ReasoningEffort::High),
+    }
+}
+
+#[test]
+fn model_retry_preserves_frozen_input_and_substitutes_only_model_credentials_and_time() {
+    for save_history in [false, true] {
+        let mut input = model_retry_source_input(save_history);
+        let original_prompt = input.prompt.clone();
+        let active = ActiveAnalysis::new_with_input("run-source", &input);
+        active
+            .fail(
+                see_see_lib::error::AppError::provider(ErrorCode::Timeout, "超时", true),
+                save_history,
+            )
+            .unwrap();
+        let source_snapshot = active.snapshot().unwrap();
+        input.prompt.body = "已经修改的提示词".into();
+
+        let selected = selected_retry_model();
+        let retry = active
+            .retry_input_with_model(
+                selected.clone(),
+                Some(SecretString::from("selected-test-key")),
+            )
+            .unwrap();
+
+        assert_eq!(retry.image_png, input.image_png);
+        assert_eq!(retry.prompt, original_prompt);
+        assert_eq!(retry.model, selected);
+        assert_eq!(
+            retry.api_key.as_ref().unwrap().expose_secret(),
+            "selected-test-key"
+        );
+        assert_eq!(retry.save_history, save_history);
+        assert_ne!(retry.started_at, input.started_at);
+        assert_eq!(active.snapshot().unwrap(), source_snapshot);
+
+        let source_request = active.retry_input().unwrap();
+        assert_eq!(source_request.model, input.model);
+        assert_eq!(source_request.prompt, original_prompt);
+        assert_eq!(
+            source_request.api_key.as_ref().unwrap().expose_secret(),
+            "source-test-key"
+        );
+    }
+}
+
+#[test]
+fn model_retry_does_not_reuse_source_credentials_when_selected_model_has_no_key() {
+    let active = ActiveAnalysis::new_with_input("run-source", &model_retry_source_input(false));
+    let retry = active
+        .retry_input_with_model(selected_retry_model(), None)
+        .unwrap();
+
+    assert!(retry.api_key.is_none());
+}
+
+#[test]
+fn model_retry_accepts_every_source_state_and_keeps_new_run_and_cancellation_independent() {
+    for state in [
+        AnalysisState::Submitting,
+        AnalysisState::Streaming,
+        AnalysisState::Completed,
+        AnalysisState::Failed,
+        AnalysisState::Cancelled,
+    ] {
+        let active = ActiveAnalysis::new_with_input("run-source", &model_retry_source_input(false));
+        let source_cancellation = active.cancel_receiver();
+        match state {
+            AnalysisState::Submitting => {}
+            AnalysisState::Streaming => {
+                active.push_thinking("原分析思考").unwrap();
+                active.push_text("原分析内容").unwrap();
+                active.push_usage(Some(10), Some(4)).unwrap();
+            }
+            AnalysisState::Completed => {
+                active.push_text("原分析内容").unwrap();
+                active.complete(false).unwrap();
+            }
+            AnalysisState::Failed => active
+                .fail(
+                    see_see_lib::error::AppError::provider(ErrorCode::Timeout, "超时", true),
+                    false,
+                )
+                .unwrap(),
+            AnalysisState::Cancelled => active.cancel().unwrap(),
+        }
+        let source_snapshot = active.snapshot().unwrap();
+        let was_cancelled = *source_cancellation.borrow();
+        let input = active
+            .retry_input_with_model(selected_retry_model(), None)
+            .unwrap();
+        let retried = ActiveAnalysis::new_with_input("run-selected-model", &input);
+        let retried_cancellation = retried.cancel_receiver();
+
+        assert_eq!(source_snapshot.state, state);
+        assert_ne!(retried.snapshot().unwrap().run_id, source_snapshot.run_id);
+        assert_eq!(retried.snapshot().unwrap().state, AnalysisState::Submitting);
+        assert!(!*retried_cancellation.borrow());
+        retried.push_text("新分析内容").unwrap();
+        retried.cancel().unwrap();
+
+        assert_eq!(active.snapshot().unwrap(), source_snapshot);
+        assert_eq!(*source_cancellation.borrow(), was_cancelled);
+        assert!(*retried_cancellation.borrow());
+        if !state.is_terminal() {
+            active.push_text("继续原分析").unwrap();
+            assert!(active.snapshot().unwrap().text.ends_with("继续原分析"));
+        }
+    }
+}
+
+#[test]
+fn model_retry_rejects_missing_original_request_without_mutating_source() {
+    let active = ActiveAnalysis::new("run-source", vec![1, 2, 3], "原模型", "原提示词");
+    let snapshot = active.snapshot().unwrap();
+    let error = active
+        .retry_input_with_model(selected_retry_model(), None)
+        .err()
+        .unwrap();
+
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+    assert_eq!(error.message, "原始分析配置不可用");
+    assert_eq!(active.snapshot().unwrap(), snapshot);
 }

@@ -386,6 +386,25 @@ impl ActiveAnalysis {
         })
     }
 
+    pub fn retry_input_with_model(
+        &self,
+        model: ModelSnapshot,
+        api_key: Option<SecretString>,
+    ) -> Result<AnalysisInput, AppError> {
+        let request = self
+            .request
+            .lock()
+            .map_err(|_| AppError::storage("分析请求不可用"))?
+            .clone()
+            .ok_or_else(|| AppError::invalid("原始分析配置不可用"))?;
+        Ok(AnalysisInput {
+            model,
+            api_key,
+            started_at: now(),
+            ..request
+        })
+    }
+
     pub fn reset_for_retry(
         &self,
         model_config_name: impl Into<String>,

@@ -1614,3 +1614,82 @@ textarea {
     transition-duration: 0.01ms !important;
   }
 }
+
+.model-retry-dialog__surface {
+  display: flex;
+  height: min(480px, calc(100dvh - 32px));
+  min-height: 0;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.model-retry-dialog__surface > h2,
+.model-retry-dialog__body > .field__hint {
+  flex: 0 0 auto;
+}
+
+.model-retry-dialog__body {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.model-retry-dialog__body .inline-error-notice {
+  max-height: 88px;
+  flex: 0 0 auto;
+  padding: 9px 11px;
+  overflow: auto;
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+.model-retry-dialog__list {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  align-content: start;
+  gap: 4px;
+  margin: 0;
+  padding: 3px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  list-style: none;
+}
+
+.model-retry-dialog__list > li {
+  min-width: 0;
+}
+
+.model-retry-dialog__model {
+  width: 100%;
+  min-width: 0;
+  min-height: 32px;
+  justify-content: flex-start;
+  padding: 5px 9px;
+  text-align: left;
+}
+
+.model-retry-dialog__model > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-retry-dialog .confirm-dialog__actions {
+  flex: 0 0 auto;
+  margin-top: 0;
+}
+
+@media (max-height: 400px) {
+  .model-retry-dialog__surface {
+    gap: 10px;
+    padding: 16px;
+  }
+}
