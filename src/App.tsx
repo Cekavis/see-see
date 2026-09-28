@@ -149,6 +149,7 @@ function ResultView() {
       onCancel={() => ipc.cancelAnalysis(runId)}
       onRetry={() => ipc.retryAnalysis(runId)}
       onLoadModels={ipc.listModelConfigs}
+      onModelChooserOpenChange={ipc.setResultModelChooserOpen}
       onRetryWithModel={(modelConfigId) =>
         ipc.retryAnalysisWithModel(runId, modelConfigId)
       }

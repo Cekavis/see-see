@@ -47,6 +47,19 @@ describe("IPC result navigation", () => {
 });
 
 describe("IPC result model retry", () => {
+  it.each([true, false])(
+    "sets the chooser state of the calling window to %s",
+    async (open) => {
+      invoke.mockResolvedValue(undefined);
+
+      await ipc.setResultModelChooserOpen(open);
+
+      expect(invoke).toHaveBeenCalledWith("set_result_model_chooser_open", {
+        open,
+      });
+    },
+  );
+
   it("passes the source run and selected model and returns the new run", async () => {
     invoke.mockResolvedValue({ runId: "run-2" });
 

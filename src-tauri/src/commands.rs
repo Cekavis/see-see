@@ -17,7 +17,7 @@ use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tauri::{
-    AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder,
+    AppHandle, Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
     ipc::{Channel, Response},
 };
 #[cfg(not(target_os = "macos"))]
@@ -421,6 +421,18 @@ pub fn get_analysis_image(app: AppHandle, run_id: String) -> Result<Response, Ap
 #[tauri::command]
 pub fn cancel_analysis(app: AppHandle, run_id: String) -> Result<(), AppError> {
     active_analysis(&app, &run_id)?.cancel()
+}
+
+#[tauri::command]
+pub fn set_result_model_chooser_open(window: WebviewWindow, open: bool) -> Result<(), AppError> {
+    let run_id = windowing::result_run_id(window.label())
+        .ok_or_else(|| AppError::invalid("当前窗口不是结果窗口"))?;
+    window
+        .state::<AppState>()
+        .runtime
+        .lock()
+        .map_err(|_| AppError::storage("运行状态不可用"))?
+        .set_result_model_chooser_open(run_id, open)
 }
 
 #[tauri::command]

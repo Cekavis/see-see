@@ -9,7 +9,7 @@ use crate::{
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{Arc, Mutex},
 };
 
@@ -41,6 +41,7 @@ pub struct RuntimeState {
     pub capture: Option<CaptureSession>,
     pub capture_reservation: Option<String>,
     pub analysis: HashMap<String, Arc<ActiveAnalysis>>,
+    pub result_model_choosers: HashSet<String>,
     pub result_window_position: Option<ResultWindowPosition>,
     pub result_window_size: Option<ResultWindowDimensions>,
 }
@@ -110,7 +111,33 @@ impl RuntimeState {
     }
 
     pub fn take_analysis(&mut self, run_id: &str) -> Option<Arc<ActiveAnalysis>> {
+        self.result_model_choosers.remove(run_id);
         self.analysis.remove(run_id)
+    }
+
+    pub fn set_result_model_chooser_open(
+        &mut self,
+        run_id: &str,
+        open: bool,
+    ) -> Result<(), AppError> {
+        if open {
+            if !self.analysis.contains_key(run_id) {
+                return Err(AppError::new(
+                    ErrorCode::NotFound,
+                    "分析任务不存在",
+                    false,
+                    None,
+                ));
+            }
+            self.result_model_choosers.insert(run_id.to_owned());
+        } else {
+            self.result_model_choosers.remove(run_id);
+        }
+        Ok(())
+    }
+
+    pub fn result_model_chooser_is_open(&self, run_id: &str) -> bool {
+        self.result_model_choosers.contains(run_id)
     }
 
     pub fn remember_result_window_position(&mut self, position: ResultWindowPosition) {
@@ -179,6 +206,7 @@ mod tests {
             }),
             capture_reservation: None,
             analysis: HashMap::new(),
+            result_model_choosers: Default::default(),
             result_window_position: None,
             result_window_size: None,
         };
@@ -242,6 +270,53 @@ mod tests {
                 .is_some_and(|value| Arc::ptr_eq(value, &second))
         );
         assert_eq!(runtime.analysis.len(), 1);
+    }
+
+    #[test]
+    fn model_chooser_state_is_scoped_to_existing_result_runs_and_cleared_on_close() {
+        let mut runtime = RuntimeState::default();
+        for run_id in ["first", "second"] {
+            runtime.analysis.insert(
+                run_id.into(),
+                Arc::new(ActiveAnalysis::new(run_id, vec![], "模型", "提示词")),
+            );
+        }
+
+        assert!(!runtime.result_model_chooser_is_open("first"));
+        let error = runtime
+            .set_result_model_chooser_open("missing", true)
+            .unwrap_err();
+        assert_eq!(error.code, crate::error::ErrorCode::NotFound);
+        assert!(!runtime.result_model_chooser_is_open("missing"));
+
+        runtime
+            .set_result_model_chooser_open("first", true)
+            .unwrap();
+        assert!(runtime.result_model_chooser_is_open("first"));
+        assert!(!runtime.result_model_chooser_is_open("second"));
+        runtime
+            .set_result_model_chooser_open("second", true)
+            .unwrap();
+        runtime
+            .set_result_model_chooser_open("first", false)
+            .unwrap();
+        assert!(!runtime.result_model_chooser_is_open("first"));
+        assert!(runtime.result_model_chooser_is_open("second"));
+
+        runtime
+            .set_result_model_chooser_open("first", true)
+            .unwrap();
+        assert!(runtime.take_analysis("first").is_some());
+        assert!(!runtime.result_model_chooser_is_open("first"));
+        assert!(runtime.result_model_chooser_is_open("second"));
+        runtime
+            .set_result_model_chooser_open("first", false)
+            .unwrap();
+        runtime
+            .set_result_model_chooser_open("missing", false)
+            .unwrap();
+        assert!(runtime.take_analysis("second").is_some());
+        assert!(runtime.result_model_choosers.is_empty());
     }
 
     #[test]

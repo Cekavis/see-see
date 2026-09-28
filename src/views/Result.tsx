@@ -30,6 +30,7 @@ type Props = {
   onRetry?: () => void | Promise<unknown>;
   onLoadModels?: () => Promise<ModelConfigSummary[]>;
   onRetryWithModel?: (modelConfigId: string) => Promise<unknown>;
+  onModelChooserOpenChange?: (open: boolean) => Promise<void>;
   onCopy?: (text: string) => void | Promise<unknown>;
   onOpenMain?: () => void | Promise<unknown>;
   onAlwaysOnTop?: (value: boolean) => void | Promise<unknown>;
@@ -61,6 +62,7 @@ export function Result({
   onRetry,
   onLoadModels,
   onRetryWithModel,
+  onModelChooserOpenChange,
   onCopy,
   onOpenMain,
   onAlwaysOnTop,
@@ -68,6 +70,16 @@ export function Result({
   const notifications = useNotifications();
   const [retrying, setRetrying] = useState(false);
   const [choosingModel, setChoosingModel] = useState(false);
+  const [changingModelChooser, setChangingModelChooser] = useState(false);
+  const [modelChooserError, setModelChooserError] = useState<string | null>(
+    null,
+  );
+  const modelChooserState = useRef({
+    active: true,
+    open: false,
+    pending: false,
+    onOpenChange: onModelChooserOpenChange,
+  });
   const publishedError = useRef<string | undefined>(undefined);
   const active =
     snapshot.state === "submitting" || snapshot.state === "streaming";
@@ -81,6 +93,47 @@ export function Result({
           ? "等待正式回答…"
           : "等待模型返回文字…"
         : "暂无结果");
+
+  useEffect(() => {
+    modelChooserState.current.onOpenChange = onModelChooserOpenChange;
+  }, [onModelChooserOpenChange]);
+
+  useEffect(() => {
+    const chooser = modelChooserState.current;
+    chooser.active = true;
+    return () => {
+      chooser.active = false;
+      if (chooser.open && !chooser.pending) {
+        void clearNativeModelChooser(chooser.onOpenChange);
+      }
+    };
+  }, []);
+
+  async function changeModelChooser(open: boolean) {
+    const chooser = modelChooserState.current;
+    if (!chooser.active || chooser.pending || chooser.open === open) return;
+    chooser.pending = true;
+    setChangingModelChooser(true);
+    setModelChooserError(null);
+    try {
+      await chooser.onOpenChange?.(open);
+      chooser.open = open;
+      if (chooser.active) setChoosingModel(open);
+    } catch (failure) {
+      if (chooser.active) {
+        const message = getErrorMessage(failure);
+        if (chooser.open) setModelChooserError(message);
+        else notifications.error(message);
+      }
+    } finally {
+      chooser.pending = false;
+      if (chooser.active) setChangingModelChooser(false);
+      else if (chooser.open) {
+        // An opening request may have completed after the result unmounted.
+        void clearNativeModelChooser(chooser.onOpenChange);
+      }
+    }
+  }
 
   useEffect(() => {
     if (!snapshot.error) {
@@ -222,7 +275,11 @@ export function Result({
           </Button>
         )}
         {onLoadModels && onRetryWithModel && (
-          <Button aria-haspopup="dialog" onClick={() => setChoosingModel(true)}>
+          <Button
+            aria-haspopup="dialog"
+            aria-disabled={changingModelChooser}
+            onClick={() => void changeModelChooser(true)}
+          >
             换模型重试
           </Button>
         )}
@@ -253,11 +310,23 @@ export function Result({
       {onLoadModels && onRetryWithModel && (
         <ModelRetryDialog
           open={choosingModel}
+          busy={changingModelChooser}
+          error={modelChooserError}
           loadModels={onLoadModels}
           onSelect={onRetryWithModel}
-          onClose={() => setChoosingModel(false)}
+          onClose={() => void changeModelChooser(false)}
         />
       )}
     </main>
   );
+}
+
+async function clearNativeModelChooser(
+  onOpenChange: Props["onModelChooserOpenChange"],
+) {
+  try {
+    await onOpenChange?.(false);
+  } catch (failure) {
+    console.error("无法清除结果窗口模型选择框状态", failure);
+  }
 }

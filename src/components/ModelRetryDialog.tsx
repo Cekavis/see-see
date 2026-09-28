@@ -6,12 +6,20 @@ import { ErrorNotice } from "./ErrorNotice";
 
 type Props = {
   open: boolean;
+  busy?: boolean;
+  error?: string | null;
   loadModels: () => Promise<ModelConfigSummary[]>;
   onSelect: (modelConfigId: string) => Promise<unknown>;
   onClose: () => void;
 };
 
-function ModelChoices({ loadModels, onSelect, onClose }: Omit<Props, "open">) {
+function ModelChoices({
+  busy = false,
+  error,
+  loadModels,
+  onSelect,
+  onClose,
+}: Omit<Props, "open">) {
   const listRef = useRef<HTMLUListElement>(null);
   const activeRef = useRef(true);
   const pendingRef = useRef(false);
@@ -52,7 +60,7 @@ function ModelChoices({ loadModels, onSelect, onClose }: Omit<Props, "open">) {
   }, [models]);
 
   async function select(modelConfigId: string) {
-    if (pendingRef.current) return;
+    if (busy || pendingRef.current) return;
     pendingRef.current = true;
     setPending(true);
     setSelectionError(null);
@@ -73,6 +81,7 @@ function ModelChoices({ loadModels, onSelect, onClose }: Omit<Props, "open">) {
 
   function navigate(event: KeyboardEvent<HTMLElement>) {
     if (
+      busy ||
       pending ||
       !["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)
     ) {
@@ -96,11 +105,16 @@ function ModelChoices({ loadModels, onSelect, onClose }: Omit<Props, "open">) {
   }
 
   return (
-    <div className="model-retry-dialog__body" aria-busy={loading || pending}>
+    <div
+      className="model-retry-dialog__body"
+      aria-busy={busy || loading || pending}
+    >
+      {error && <ErrorNotice message={error} />}
       {loading ? null : loadError ? (
         <ErrorNotice
           message={loadError}
           onRetry={() => {
+            if (busy) return;
             setLoadError(null);
             setLoading(true);
             setLoadRevision((value) => value + 1);
@@ -117,7 +131,7 @@ function ModelChoices({ loadModels, onSelect, onClose }: Omit<Props, "open">) {
             ref={listRef}
             className="model-retry-dialog__list"
             aria-label="可用模型"
-            aria-busy={pending}
+            aria-busy={busy || pending}
             onKeyDown={navigate}
           >
             {models.map((model) => (
@@ -126,7 +140,7 @@ function ModelChoices({ loadModels, onSelect, onClose }: Omit<Props, "open">) {
                   type="button"
                   className="model-retry-dialog__model"
                   title={model.name}
-                  disabled={pending}
+                  disabled={busy || pending}
                   onClick={() => void select(model.id)}
                 >
                   <span>{model.name}</span>
@@ -200,7 +214,7 @@ export function ModelRetryDialog({ open, ...props }: Props) {
         <h2 id={titleId}>选择重试模型</h2>
         {open && <ModelChoices {...props} />}
         <div className="confirm-dialog__actions">
-          <Button type="button" onClick={props.onClose}>
+          <Button type="button" disabled={props.busy} onClick={props.onClose}>
             取消
           </Button>
         </div>

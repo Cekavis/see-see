@@ -93,6 +93,7 @@ describe("result window shared settings", () => {
     vi.spyOn(ipc, "attachAnalysis").mockResolvedValue(resultSnapshot);
     vi.spyOn(ipc, "getAnalysisImage").mockResolvedValue(new ArrayBuffer(0));
     vi.spyOn(ipc, "getAppSnapshot").mockResolvedValue(appSnapshot);
+    vi.spyOn(ipc, "setResultModelChooserOpen").mockResolvedValue(undefined);
   });
 
   it("retries using the current window run and the model selected in the chooser", async () => {
@@ -120,6 +121,11 @@ describe("result window shared settings", () => {
     fireEvent.click(await screen.findByRole("button", { name: /另一模型/ }));
 
     await waitFor(() => expect(retry).toHaveBeenCalledWith("run-1", "model-2"));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(ipc.setResultModelChooserOpen).toHaveBeenNthCalledWith(1, true);
+    expect(ipc.setResultModelChooserOpen).toHaveBeenNthCalledWith(2, false);
     expect(screen.getByText("结果")).toBeInTheDocument();
     expect(window.location.search).toBe("?run=run-1");
     unmount();
@@ -145,6 +151,7 @@ describe("result window shared settings", () => {
     fireEvent.click(trigger);
 
     const model = await screen.findByRole("button", { name: "另一模型" });
+    expect(ipc.setResultModelChooserOpen).toHaveBeenCalledExactlyOnceWith(true);
     model.focus();
     fireEvent.keyDown(model, { key: "Escape", code: "Escape" });
 
@@ -152,6 +159,7 @@ describe("result window shared settings", () => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
     );
     expect(currentWindow.close).not.toHaveBeenCalled();
+    expect(ipc.setResultModelChooserOpen).toHaveBeenNthCalledWith(2, false);
     expect(trigger).toHaveFocus();
 
     fireEvent.keyDown(trigger, { key: "Escape", code: "Escape" });

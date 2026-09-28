@@ -4,13 +4,46 @@ use crate::{
 };
 use tauri::{PhysicalPosition, PhysicalSize, WebviewWindow};
 
+#[cfg(any(target_os = "windows", target_os = "macos", test))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NativeCloseAction {
+    CloseWindow,
+    ForwardToWebview,
+    ConsumeRepeat,
+}
+
+#[cfg(any(target_os = "windows", target_os = "macos", test))]
+fn native_close_shortcut_action(
+    escape: bool,
+    chooser_open: bool,
+    repeated: bool,
+) -> NativeCloseAction {
+    if repeated {
+        // Dismissing a chooser must not make a held Escape close its result next.
+        NativeCloseAction::ConsumeRepeat
+    } else if escape && chooser_open {
+        NativeCloseAction::ForwardToWebview
+    } else {
+        NativeCloseAction::CloseWindow
+    }
+}
+
 #[cfg(any(target_os = "windows", target_os = "macos"))]
-fn dispatch_result_escape(window: &WebviewWindow) -> Result<(), tauri::Error> {
-    // Let the webview dismiss its modal first; App handles closing when none is open.
-    window.eval(
-        "document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', \
-         { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true }));",
-    )
+fn result_model_chooser_is_open(window: &WebviewWindow) -> bool {
+    use crate::state::AppState;
+    use tauri::Manager;
+
+    let Some(run_id) = result_run_id(window.label()) else {
+        return false;
+    };
+    let state = window.state::<AppState>();
+    match state.runtime.lock() {
+        Ok(runtime) => runtime.result_model_chooser_is_open(run_id),
+        Err(error) => {
+            log::error!("无法读取结果窗口模型选择状态: {error}");
+            false
+        }
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -59,15 +92,18 @@ pub fn install_macos_close_shortcuts(app: &tauri::AppHandle) -> Result<(), AppEr
             {
                 continue;
             }
-            // Consume repeats so holding the keys cannot close the next result.
-            if !event_ref.isARepeat() {
-                let result = if event_ref.keyCode() == 53 {
-                    dispatch_result_escape(window)
-                } else {
-                    window.close()
-                };
-                if let Err(error) = result {
-                    log::error!("无法处理窗口快捷键: {error}");
+            let escape = event_ref.keyCode() == 53;
+            match native_close_shortcut_action(
+                escape,
+                escape && result_model_chooser_is_open(window),
+                event_ref.isARepeat(),
+            ) {
+                NativeCloseAction::ForwardToWebview => return event.as_ptr(),
+                NativeCloseAction::ConsumeRepeat => {}
+                NativeCloseAction::CloseWindow => {
+                    if let Err(error) = window.close() {
+                        log::error!("无法处理窗口快捷键: {error}");
+                    }
                 }
             }
             return std::ptr::null_mut();
@@ -92,6 +128,7 @@ pub fn install_native_close_shortcuts(
         AcceleratorKeyPressedEventHandler,
         Microsoft::Web::WebView2::Win32::{
             COREWEBVIEW2_KEY_EVENT_KIND, COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN,
+            COREWEBVIEW2_PHYSICAL_KEY_STATUS,
         },
     };
     use windows::Win32::UI::Input::KeyboardAndMouse::{
@@ -120,17 +157,23 @@ pub fn install_native_close_shortcuts(
                     || unsafe { GetKeyState(VK_SHIFT.0 as i32) < 0 }
                     || unsafe { GetKeyState(VK_LWIN.0 as i32) < 0 }
                     || unsafe { GetKeyState(VK_RWIN.0 as i32) < 0 };
-                let close = (key == VK_W.0 as u32 && ctrl_pressed)
-                    || (result && key == VK_ESCAPE.0 as u32 && !has_modifier);
+                let escape = result && key == VK_ESCAPE.0 as u32 && !has_modifier;
+                let close = (key == VK_W.0 as u32 && ctrl_pressed) || escape;
                 if close {
-                    unsafe { args.SetHandled(true)? };
-                    let action = if result && key == VK_ESCAPE.0 as u32 {
-                        dispatch_result_escape(&target)
-                    } else {
-                        target.close()
-                    };
-                    if let Err(error) = action {
-                        log::error!("无法处理窗口快捷键: {error}");
+                    let mut physical_key = COREWEBVIEW2_PHYSICAL_KEY_STATUS::default();
+                    unsafe { args.PhysicalKeyStatus(&mut physical_key)? };
+                    let action = native_close_shortcut_action(
+                        escape,
+                        escape && result_model_chooser_is_open(&target),
+                        physical_key.WasKeyDown.as_bool(),
+                    );
+                    if action != NativeCloseAction::ForwardToWebview {
+                        unsafe { args.SetHandled(true)? };
+                        if action == NativeCloseAction::CloseWindow
+                            && let Err(error) = target.close()
+                        {
+                            log::error!("无法处理窗口快捷键: {error}");
+                        }
                     }
                 }
                 Ok(())
@@ -414,11 +457,54 @@ pub fn present_result_window(
     }
 }
 
-#[cfg(all(test, target_os = "macos"))]
+#[cfg(test)]
 mod tests {
+    use super::{NativeCloseAction, native_close_shortcut_action};
+
+    #[test]
+    fn ordinary_escape_closes_natively_and_only_an_open_chooser_receives_the_real_key() {
+        assert_eq!(
+            native_close_shortcut_action(true, false, false),
+            NativeCloseAction::CloseWindow
+        );
+        assert_eq!(
+            native_close_shortcut_action(true, true, false),
+            NativeCloseAction::ForwardToWebview
+        );
+        assert_eq!(
+            native_close_shortcut_action(false, true, false),
+            NativeCloseAction::CloseWindow
+        );
+    }
+
+    #[test]
+    fn holding_escape_cannot_close_the_result_after_dismissing_its_chooser() {
+        assert_eq!(
+            native_close_shortcut_action(true, true, false),
+            NativeCloseAction::ForwardToWebview
+        );
+        for chooser_open in [true, false] {
+            assert_eq!(
+                native_close_shortcut_action(true, chooser_open, true),
+                NativeCloseAction::ConsumeRepeat
+            );
+        }
+        assert_eq!(
+            native_close_shortcut_action(true, false, false),
+            NativeCloseAction::CloseWindow
+        );
+        assert_eq!(
+            native_close_shortcut_action(false, false, true),
+            NativeCloseAction::ConsumeRepeat
+        );
+    }
+
+    #[cfg(target_os = "macos")]
     use super::should_close_on_macos_keydown;
+    #[cfg(target_os = "macos")]
     use objc2_app_kit::NSEventModifierFlags as Flags;
 
+    #[cfg(target_os = "macos")]
     #[test]
     fn macos_close_keys_respect_window_scope_and_modifiers() {
         for flags in [Flags::empty(), Flags::CapsLock] {

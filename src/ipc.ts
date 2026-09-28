@@ -238,6 +238,8 @@ export const ipc = {
       runId,
       modelConfigId,
     }),
+  setResultModelChooserOpen: (open: boolean) =>
+    invoke<void>("set_result_model_chooser_open", { open }),
   closeResult: (runId: string) => invoke<void>("close_result", { runId }),
   openMainWindow: (runId: string) =>
     invoke<void>("open_main_window", { runId }),

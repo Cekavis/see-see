@@ -3,7 +3,7 @@ use see_see_lib::{
     capture::PhysicalRect,
     commands::{
         AnalysisStarted, finish_capture, open_main_window, resubmit_history,
-        retry_analysis_with_model,
+        retry_analysis_with_model, set_result_model_chooser_open,
     },
     error::{AppError, ErrorCode},
     settings::{replace_shortcut, sanitize_log_line},
@@ -16,7 +16,29 @@ use see_see_lib::{
 };
 use std::cell::RefCell;
 use std::future::Future;
-use tauri::{AppHandle, PhysicalSize};
+use tauri::{AppHandle, PhysicalSize, WebviewWindow};
+
+#[test]
+fn native_result_escape_does_not_depend_on_synthetic_frontend_events() {
+    let windowing = include_str!("../src/windowing.rs");
+    assert!(!windowing.contains("dispatch_result_escape"));
+    assert!(!windowing.contains("new KeyboardEvent"));
+}
+
+#[test]
+fn result_model_chooser_command_uses_the_injected_caller_window() {
+    fn assert_command<F>(_: F)
+    where
+        F: Fn(WebviewWindow, bool) -> Result<(), AppError>,
+    {
+    }
+
+    assert_command(set_result_model_chooser_open);
+
+    let lib = include_str!("../src/lib.rs");
+    let handler = lib.split_once(".invoke_handler").unwrap().1;
+    assert!(handler.contains("commands::set_result_model_chooser_open"));
+}
 
 #[test]
 fn result_window_creation_stays_out_of_synchronous_windows_commands() {

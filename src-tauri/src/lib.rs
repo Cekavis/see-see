@@ -210,6 +210,7 @@ pub fn run() {
             commands::attach_analysis,
             commands::get_analysis_image,
             commands::cancel_analysis,
+            commands::set_result_model_chooser_open,
             commands::retry_analysis,
             commands::retry_analysis_with_model,
             commands::close_result,

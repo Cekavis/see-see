@@ -67,7 +67,7 @@ describe("ModelRetryDialog", () => {
       name: "模型配置 0",
     });
     expect(first).toBeEnabled();
-    expect(first).toHaveFocus();
+    await waitFor(() => expect(first).toHaveFocus());
     expect(first).toHaveTextContent(/^模型配置 0$/);
     expect(first).toHaveAttribute("title", "模型配置 0");
 

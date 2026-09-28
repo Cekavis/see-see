@@ -1,4 +1,12 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import { StrictMode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { NotificationProvider } from "../components/Notifications";
 import type { ModelConfigSummary } from "../ipc";
@@ -33,6 +41,16 @@ function renderResult(node: React.ReactNode) {
   return render(<NotificationProvider>{node}</NotificationProvider>);
 }
 
+function deferred() {
+  let resolve!: () => void;
+  let reject!: (reason: Error) => void;
+  const promise = new Promise<void>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
 const alternateModel: ModelConfigSummary = {
   id: "model-2",
   name: "备用视觉模型",
@@ -45,6 +63,208 @@ const alternateModel: ModelConfigSummary = {
 };
 
 describe("Result", () => {
+  it("waits for native chooser acknowledgements and ignores repeated transitions", async () => {
+    const opening = deferred();
+    const closing = deferred();
+    const onModelChooserOpenChange = vi
+      .fn()
+      .mockReturnValueOnce(opening.promise)
+      .mockReturnValueOnce(closing.promise);
+    const onLoadModels = vi.fn().mockResolvedValue([alternateModel]);
+    renderResult(
+      <StrictMode>
+        <Result
+          snapshot={snapshot()}
+          onLoadModels={onLoadModels}
+          onRetryWithModel={vi.fn()}
+          onModelChooserOpenChange={onModelChooserOpenChange}
+        />
+      </StrictMode>,
+    );
+
+    const trigger = screen.getByRole("button", { name: "换模型重试" });
+    fireEvent.click(trigger);
+    fireEvent.click(trigger);
+    expect(onModelChooserOpenChange).toHaveBeenCalledExactlyOnceWith(true);
+    // Keep the opener focusable while waiting so the modal can restore focus.
+    expect(trigger).toBeEnabled();
+    expect(trigger).toHaveAttribute("aria-disabled", "true");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(onLoadModels).not.toHaveBeenCalled();
+
+    await act(async () => opening.resolve());
+    const model = await screen.findByRole("button", {
+      name: alternateModel.name,
+    });
+    const cancel = screen.getByRole("button", { name: "取消" });
+    fireEvent.click(cancel);
+    fireEvent.click(cancel);
+    fireEvent.keyDown(model, { key: "Escape" });
+    expect(onModelChooserOpenChange.mock.calls).toEqual([[true], [false]]);
+    expect(screen.getByRole("dialog")).toBeVisible();
+    expect(model).toBeDisabled();
+    expect(cancel).toBeDisabled();
+
+    await act(async () => closing.resolve());
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(trigger).toBeEnabled();
+  });
+
+  it("keeps native synchronization failures visible and recoverable", async () => {
+    const onModelChooserOpenChange = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("无法设置选择框状态"))
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error("无法清除选择框状态"))
+      .mockResolvedValue(undefined);
+    renderResult(
+      <Result
+        snapshot={snapshot()}
+        onLoadModels={vi.fn().mockResolvedValue([alternateModel])}
+        onRetryWithModel={vi.fn()}
+        onModelChooserOpenChange={onModelChooserOpenChange}
+      />,
+    );
+    const trigger = screen.getByRole("button", { name: "换模型重试" });
+    fireEvent.click(trigger);
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "无法设置选择框状态",
+    );
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    fireEvent.click(trigger);
+    await screen.findByRole("button", { name: alternateModel.name });
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    await screen.findByText("无法清除选择框状态");
+    expect(screen.getByRole("dialog")).toBeVisible();
+    expect(
+      within(screen.getByRole("dialog")).getByRole("alert"),
+    ).toHaveTextContent("无法清除选择框状态");
+    expect(screen.getByRole("button", { name: "取消" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(onModelChooserOpenChange.mock.calls).toEqual([
+      [true],
+      [true],
+      [false],
+      [false],
+    ]);
+  });
+
+  it("clears native chooser state after a successful model selection", async () => {
+    const onModelChooserOpenChange = vi.fn().mockResolvedValue(undefined);
+    const onRetryWithModel = vi.fn().mockResolvedValue({ runId: "run-2" });
+    renderResult(
+      <Result
+        snapshot={snapshot()}
+        onLoadModels={vi.fn().mockResolvedValue([alternateModel])}
+        onRetryWithModel={onRetryWithModel}
+        onModelChooserOpenChange={onModelChooserOpenChange}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "换模型重试" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: alternateModel.name }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(onRetryWithModel).toHaveBeenCalledExactlyOnceWith(alternateModel.id);
+    expect(onModelChooserOpenChange.mock.calls).toEqual([[true], [false]]);
+  });
+
+  it.each(["success", "failure"] as const)(
+    "handles an opening %s after unmount without stale UI or notifications",
+    async (outcome) => {
+      const opening = deferred();
+      const onModelChooserOpenChange = vi
+        .fn()
+        .mockReturnValueOnce(opening.promise)
+        .mockResolvedValue(undefined);
+      const { rerender } = renderResult(
+        <Result
+          snapshot={snapshot()}
+          onLoadModels={vi.fn().mockResolvedValue([alternateModel])}
+          onRetryWithModel={vi.fn()}
+          onModelChooserOpenChange={onModelChooserOpenChange}
+        />,
+      );
+      fireEvent.click(screen.getByRole("button", { name: "换模型重试" }));
+      rerender(
+        <NotificationProvider>
+          <p>主窗口</p>
+        </NotificationProvider>,
+      );
+      expect(onModelChooserOpenChange.mock.calls).toEqual([[true]]);
+
+      await act(async () => {
+        if (outcome === "success") opening.resolve();
+        else opening.reject(new Error("过期选择框失败"));
+      });
+      expect(onModelChooserOpenChange.mock.calls).toEqual(
+        outcome === "success" ? [[true], [false]] : [[true]],
+      );
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    },
+  );
+
+  it("clears an open native chooser when the result unmounts", async () => {
+    const onModelChooserOpenChange = vi.fn().mockResolvedValue(undefined);
+    const { unmount } = renderResult(
+      <Result
+        snapshot={snapshot()}
+        onLoadModels={vi.fn().mockResolvedValue([alternateModel])}
+        onRetryWithModel={vi.fn()}
+        onModelChooserOpenChange={onModelChooserOpenChange}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "换模型重试" }));
+    await screen.findByRole("button", { name: alternateModel.name });
+    unmount();
+    expect(onModelChooserOpenChange.mock.calls).toEqual([[true], [false]]);
+  });
+
+  it.each(["success", "failure"] as const)(
+    "serializes cleanup after a pending close %s",
+    async (outcome) => {
+      const closing = deferred();
+      const onModelChooserOpenChange = vi
+        .fn()
+        .mockResolvedValueOnce(undefined)
+        .mockReturnValueOnce(closing.promise)
+        .mockResolvedValue(undefined);
+      const { rerender } = renderResult(
+        <Result
+          snapshot={snapshot()}
+          onLoadModels={vi.fn().mockResolvedValue([alternateModel])}
+          onRetryWithModel={vi.fn()}
+          onModelChooserOpenChange={onModelChooserOpenChange}
+        />,
+      );
+      fireEvent.click(screen.getByRole("button", { name: "换模型重试" }));
+      await screen.findByRole("button", { name: alternateModel.name });
+      fireEvent.click(screen.getByRole("button", { name: "取消" }));
+      rerender(
+        <NotificationProvider>
+          <p>主窗口</p>
+        </NotificationProvider>,
+      );
+      expect(onModelChooserOpenChange.mock.calls).toEqual([[true], [false]]);
+
+      await act(async () => {
+        if (outcome === "success") closing.resolve();
+        else closing.reject(new Error("过期关闭失败"));
+      });
+      expect(onModelChooserOpenChange.mock.calls).toEqual(
+        outcome === "success" ? [[true], [false]] : [[true], [false], [false]],
+      );
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    },
+  );
+
   it.each<ResultSnapshot["state"]>([
     "submitting",
     "streaming",
