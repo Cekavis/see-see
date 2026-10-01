@@ -101,6 +101,19 @@ pub struct PerformanceMetrics {
     pub tps: Option<f64>,
 }
 
+impl PerformanceMetrics {
+    pub fn calculate_tps(output_tokens: Option<i64>, generation_ms: Option<i64>) -> Option<f64> {
+        match (output_tokens, generation_ms) {
+            (Some(output_tokens), Some(generation_ms))
+                if output_tokens >= 0 && generation_ms > 0 =>
+            {
+                Some(output_tokens as f64 * 1000.0 / generation_ms as f64)
+            }
+            _ => None,
+        }
+    }
+}
+
 impl AnalysisSnapshot {
     pub fn new(
         run_id: impl Into<String>,
@@ -289,17 +302,10 @@ impl AnalysisRun {
     }
 
     fn refresh_tps(&mut self) {
-        self.snapshot.metrics.tps = match (
+        self.snapshot.metrics.tps = PerformanceMetrics::calculate_tps(
             self.snapshot.output_tokens,
             self.snapshot.metrics.generation_ms,
-        ) {
-            (Some(output_tokens), Some(generation_ms))
-                if output_tokens >= 0 && generation_ms > 0 =>
-            {
-                Some(output_tokens as f64 * 1000.0 / generation_ms as f64)
-            }
-            _ => None,
-        };
+        );
     }
 }
 

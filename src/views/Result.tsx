@@ -2,8 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "../components/Button";
 import { ModelRetryDialog } from "../components/ModelRetryDialog";
 import { useNotifications } from "../components/Notifications";
-import { PerformanceMetrics } from "../components/PerformanceMetrics";
-import { TokenUsage } from "../components/TokenUsage";
+import { RequestStatistics } from "../components/RequestStatistics";
 import {
   getErrorMessage,
   type AppError,
@@ -190,12 +189,11 @@ export function Result({
             />
             窗口置顶
           </label>
-          <TokenUsage
+          <RequestStatistics
             inputTokens={snapshot.inputTokens}
             outputTokens={snapshot.outputTokens}
-            compact
+            metrics={snapshot.metrics}
           />
-          <PerformanceMetrics metrics={snapshot.metrics} />
         </div>
       </header>
       {imageUrl && (

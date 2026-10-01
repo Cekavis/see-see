@@ -11,7 +11,7 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorNotice } from "../components/ErrorNotice";
 import { useNotifications } from "../components/Notifications";
-import { TokenUsage } from "../components/TokenUsage";
+import { RequestStatistics } from "../components/RequestStatistics";
 import { ThinkingDisclosure } from "./Result";
 import {
   getErrorMessage,
@@ -275,9 +275,10 @@ export function History({ api = ipc }: { api?: HistoryApi }) {
                   {detail.modelConfigName} · {detail.modelId}
                 </dd>
               </dl>
-              <TokenUsage
+              <RequestStatistics
                 inputTokens={detail.inputTokens}
                 outputTokens={detail.outputTokens}
+                metrics={detail.metrics}
               />
             </div>
             <ThinkingDisclosure text={detail.thinkingText} />
@@ -460,9 +461,11 @@ export function History({ api = ipc }: { api?: HistoryApi }) {
                       {item.modelConfigName} · {item.promptName} ·{" "}
                       {new Date(item.startedAt).toLocaleString()}
                     </p>
-                    <TokenUsage
+                    <RequestStatistics
                       inputTokens={item.inputTokens}
                       outputTokens={item.outputTokens}
+                      metrics={item.metrics}
+                      inline
                     />
                   </div>
                   <pre className="history-item__summary">

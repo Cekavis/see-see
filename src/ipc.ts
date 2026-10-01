@@ -205,6 +205,7 @@ export type HistoryListItem = {
   modelId: string;
   inputTokens: number | null;
   outputTokens: number | null;
+  metrics: PerformanceMetrics;
   startedAt: string;
   completedAt: string;
   hasImage: boolean;

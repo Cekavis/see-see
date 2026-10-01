@@ -1184,18 +1184,17 @@ textarea {
 .performance-chart__plot {
   display: grid;
   min-width: 0;
-  gap: 13px;
+  grid-template-columns: minmax(70px, 0.65fr) minmax(80px, 1fr) minmax(
+      92px,
+      max-content
+    );
+  align-items: center;
+  column-gap: 10px;
+  row-gap: 13px;
 }
 
 .performance-chart__row {
-  display: grid;
-  grid-template-columns: minmax(70px, 0.65fr) minmax(80px, 1fr) minmax(
-      92px,
-      auto
-    );
-  min-width: 0;
-  align-items: center;
-  gap: 10px;
+  display: contents;
 }
 
 .performance-chart__label,
@@ -1214,6 +1213,7 @@ textarea {
 .performance-chart__value {
   color: var(--muted);
   font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
   text-align: right;
 }
 
@@ -1397,6 +1397,27 @@ textarea {
   min-width: 0;
   flex: 1 1 280px;
   margin: 0;
+}
+
+.request-statistics {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 5px;
+}
+
+.request-statistics--inline {
+  flex: 0 0 auto;
+  flex-direction: row;
+  gap: 10px;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.request-statistics--inline > * {
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
 }
 
 .history-resubmit-config {

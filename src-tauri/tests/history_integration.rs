@@ -62,6 +62,25 @@ fn insert(db: &Database, id: &str, result: &str, prompt: &str, status: HistorySt
     .unwrap();
 }
 
+fn update_metrics(
+    db: &Database,
+    id: &str,
+    ttft_ms: Option<i64>,
+    generation_ms: Option<i64>,
+    output_tokens: Option<i64>,
+) {
+    db.transaction(|transaction| {
+        transaction.execute(
+            "UPDATE history_entries
+             SET ttft_ms = ?1, generation_ms = ?2, output_tokens = ?3
+             WHERE id = ?4",
+            rusqlite::params![ttft_ms, generation_ms, output_tokens, id],
+        )?;
+        Ok(())
+    })
+    .unwrap();
+}
+
 #[test]
 fn history_query_supports_cursor_escaped_search_and_filters() {
     let db = Database::open_in_memory().unwrap();
@@ -124,6 +143,45 @@ fn history_query_supports_cursor_escaped_search_and_filters() {
         get_history_detail(&db, "1").unwrap().output_tokens,
         Some(45)
     );
+    assert_eq!(
+        get_history_detail(&db, "1").unwrap().metrics.ttft_ms,
+        Some(120)
+    );
+    assert_eq!(
+        get_history_detail(&db, "1").unwrap().metrics.generation_ms,
+        Some(800)
+    );
+    assert_eq!(
+        get_history_detail(&db, "1").unwrap().metrics.tps,
+        Some(56.25)
+    );
+}
+
+#[test]
+fn history_metrics_keep_placeholders_for_legacy_and_partial_records() {
+    let db = Database::open_in_memory().unwrap();
+    insert(&db, "complete", "结果", "完整", HistoryStatus::Success);
+    insert(&db, "legacy", "结果", "旧记录", HistoryStatus::Success);
+    insert(&db, "partial", "结果", "部分", HistoryStatus::Success);
+    insert(&db, "failed", "", "失败", HistoryStatus::Failed);
+    update_metrics(&db, "legacy", None, None, None);
+    update_metrics(&db, "partial", Some(120), Some(800), None);
+    update_metrics(&db, "failed", Some(120), None, Some(45));
+
+    let page = query_history(&db, HistoryQuery::default()).unwrap();
+    let legacy = page.items.iter().find(|item| item.id == "legacy").unwrap();
+    assert_eq!(legacy.metrics.ttft_ms, None);
+    assert_eq!(legacy.metrics.generation_ms, None);
+    assert_eq!(legacy.metrics.tps, None);
+
+    let partial = get_history_detail(&db, "partial").unwrap();
+    assert_eq!(partial.metrics.ttft_ms, Some(120));
+    assert_eq!(partial.metrics.generation_ms, Some(800));
+    assert_eq!(partial.metrics.tps, None);
+
+    let failed = get_history_detail(&db, "failed").unwrap();
+    assert_eq!(failed.metrics.ttft_ms, Some(120));
+    assert_eq!(failed.metrics.tps, None);
 }
 
 #[test]

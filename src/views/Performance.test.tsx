@@ -8,6 +8,17 @@ const listen = vi.hoisted(() => vi.fn());
 
 vi.mock("@tauri-apps/api/event", () => ({ listen }));
 
+const nodeProcess = (
+  globalThis as typeof globalThis & {
+    process: {
+      cwd(): string;
+      getBuiltinModule(name: "node:fs"): {
+        readFileSync(path: string, encoding: "utf8"): string;
+      };
+    };
+  }
+).process;
+
 const report: PerformanceReport = {
   sampleCount: 2,
   ttftSampleCount: 2,
@@ -186,5 +197,19 @@ describe("Performance", () => {
     expect(
       screen.getByText("已保存且具备 TTFT 和速度指标的请求会出现在这里。"),
     ).toBeInTheDocument();
+  });
+
+  it("uses shared columns for chart rows with different value widths", () => {
+    const styles = nodeProcess
+      .getBuiltinModule("node:fs")
+      .readFileSync(`${nodeProcess.cwd()}/src/styles.css`, "utf8");
+    const plotRule = styles.match(
+      /\.performance-chart__plot\s*\{([^}]*)\}/,
+    )?.[1];
+    const rowRule = styles.match(/\.performance-chart__row\s*\{([^}]*)\}/)?.[1];
+
+    expect(plotRule).toMatch(/grid-template-columns:/);
+    expect(plotRule).toMatch(/max-content/);
+    expect(rowRule).toMatch(/display:\s*contents;/);
   });
 });

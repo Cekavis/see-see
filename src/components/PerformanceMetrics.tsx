@@ -20,10 +20,11 @@ export function PerformanceMetrics({
 }: {
   metrics: PerformanceMetricsValue;
 }) {
+  const tps = formatTps(metrics.tps);
   return (
     <div className="performance-metrics" aria-label="模型性能">
       <span>TTFT：{formatDurationMs(metrics.ttftMs)}</span>
-      <span>TPS：{formatTps(metrics.tps)}</span>
+      <span aria-label={`速度：${tps}`}>{tps}</span>
     </div>
   );
 }

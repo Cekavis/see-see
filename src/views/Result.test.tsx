@@ -330,13 +330,16 @@ describe("Result", () => {
     expect(screen.getByText("输入：1,024")).toBeInTheDocument();
     expect(screen.getByText("输出：256")).toBeInTheDocument();
     expect(screen.getByText("TTFT：125 ms")).toBeInTheDocument();
-    expect(screen.getByText("TPS：21.3 tps")).toBeInTheDocument();
+    expect(screen.getByText("21.3 tps")).toBeInTheDocument();
     const actions = document.querySelector(".result-view__header-actions");
     expect(actions?.firstElementChild).toBe(
       screen.getByRole("checkbox", { name: "窗口置顶" }).parentElement,
     );
-    expect(actions?.children[1]).toHaveClass("token-usage");
-    expect(actions?.children[2]).toHaveClass("performance-metrics");
+    expect(actions?.children[1]).toHaveClass("request-statistics");
+    expect(actions?.children[1]?.querySelector(".token-usage")).toBeTruthy();
+    expect(
+      actions?.children[1]?.querySelector(".performance-metrics"),
+    ).toBeTruthy();
 
     rerender(
       <NotificationProvider>
@@ -346,7 +349,7 @@ describe("Result", () => {
     expect(screen.getByText("输入：—")).toBeInTheDocument();
     expect(screen.getByText("输出：—")).toBeInTheDocument();
     expect(screen.getByText("TTFT：—")).toBeInTheDocument();
-    expect(screen.getByText("TPS：—")).toBeInTheDocument();
+    expect(screen.getByLabelText("速度：—")).toBeInTheDocument();
   });
 
   it("omits configuration metadata until the analysis attaches", () => {

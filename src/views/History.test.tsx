@@ -7,6 +7,7 @@ import {
 } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NotificationProvider } from "../components/Notifications";
+import type { HistoryListItem } from "../ipc";
 import { History, type HistoryApi } from "./History";
 
 const listen = vi.hoisted(() => vi.fn());
@@ -24,7 +25,7 @@ const nodeProcess = (
   }
 ).process;
 
-const item = {
+const item: HistoryListItem = {
   id: "h1",
   status: "success" as const,
   resultPreview: "旅行：旅行",
@@ -34,6 +35,7 @@ const item = {
   modelId: "vision",
   inputTokens: 123,
   outputTokens: 45,
+  metrics: { ttftMs: 120, generationMs: 800, tps: 56.25 },
   startedAt: "2026-07-23T00:00:00Z",
   completedAt: "2026-07-23T00:00:01Z",
   hasImage: true,
@@ -160,8 +162,10 @@ describe("History", () => {
     expect(card?.firstElementChild).toBe(image);
     expect(card).toHaveTextContent("模型");
     expect(card).toHaveTextContent("日语学习解析");
-    expect(card).toHaveTextContent("输入 token：123");
-    expect(card).toHaveTextContent("输出 token：45");
+    expect(card).toHaveTextContent("输入：123");
+    expect(card).toHaveTextContent("输出：45");
+    expect(card).toHaveTextContent("TTFT：120 ms");
+    expect(card).toHaveTextContent("56.3 tps");
     expect(service.getHistoryImage).toHaveBeenCalledWith("h1", "original");
 
     const styles = nodeProcess
@@ -183,6 +187,23 @@ describe("History", () => {
     expect(detailImageRule).toMatch(/max-width:\s*100%;/);
     expect(detailImageRule).toMatch(/max-height:\s*60px;/);
     expect(detailImageRule).toMatch(/object-fit:\s*contain;/);
+  });
+
+  it("keeps legacy metric values unavailable without showing invalid numbers", async () => {
+    const service = api([
+      {
+        ...item,
+        hasImage: false,
+        metrics: { ttftMs: null, generationMs: null, tps: null },
+      },
+    ]);
+    renderHistory(service);
+
+    const card = (await screen.findByText("旅行：旅行")).closest("article");
+    expect(card).toHaveTextContent("TTFT：—");
+    expect(card).toHaveTextContent("—");
+    expect(card).not.toHaveTextContent("NaN");
+    expect(card).not.toHaveTextContent("Infinity");
   });
 
   it("paginates with bounded cursor queries and selectable page sizes", async () => {
@@ -275,8 +296,10 @@ describe("History", () => {
     const thinking = screen.getByText("思考过程").closest("details");
     expect(thinking).not.toHaveAttribute("open");
     expect(screen.getByText("先识别文字，再翻译")).toBeInTheDocument();
-    expect(screen.getByText("输入 token：123")).toBeInTheDocument();
-    expect(screen.getByText("输出 token：45")).toBeInTheDocument();
+    expect(screen.getByText("输入：123")).toBeInTheDocument();
+    expect(screen.getByText("输出：45")).toBeInTheDocument();
+    expect(screen.getByText("TTFT：120 ms")).toBeInTheDocument();
+    expect(screen.getByText("56.3 tps")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "返回历史记录" }),
     ).toBeInTheDocument();

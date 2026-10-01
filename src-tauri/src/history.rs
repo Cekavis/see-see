@@ -1,4 +1,4 @@
-use crate::{database::Database, error::AppError};
+use crate::{analysis::PerformanceMetrics, database::Database, error::AppError};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use image::{ImageFormat, ImageReader};
 use rusqlite::OptionalExtension;
@@ -78,6 +78,7 @@ pub struct HistoryListItem {
     pub model_id: String,
     pub input_tokens: Option<i64>,
     pub output_tokens: Option<i64>,
+    pub metrics: PerformanceMetrics,
     pub started_at: String,
     pub completed_at: String,
     pub has_image: bool,
@@ -108,6 +109,7 @@ pub struct HistoryEntryDetail {
     pub model_id: String,
     pub input_tokens: Option<i64>,
     pub output_tokens: Option<i64>,
+    pub metrics: PerformanceMetrics,
     pub started_at: String,
     pub completed_at: String,
     pub has_image: bool,
@@ -246,7 +248,8 @@ pub fn query_history(database: &Database, query: HistoryQuery) -> Result<History
             "SELECT h.id, h.status, substr(h.result_text, 1, 240), h.error_message,
                     h.prompt_name, h.model_config_name, h.model_id, h.input_tokens, h.output_tokens,
                     h.started_at, h.completed_at,
-                    EXISTS(SELECT 1 FROM history_images i WHERE i.history_id = h.id)
+                    EXISTS(SELECT 1 FROM history_images i WHERE i.history_id = h.id),
+                    h.ttft_ms, h.generation_ms
              FROM history_entries h
              WHERE (?1 IS NULL OR h.result_text LIKE ?1 ESCAPE '\\')
                AND (?2 IS NULL OR h.prompt_name = ?2)
@@ -279,6 +282,8 @@ pub fn query_history(database: &Database, query: HistoryQuery) -> Result<History
                     row.get::<_, String>(9)?,
                     row.get::<_, String>(10)?,
                     row.get::<_, bool>(11)?,
+                    row.get::<_, Option<i64>>(12)?,
+                    row.get::<_, Option<i64>>(13)?,
                 ))
             },
         )?;
@@ -302,6 +307,8 @@ pub fn query_history(database: &Database, query: HistoryQuery) -> Result<History
                 started_at,
                 completed_at,
                 has_image,
+                ttft_ms,
+                generation_ms,
             )| {
                 Ok(HistoryListItem {
                     id,
@@ -313,6 +320,11 @@ pub fn query_history(database: &Database, query: HistoryQuery) -> Result<History
                     model_id,
                     input_tokens,
                     output_tokens,
+                    metrics: PerformanceMetrics {
+                        ttft_ms,
+                        generation_ms,
+                        tps: PerformanceMetrics::calculate_tps(output_tokens, generation_ms),
+                    },
                     started_at,
                     completed_at,
                     has_image,
@@ -339,7 +351,8 @@ pub fn get_history_detail(database: &Database, id: &str) -> Result<HistoryEntryD
                         h.thinking_text, h.prompt_config_id, h.prompt_name, h.prompt_body,
                         h.model_config_id, h.model_config_name, h.protocol, h.model_id,
                         h.input_tokens, h.output_tokens, h.started_at, h.completed_at,
-                        EXISTS(SELECT 1 FROM history_images i WHERE i.history_id = h.id)
+                        EXISTS(SELECT 1 FROM history_images i WHERE i.history_id = h.id),
+                        h.ttft_ms, h.generation_ms
                  FROM history_entries h WHERE h.id = ?1",
                     [id],
                     |row| {
@@ -363,6 +376,8 @@ pub fn get_history_detail(database: &Database, id: &str) -> Result<HistoryEntryD
                             row.get::<_, String>(15)?,
                             row.get::<_, String>(16)?,
                             row.get::<_, bool>(17)?,
+                            row.get::<_, Option<i64>>(18)?,
+                            row.get::<_, Option<i64>>(19)?,
                         ))
                     },
                 )
@@ -388,6 +403,8 @@ pub fn get_history_detail(database: &Database, id: &str) -> Result<HistoryEntryD
                 started_at,
                 completed_at,
                 has_image,
+                ttft_ms,
+                generation_ms,
             )| {
                 Ok(HistoryEntryDetail {
                     id,
@@ -405,6 +422,11 @@ pub fn get_history_detail(database: &Database, id: &str) -> Result<HistoryEntryD
                     model_id,
                     input_tokens,
                     output_tokens,
+                    metrics: PerformanceMetrics {
+                        ttft_ms,
+                        generation_ms,
+                        tps: PerformanceMetrics::calculate_tps(output_tokens, generation_ms),
+                    },
                     started_at,
                     completed_at,
                     has_image,
