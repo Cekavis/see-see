@@ -12,7 +12,7 @@ export function formatTps(value: number | null | undefined) {
   if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
     return "—";
   }
-  return `${value.toFixed(1)} token/s`;
+  return `${value.toFixed(1)} tps`;
 }
 
 export function PerformanceMetrics({
@@ -22,7 +22,7 @@ export function PerformanceMetrics({
 }) {
   return (
     <div className="performance-metrics" aria-label="模型性能">
-      <span>首 token TTFT：{formatDurationMs(metrics.ttftMs)}</span>
+      <span>TTFT：{formatDurationMs(metrics.ttftMs)}</span>
       <span>TPS：{formatTps(metrics.tps)}</span>
     </div>
   );

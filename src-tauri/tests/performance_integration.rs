@@ -83,6 +83,18 @@ fn performance_query_aggregates_successful_samples_and_excludes_missing_tps() {
     );
     insert_sample(
         &db,
+        "m3-a",
+        "success",
+        "vision-c",
+        "模型 C",
+        "校对",
+        None,
+        None,
+        None,
+        "2026-09-05T00:00:00Z",
+    );
+    insert_sample(
+        &db,
         "failed",
         "failed",
         "vision-a",
@@ -114,13 +126,16 @@ fn performance_query_aggregates_successful_samples_and_excludes_missing_tps() {
         },
     )
     .unwrap();
-    assert_eq!(report.sample_count, 3);
-    assert_eq!(report.ttft_sample_count, 3);
+    assert_eq!(report.sample_count, 2);
+    assert_eq!(report.ttft_sample_count, 2);
     assert_eq!(report.tps_sample_count, 2);
-    assert_eq!(report.average_ttft_ms, Some(300.0));
-    assert_eq!(report.median_ttft_ms, Some(300.0));
+    assert_eq!(report.average_ttft_ms, Some(200.0));
+    assert_eq!(report.median_ttft_ms, Some(200.0));
     assert_eq!(report.average_tps, Some(20.0));
     assert_eq!(report.median_tps, Some(20.0));
+    assert_eq!(report.models.len(), 1);
+    assert_eq!(report.model_options.len(), 1);
+    assert_eq!(report.prompt_options.len(), 1);
 
     let model_a = report
         .models
@@ -133,14 +148,18 @@ fn performance_query_aggregates_successful_samples_and_excludes_missing_tps() {
     assert_eq!(model_a.tps_sample_count, 2);
     assert_eq!(model_a.average_tps, Some(20.0));
 
-    let model_b = report
-        .models
-        .iter()
-        .find(|model| model.model_id == "vision-b")
-        .unwrap();
-    assert_eq!(model_b.sample_count, 1);
-    assert_eq!(model_b.tps_sample_count, 0);
-    assert_eq!(model_b.average_tps, None);
+    assert!(
+        report
+            .models
+            .iter()
+            .all(|model| model.model_id != "vision-b")
+    );
+    assert!(
+        report
+            .models
+            .iter()
+            .all(|model| model.model_id != "vision-c")
+    );
 }
 
 #[test]

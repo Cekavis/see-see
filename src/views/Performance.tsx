@@ -99,9 +99,9 @@ function PerformanceTable({ models }: { models: ModelPerformanceSummary[] }) {
         <thead>
           <tr>
             <th scope="col">模型</th>
-            <th scope="col">成功次数</th>
+            <th scope="col">有效样本</th>
             <th scope="col">TTFT 平均 / 中位数</th>
-            <th scope="col">TPS 平均 / 中位数</th>
+            <th scope="col">速度平均 / 中位数</th>
           </tr>
         </thead>
         <tbody>
@@ -285,13 +285,13 @@ export function Performance({ api = ipc }: { api?: PerformanceApi }) {
       ) : report && report.sampleCount === 0 ? (
         <EmptyState
           title={hasFilters ? "没有匹配的性能样本" : "还没有性能样本"}
-          description="成功完成并保存历史的请求会出现在这里。"
+          description="已保存且具备 TTFT 和速度指标的请求会出现在这里。"
         />
       ) : report ? (
         <div className="performance-content">
           <section className="performance-summary" aria-label="性能摘要">
             <article>
-              <span>成功样本</span>
+              <span>有效样本</span>
               <strong>{report.sampleCount}</strong>
             </article>
             <article>
@@ -302,14 +302,10 @@ export function Performance({ api = ipc }: { api?: PerformanceApi }) {
               </strong>
             </article>
             <article>
-              <span>TPS 平均 / 中位数</span>
+              <span>速度平均 / 中位数</span>
               <strong>
                 {formatTps(report.averageTps)} / {formatTps(report.medianTps)}
               </strong>
-            </article>
-            <article>
-              <span>有效 TPS 样本</span>
-              <strong>{report.tpsSampleCount}</strong>
             </article>
           </section>
           <div className="performance-charts">
@@ -323,7 +319,7 @@ export function Performance({ api = ipc }: { api?: PerformanceApi }) {
             />
             <MetricChart
               id="performance-tps"
-              title="TPS 对比"
+              title="速度对比"
               models={report.models}
               averageKey="averageTps"
               medianKey="medianTps"

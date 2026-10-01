@@ -190,11 +190,12 @@ export function Result({
             />
             窗口置顶
           </label>
-          <PerformanceMetrics metrics={snapshot.metrics} />
           <TokenUsage
             inputTokens={snapshot.inputTokens}
             outputTokens={snapshot.outputTokens}
+            compact
           />
+          <PerformanceMetrics metrics={snapshot.metrics} />
         </div>
       </header>
       {imageUrl && (

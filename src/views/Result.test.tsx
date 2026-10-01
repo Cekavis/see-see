@@ -327,24 +327,25 @@ describe("Result", () => {
       />,
     );
 
-    expect(screen.getByText("输入 token：1,024")).toBeInTheDocument();
-    expect(screen.getByText("输出 token：256")).toBeInTheDocument();
-    expect(screen.getByText("首 token TTFT：125 ms")).toBeInTheDocument();
-    expect(screen.getByText("TPS：21.3 token/s")).toBeInTheDocument();
+    expect(screen.getByText("输入：1,024")).toBeInTheDocument();
+    expect(screen.getByText("输出：256")).toBeInTheDocument();
+    expect(screen.getByText("TTFT：125 ms")).toBeInTheDocument();
+    expect(screen.getByText("TPS：21.3 tps")).toBeInTheDocument();
     const actions = document.querySelector(".result-view__header-actions");
     expect(actions?.firstElementChild).toBe(
       screen.getByRole("checkbox", { name: "窗口置顶" }).parentElement,
     );
-    expect(actions?.lastElementChild).toHaveClass("token-usage");
+    expect(actions?.children[1]).toHaveClass("token-usage");
+    expect(actions?.children[2]).toHaveClass("performance-metrics");
 
     rerender(
       <NotificationProvider>
         <Result snapshot={snapshot()} />
       </NotificationProvider>,
     );
-    expect(screen.getByText("输入 token：—")).toBeInTheDocument();
-    expect(screen.getByText("输出 token：—")).toBeInTheDocument();
-    expect(screen.getByText("首 token TTFT：—")).toBeInTheDocument();
+    expect(screen.getByText("输入：—")).toBeInTheDocument();
+    expect(screen.getByText("输出：—")).toBeInTheDocument();
+    expect(screen.getByText("TTFT：—")).toBeInTheDocument();
     expect(screen.getByText("TPS：—")).toBeInTheDocument();
   });
 

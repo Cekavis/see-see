@@ -1,10 +1,4 @@
-import {
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within,
-} from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NotificationProvider } from "../components/Notifications";
 import type { PerformanceReport } from "../ipc";
@@ -91,23 +85,15 @@ describe("Performance", () => {
     expect(
       await screen.findByRole("heading", { name: "性能" }),
     ).toBeInTheDocument();
-    expect(await screen.findByText("成功样本")).toBeInTheDocument();
+    expect((await screen.findAllByText("有效样本")).length).toBeGreaterThan(0);
     expect(screen.getAllByText("TTFT 平均 / 中位数").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("TPS 平均 / 中位数").length).toBeGreaterThan(0);
-    expect(screen.getByText("有效 TPS 样本")).toBeInTheDocument();
-    expect(screen.getByText("24.5 token/s / 24.0 token/s")).toBeInTheDocument();
-    const validTpsSummary = screen
-      .getByText("有效 TPS 样本")
-      .closest("article");
-    expect(validTpsSummary).not.toBeNull();
-    expect(
-      within(validTpsSummary as HTMLElement).getByText("2"),
-    ).toBeInTheDocument();
+    expect(screen.getAllByText("速度平均 / 中位数").length).toBeGreaterThan(0);
+    expect(screen.getByText("24.5 tps / 24.0 tps")).toBeInTheDocument();
     expect(
       screen.getByRole("img", { name: "TTFT 对比模型对比图" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("img", { name: "TPS 对比模型对比图" }),
+      screen.getByRole("img", { name: "速度对比模型对比图" }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("table", { name: "模型性能明细" }),
@@ -177,7 +163,7 @@ describe("Performance", () => {
 
     expect((await screen.findAllByText("性能服务不可用")).length).toBe(1);
     fireEvent.click(screen.getByRole("button", { name: "重试" }));
-    expect(await screen.findByText("成功样本")).toBeInTheDocument();
+    expect((await screen.findAllByText("有效样本")).length).toBeGreaterThan(0);
     expect(queryPerformance).toHaveBeenCalledTimes(2);
   });
 
@@ -198,7 +184,7 @@ describe("Performance", () => {
     renderPerformance(createApi(vi.fn().mockResolvedValue(empty)));
     expect(await screen.findByText("还没有性能样本")).toBeInTheDocument();
     expect(
-      screen.getByText("成功完成并保存历史的请求会出现在这里。"),
+      screen.getByText("已保存且具备 TTFT 和速度指标的请求会出现在这里。"),
     ).toBeInTheDocument();
   });
 });

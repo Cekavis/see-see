@@ -61,6 +61,29 @@ struct Sample {
     output_tokens: Option<i64>,
 }
 
+impl Sample {
+    fn valid_ttft_ms(&self) -> Option<f64> {
+        self.ttft_ms
+            .filter(|value| *value >= 0)
+            .map(|value| value as f64)
+    }
+
+    fn valid_tps(&self) -> Option<f64> {
+        match (self.output_tokens, self.generation_ms) {
+            (Some(output_tokens), Some(generation_ms))
+                if output_tokens >= 0 && generation_ms > 0 =>
+            {
+                Some(output_tokens as f64 * 1000.0 / generation_ms as f64)
+            }
+            _ => None,
+        }
+    }
+
+    fn has_complete_metrics(&self) -> bool {
+        self.valid_ttft_ms().is_some() && self.valid_tps().is_some()
+    }
+}
+
 #[derive(Default)]
 struct Accumulator {
     model_config_name: String,
@@ -122,6 +145,10 @@ pub fn query_performance(
         rows.collect::<Result<Vec<_>, _>>()
     })?;
 
+    let samples = samples
+        .into_iter()
+        .filter(|sample| sample.has_complete_metrics())
+        .collect::<Vec<_>>();
     let model_options = model_options(&samples);
     let prompt_options = prompt_options(&samples);
     let model_filter = query
@@ -151,17 +178,11 @@ pub fn query_performance(
                 ..Accumulator::default()
             });
         accumulator.sample_count += 1;
-        if let Some(ttft_ms) = sample.ttft_ms.filter(|value| *value >= 0) {
-            let ttft_ms = ttft_ms as f64;
+        if let Some(ttft_ms) = sample.valid_ttft_ms() {
             accumulator.ttft_ms.push(ttft_ms);
             all_ttft_ms.push(ttft_ms);
         }
-        if let (Some(output_tokens), Some(generation_ms)) =
-            (sample.output_tokens, sample.generation_ms)
-            && output_tokens >= 0
-            && generation_ms > 0
-        {
-            let tps = output_tokens as f64 * 1000.0 / generation_ms as f64;
+        if let Some(tps) = sample.valid_tps() {
             accumulator.tps.push(tps);
             all_tps.push(tps);
         }

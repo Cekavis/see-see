@@ -1,6 +1,7 @@
 export type TokenUsageProps = {
   inputTokens: number | null | undefined;
   outputTokens: number | null | undefined;
+  compact?: boolean;
 };
 
 function formatTokenCount(value: number | null | undefined) {
@@ -9,11 +10,19 @@ function formatTokenCount(value: number | null | undefined) {
     : "—";
 }
 
-export function TokenUsage({ inputTokens, outputTokens }: TokenUsageProps) {
+export function TokenUsage({
+  inputTokens,
+  outputTokens,
+  compact = false,
+}: TokenUsageProps) {
   return (
     <div className="token-usage" aria-label="模型调用 token 用量">
-      <span>输入 token：{formatTokenCount(inputTokens)}</span>
-      <span>输出 token：{formatTokenCount(outputTokens)}</span>
+      <span>
+        {compact ? "输入" : "输入 token"}：{formatTokenCount(inputTokens)}
+      </span>
+      <span>
+        {compact ? "输出" : "输出 token"}：{formatTokenCount(outputTokens)}
+      </span>
     </div>
   );
 }
