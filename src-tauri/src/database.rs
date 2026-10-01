@@ -15,6 +15,8 @@ const MODEL_PROTOCOL_MIGRATION: &str = include_str!("../migrations/0008_openai_r
 const RESULT_WINDOW_SIZE_MIGRATION: &str =
     include_str!("../migrations/0009_result_window_size.sql");
 const WEBDAV_SETTINGS_MIGRATION: &str = include_str!("../migrations/0010_webdav_settings.sql");
+const HISTORY_PERFORMANCE_MIGRATION: &str =
+    include_str!("../migrations/0011_history_performance.sql");
 const LEGACY_DEFAULT_CAPTURE_SHORTCUT: &str = "Alt+Shift+A";
 pub const WINDOWS_DEFAULT_CAPTURE_SHORTCUT: &str = "Ctrl+Shift+X";
 pub const MACOS_DEFAULT_CAPTURE_SHORTCUT: &str = "Command+Shift+X";
@@ -284,6 +286,31 @@ impl Database {
             }
             (true, true) => {}
         }
+        let has_ttft = history_columns.iter().any(|column| column == "ttft_ms");
+        let has_generation = history_columns
+            .iter()
+            .any(|column| column == "generation_ms");
+        match (has_ttft, has_generation) {
+            (false, false) => {
+                connection
+                    .execute_batch(HISTORY_PERFORMANCE_MIGRATION)
+                    .map_err(|_| AppError::storage("无法升级历史性能存储"))?;
+            }
+            (false, true) => {
+                connection
+                    .execute("ALTER TABLE history_entries ADD COLUMN ttft_ms INTEGER", [])
+                    .map_err(|_| AppError::storage("无法升级历史性能存储"))?;
+            }
+            (true, false) => {
+                connection
+                    .execute(
+                        "ALTER TABLE history_entries ADD COLUMN generation_ms INTEGER",
+                        [],
+                    )
+                    .map_err(|_| AppError::storage("无法升级历史性能存储"))?;
+            }
+            (true, true) => {}
+        }
         if previous_version < 4 {
             connection
                 .execute(
@@ -308,7 +335,7 @@ impl Database {
                 .map_err(|_| AppError::storage("无法升级提示词快捷键"))?;
         }
         connection
-            .pragma_update(None, "user_version", 12)
+            .pragma_update(None, "user_version", 13)
             .map_err(|_| AppError::storage("无法记录数据库版本"))?;
         Ok(Self {
             connection: Mutex::new(connection),
@@ -438,7 +465,7 @@ mod tests {
                 .iter()
                 .any(|column| column == "result_window_height")
         );
-        assert_eq!(database.pragma_i64("user_version").unwrap(), 12);
+        assert_eq!(database.pragma_i64("user_version").unwrap(), 13);
     }
 
     #[test]
@@ -455,7 +482,7 @@ mod tests {
             .unwrap();
 
         assert!(has_thinking);
-        assert_eq!(database.pragma_i64("user_version").unwrap(), 12);
+        assert_eq!(database.pragma_i64("user_version").unwrap(), 13);
     }
 
     #[test]
@@ -509,7 +536,7 @@ mod tests {
 
         assert_eq!(values.0.as_deref(), Some("low"));
         assert_eq!(values.1, None);
-        assert_eq!(database.pragma_i64("user_version").unwrap(), 12);
+        assert_eq!(database.pragma_i64("user_version").unwrap(), 13);
     }
 
     #[test]
@@ -596,7 +623,7 @@ mod tests {
         );
         assert_eq!(values.1, "migration-model");
         assert_eq!(values.2, Some("migration-model".into()));
-        assert_eq!(database.pragma_i64("user_version").unwrap(), 12);
+        assert_eq!(database.pragma_i64("user_version").unwrap(), 13);
     }
 
     #[test]

@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   listModelConfigs: vi.fn(),
   listPromptPresets: vi.fn(),
   queryHistory: vi.fn(),
+  queryPerformance: vi.fn(),
 }));
 const getVersion = vi.hoisted(() => vi.fn());
 const check = vi.hoisted(() => vi.fn());
@@ -65,6 +66,18 @@ describe("SettingsShell", () => {
     mocks.listModelConfigs.mockResolvedValue([]);
     mocks.listPromptPresets.mockResolvedValue([]);
     mocks.queryHistory.mockResolvedValue({ items: [], nextCursor: null });
+    mocks.queryPerformance.mockResolvedValue({
+      sampleCount: 0,
+      ttftSampleCount: 0,
+      tpsSampleCount: 0,
+      averageTtftMs: null,
+      medianTtftMs: null,
+      averageTps: null,
+      medianTps: null,
+      models: [],
+      modelOptions: [],
+      promptOptions: [],
+    });
     getVersion.mockResolvedValue(packageJson.version);
     check.mockResolvedValue(null);
     relaunch.mockResolvedValue(undefined);
@@ -107,6 +120,16 @@ describe("SettingsShell", () => {
       await screen.findByRole("heading", { name: "历史记录" }),
     ).toBeInTheDocument();
     expect(mocks.queryHistory).toHaveBeenCalledWith({ limit: 10 });
+
+    fireEvent.click(screen.getByRole("button", { name: "性能" }));
+    expect(
+      await screen.findByRole("heading", { name: "性能" }),
+    ).toBeInTheDocument();
+    expect(mocks.queryPerformance).toHaveBeenCalledWith({
+      periodDays: null,
+      modelName: undefined,
+      promptName: undefined,
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "关于" }));
     expect(

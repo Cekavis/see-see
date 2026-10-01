@@ -1,7 +1,7 @@
 use crate::{
     error::{AppError, ErrorCode},
     history::{HistoryInput, HistoryStatus, save_history},
-    providers::{ProviderEvent, ProviderRequest, stream_text},
+    providers::{ProviderEvent, ProviderRequest, StreamTiming, stream_text},
     settings::{ModelSnapshot, PromptSnapshot},
     state::{AnalysisState, AppState},
 };
@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager, ipc::Channel};
 use tokio::sync::watch;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum AnalysisEvent {
     Started {
@@ -33,6 +33,11 @@ pub enum AnalysisEvent {
         run_id: String,
         text: String,
     },
+    Metrics {
+        #[serde(rename = "runId")]
+        run_id: String,
+        metrics: PerformanceMetrics,
+    },
     Completed {
         #[serde(rename = "runId")]
         run_id: String,
@@ -44,6 +49,7 @@ pub enum AnalysisEvent {
         output_tokens: Option<i64>,
         #[serde(rename = "savedToHistory")]
         saved_to_history: bool,
+        metrics: PerformanceMetrics,
     },
     Failed {
         #[serde(rename = "runId")]
@@ -55,6 +61,7 @@ pub enum AnalysisEvent {
         output_tokens: Option<i64>,
         #[serde(rename = "savedToHistory")]
         saved_to_history: bool,
+        metrics: PerformanceMetrics,
     },
     Usage {
         #[serde(rename = "runId")]
@@ -70,7 +77,7 @@ pub enum AnalysisEvent {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AnalysisSnapshot {
     pub run_id: String,
@@ -83,6 +90,15 @@ pub struct AnalysisSnapshot {
     pub output_tokens: Option<i64>,
     pub saved_to_history: bool,
     pub error: Option<AppError>,
+    pub metrics: PerformanceMetrics,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PerformanceMetrics {
+    pub ttft_ms: Option<i64>,
+    pub generation_ms: Option<i64>,
+    pub tps: Option<f64>,
 }
 
 impl AnalysisSnapshot {
@@ -103,6 +119,7 @@ impl AnalysisSnapshot {
             output_tokens: None,
             saved_to_history: false,
             error: None,
+            metrics: PerformanceMetrics::default(),
         }
     }
 }
@@ -175,6 +192,7 @@ impl AnalysisRun {
         if output_tokens.is_some() {
             self.snapshot.output_tokens = output_tokens;
         }
+        self.refresh_tps();
         Ok(AnalysisEvent::Usage {
             run_id: self.snapshot.run_id.clone(),
             input_tokens: self.snapshot.input_tokens,
@@ -182,8 +200,30 @@ impl AnalysisRun {
         })
     }
 
+    pub fn push_timing(&mut self, timing: StreamTiming) -> Result<AnalysisEvent, AppError> {
+        self.ensure_active()?;
+        match timing {
+            StreamTiming::FirstToken { ttft_ms } => {
+                if self.snapshot.metrics.ttft_ms.is_none() {
+                    self.snapshot.metrics.ttft_ms = Some(ttft_ms.max(0));
+                }
+            }
+            StreamTiming::Completed { generation_ms } => {
+                if self.snapshot.metrics.generation_ms.is_none() {
+                    self.snapshot.metrics.generation_ms = generation_ms.map(|value| value.max(0));
+                }
+            }
+        }
+        self.refresh_tps();
+        Ok(AnalysisEvent::Metrics {
+            run_id: self.snapshot.run_id.clone(),
+            metrics: self.snapshot.metrics.clone(),
+        })
+    }
+
     pub fn complete(&mut self, saved_to_history: bool) -> Result<AnalysisEvent, AppError> {
         self.ensure_active()?;
+        self.refresh_tps();
         self.terminal = true;
         self.snapshot.state = AnalysisState::Completed;
         self.snapshot.saved_to_history = saved_to_history;
@@ -194,6 +234,7 @@ impl AnalysisRun {
             input_tokens: self.snapshot.input_tokens,
             output_tokens: self.snapshot.output_tokens,
             saved_to_history,
+            metrics: self.snapshot.metrics.clone(),
         })
     }
 
@@ -203,6 +244,7 @@ impl AnalysisRun {
         saved_to_history: bool,
     ) -> Result<AnalysisEvent, AppError> {
         self.ensure_active()?;
+        self.refresh_tps();
         self.terminal = true;
         self.snapshot.state = AnalysisState::Failed;
         self.snapshot.saved_to_history = saved_to_history;
@@ -213,6 +255,7 @@ impl AnalysisRun {
             input_tokens: self.snapshot.input_tokens,
             output_tokens: self.snapshot.output_tokens,
             saved_to_history,
+            metrics: self.snapshot.metrics.clone(),
         })
     }
 
@@ -222,6 +265,7 @@ impl AnalysisRun {
         self.snapshot.state = AnalysisState::Cancelled;
         self.snapshot.thinking.clear();
         self.snapshot.text.clear();
+        self.snapshot.metrics = PerformanceMetrics::default();
         Ok(AnalysisEvent::Cancelled {
             run_id: self.snapshot.run_id.clone(),
         })
@@ -242,6 +286,20 @@ impl AnalysisRun {
         } else {
             Ok(())
         }
+    }
+
+    fn refresh_tps(&mut self) {
+        self.snapshot.metrics.tps = match (
+            self.snapshot.output_tokens,
+            self.snapshot.metrics.generation_ms,
+        ) {
+            (Some(output_tokens), Some(generation_ms))
+                if output_tokens >= 0 && generation_ms > 0 =>
+            {
+                Some(output_tokens as f64 * 1000.0 / generation_ms as f64)
+            }
+            _ => None,
+        };
     }
 }
 
@@ -309,7 +367,11 @@ impl ActiveAnalysis {
     }
 
     pub fn subscribe(&self, channel: Channel<AnalysisEvent>) -> Result<AnalysisSnapshot, AppError> {
-        let snapshot = self.snapshot()?;
+        // Hold the run lock while registering the listener so a terminal transition
+        // cannot occur between taking the snapshot and deciding whether to subscribe.
+        // This keeps late subscribers from being stranded without a terminal event.
+        let run = self.lock_run()?;
+        let snapshot = run.snapshot();
         if !matches!(
             snapshot.state,
             AnalysisState::Completed | AnalysisState::Failed | AnalysisState::Cancelled
@@ -343,6 +405,11 @@ impl ActiveAnalysis {
         output_tokens: Option<i64>,
     ) -> Result<(), AppError> {
         let event = self.lock_run()?.push_usage(input_tokens, output_tokens)?;
+        self.emit(event)
+    }
+
+    pub fn push_timing(&self, timing: StreamTiming) -> Result<(), AppError> {
+        let event = self.lock_run()?.push_timing(timing)?;
         self.emit(event)
     }
 
@@ -465,21 +532,28 @@ pub fn start_network_analysis(
         };
         let state = app.state::<AppState>();
         let mut cancelled = active.cancel_receiver();
-        let stream = stream_text(&http, &request, |event| match event {
-            ProviderEvent::ThinkingDelta(text) => {
-                let _ = active.push_thinking(text);
-            }
-            ProviderEvent::TextDelta(text) => {
-                let _ = active.push_text(text);
-            }
-            ProviderEvent::Usage {
-                input_tokens,
-                output_tokens,
-            } => {
-                let _ = active.push_usage(input_tokens, output_tokens);
-            }
-            ProviderEvent::Completed => {}
-        });
+        let stream = stream_text(
+            &http,
+            &request,
+            |event| match event {
+                ProviderEvent::ThinkingDelta(text) => {
+                    let _ = active.push_thinking(text);
+                }
+                ProviderEvent::TextDelta(text) => {
+                    let _ = active.push_text(text);
+                }
+                ProviderEvent::Usage {
+                    input_tokens,
+                    output_tokens,
+                } => {
+                    let _ = active.push_usage(input_tokens, output_tokens);
+                }
+                ProviderEvent::Completed => {}
+            },
+            |timing| {
+                let _ = active.push_timing(timing);
+            },
+        );
         tokio::pin!(stream);
         let result = tokio::select! {
             _ = cancelled.changed() => None,
@@ -513,6 +587,14 @@ pub fn start_network_analysis(
                         .snapshot()
                         .ok()
                         .and_then(|snapshot| snapshot.output_tokens),
+                    ttft_ms: active
+                        .snapshot()
+                        .ok()
+                        .and_then(|snapshot| snapshot.metrics.ttft_ms),
+                    generation_ms: active
+                        .snapshot()
+                        .ok()
+                        .and_then(|snapshot| snapshot.metrics.generation_ms),
                     error_code: None,
                     error_message: None,
                     prompt_config_id: Some(input.prompt.id),
@@ -559,6 +641,14 @@ pub fn start_network_analysis(
                         .snapshot()
                         .ok()
                         .and_then(|snapshot| snapshot.output_tokens),
+                    ttft_ms: active
+                        .snapshot()
+                        .ok()
+                        .and_then(|snapshot| snapshot.metrics.ttft_ms),
+                    generation_ms: active
+                        .snapshot()
+                        .ok()
+                        .and_then(|snapshot| snapshot.metrics.generation_ms),
                     error_code: Some(error.code.as_str().into()),
                     error_message: Some(error.message_with_details()),
                     prompt_config_id: Some(input.prompt.id),

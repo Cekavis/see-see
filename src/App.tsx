@@ -8,6 +8,7 @@ import {
   ipc,
   type AnalysisEvent,
   type AnalysisSnapshot,
+  type PerformanceMetrics,
 } from "./ipc";
 import { CaptureOverlay } from "./views/CaptureOverlay";
 import { Result } from "./views/Result";
@@ -51,6 +52,7 @@ function ResultView() {
     outputTokens: null,
     savedToHistory: false,
     error: null,
+    metrics: emptyPerformanceMetrics(),
   });
   const [imageUrl, setImageUrl] = useState<string>();
   const [alwaysOnTop, setAlwaysOnTop] = useState(false);
@@ -180,6 +182,7 @@ export function updateAnalysisSnapshot(
       outputTokens: null,
       savedToHistory: false,
       error: null,
+      metrics: emptyPerformanceMetrics(),
     };
   if (event.type === "delta")
     return {
@@ -199,6 +202,11 @@ export function updateAnalysisSnapshot(
       inputTokens: event.inputTokens ?? current.inputTokens,
       outputTokens: event.outputTokens ?? current.outputTokens,
     };
+  if (event.type === "metrics")
+    return {
+      ...current,
+      metrics: event.metrics,
+    };
   if (event.type === "completed")
     return {
       ...current,
@@ -208,6 +216,7 @@ export function updateAnalysisSnapshot(
       inputTokens: event.inputTokens,
       outputTokens: event.outputTokens,
       savedToHistory: event.savedToHistory,
+      metrics: event.metrics,
     };
   if (event.type === "failed")
     return {
@@ -217,6 +226,7 @@ export function updateAnalysisSnapshot(
       inputTokens: event.inputTokens,
       outputTokens: event.outputTokens,
       savedToHistory: event.savedToHistory,
+      metrics: event.metrics,
     };
   return {
     ...current,
@@ -224,6 +234,7 @@ export function updateAnalysisSnapshot(
     thinking: "",
     text: "",
     error: null,
+    metrics: emptyPerformanceMetrics(),
   };
 }
 
@@ -242,9 +253,16 @@ export function mergeAttachedAnalysisSnapshot(
       current.text ||
       current.inputTokens !== null ||
       current.outputTokens !== null ||
-      current.error,
+      current.error ||
+      current.metrics.ttftMs !== null ||
+      current.metrics.generationMs !== null ||
+      current.metrics.tps !== null,
     );
   return hasLiveUpdate ? current : attached;
+}
+
+function emptyPerformanceMetrics(): PerformanceMetrics {
+  return { ttftMs: null, generationMs: null, tps: null };
 }
 
 type WindowShortcutEvent = Pick<

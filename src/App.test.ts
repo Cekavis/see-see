@@ -58,6 +58,7 @@ const resultSnapshot: AnalysisSnapshot = {
   outputTokens: null,
   savedToHistory: false,
   error: null,
+  metrics: { ttftMs: null, generationMs: null, tps: null },
 };
 
 const appSnapshot = {
@@ -382,6 +383,7 @@ describe("analysis event state", () => {
       outputTokens: null,
       savedToHistory: false,
       error: null,
+      metrics: { ttftMs: null, generationMs: null, tps: null },
     };
     const attached = { ...current, runId: "run-2", text: "第二路" };
 
@@ -402,6 +404,7 @@ describe("analysis event state", () => {
       outputTokens: null,
       savedToHistory: false,
       error: null,
+      metrics: { ttftMs: null, generationMs: null, tps: null },
     };
     const attached = { ...current, state: "submitting" as const, text: "" };
 
@@ -421,6 +424,7 @@ describe("analysis event state", () => {
       inputTokens: 40,
       outputTokens: 12,
       savedToHistory: true,
+      metrics: { ttftMs: 120, generationMs: 800, tps: 15 },
       error: {
         code: "timeout",
         message: "模型请求超时",
@@ -447,6 +451,7 @@ describe("analysis event state", () => {
       outputTokens: null,
       savedToHistory: false,
       error: null,
+      metrics: { ttftMs: null, generationMs: null, tps: null },
     });
   });
 
@@ -462,6 +467,7 @@ describe("analysis event state", () => {
       outputTokens: null,
       savedToHistory: false,
       error: null,
+      metrics: { ttftMs: null, generationMs: null, tps: null },
     };
     const thinking = updateAnalysisSnapshot(initial, {
       type: "thinkingDelta",
@@ -494,8 +500,18 @@ describe("analysis event state", () => {
       inputTokens: 99,
       outputTokens: 33,
     });
+    const measured = updateAnalysisSnapshot(usage, {
+      type: "metrics",
+      runId: "run-1",
+      metrics: { ttftMs: 120, generationMs: null, tps: null },
+    });
+    expect(measured.metrics).toEqual({
+      ttftMs: 120,
+      generationMs: null,
+      tps: null,
+    });
     expect(
-      updateAnalysisSnapshot(usage, {
+      updateAnalysisSnapshot(measured, {
         type: "completed",
         runId: "run-1",
         thinking: "完整分析",
@@ -503,6 +519,7 @@ describe("analysis event state", () => {
         inputTokens: 99,
         outputTokens: 33,
         savedToHistory: true,
+        metrics: { ttftMs: 120, generationMs: 800, tps: 41.25 },
       }),
     ).toMatchObject({
       state: "completed",

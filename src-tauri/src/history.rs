@@ -50,6 +50,8 @@ pub struct HistoryInput {
     pub model_id: String,
     pub input_tokens: Option<i64>,
     pub output_tokens: Option<i64>,
+    pub ttft_ms: Option<i64>,
+    pub generation_ms: Option<i64>,
     pub started_at: String,
     pub completed_at: String,
 }
@@ -148,8 +150,8 @@ pub fn save_history(
             "INSERT INTO history_entries (
                 id, status, thinking_text, result_text, error_code, error_message, prompt_config_id,
                 prompt_name, prompt_body, model_config_id, model_config_name, protocol, model_id,
-                input_tokens, output_tokens, started_at, completed_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)
+                input_tokens, output_tokens, ttft_ms, generation_ms, started_at, completed_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)
              ON CONFLICT(id) DO UPDATE SET
                 status = excluded.status,
                 thinking_text = excluded.thinking_text,
@@ -165,6 +167,8 @@ pub fn save_history(
                 model_id = excluded.model_id,
                 input_tokens = excluded.input_tokens,
                 output_tokens = excluded.output_tokens,
+                ttft_ms = excluded.ttft_ms,
+                generation_ms = excluded.generation_ms,
                 started_at = excluded.started_at,
                 completed_at = excluded.completed_at",
             rusqlite::params![
@@ -183,6 +187,8 @@ pub fn save_history(
                 input.model_id,
                 input.input_tokens,
                 input.output_tokens,
+                input.ttft_ms,
+                input.generation_ms,
                 input.started_at,
                 input.completed_at,
             ],

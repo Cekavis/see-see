@@ -69,6 +69,13 @@ export type AnalysisSnapshot = {
   outputTokens: number | null;
   savedToHistory: boolean;
   error: AppError | null;
+  metrics: PerformanceMetrics;
+};
+
+export type PerformanceMetrics = {
+  ttftMs: number | null;
+  generationMs: number | null;
+  tps: number | null;
 };
 
 export type AnalysisEvent =
@@ -80,6 +87,7 @@ export type AnalysisEvent =
     }
   | { type: "thinkingDelta"; runId: string; text: string }
   | { type: "delta"; runId: string; text: string }
+  | { type: "metrics"; runId: string; metrics: PerformanceMetrics }
   | {
       type: "completed";
       runId: string;
@@ -88,6 +96,7 @@ export type AnalysisEvent =
       inputTokens: number | null;
       outputTokens: number | null;
       savedToHistory: boolean;
+      metrics: PerformanceMetrics;
     }
   | {
       type: "failed";
@@ -96,6 +105,7 @@ export type AnalysisEvent =
       inputTokens: number | null;
       outputTokens: number | null;
       savedToHistory: boolean;
+      metrics: PerformanceMetrics;
     }
   | {
       type: "usage";
@@ -213,6 +223,44 @@ export type HistoryEntryDetail = HistoryListItem & {
   protocol: string;
 };
 
+export type PerformanceQuery = {
+  periodDays: 7 | 30 | 90 | null;
+  modelName?: string;
+  promptName?: string;
+};
+
+export type PerformanceFilterOption = {
+  value: string;
+  label: string;
+};
+
+export type ModelPerformanceSummary = {
+  key: string;
+  modelConfigName: string;
+  modelId: string;
+  protocol: string;
+  sampleCount: number;
+  ttftSampleCount: number;
+  tpsSampleCount: number;
+  averageTtftMs: number | null;
+  medianTtftMs: number | null;
+  averageTps: number | null;
+  medianTps: number | null;
+};
+
+export type PerformanceReport = {
+  sampleCount: number;
+  ttftSampleCount: number;
+  tpsSampleCount: number;
+  averageTtftMs: number | null;
+  medianTtftMs: number | null;
+  averageTps: number | null;
+  medianTps: number | null;
+  models: ModelPerformanceSummary[];
+  modelOptions: PerformanceFilterOption[];
+  promptOptions: PerformanceFilterOption[];
+};
+
 export const ipc = {
   getAppSnapshot: () => invoke<AppSnapshot>("get_app_snapshot"),
   beginCapture: (promptId: string) =>
@@ -276,6 +324,8 @@ export const ipc = {
     invoke<ConfigSyncResult>("download_configuration"),
   queryHistory: (query: HistoryQuery) =>
     invoke<HistoryPage>("query_history", { query }),
+  queryPerformance: (query: PerformanceQuery) =>
+    invoke<PerformanceReport>("query_performance", { query }),
   getHistoryEntry: (id: string) =>
     invoke<HistoryEntryDetail>("get_history_entry", { id }),
   getHistoryImage: (id: string, variant: "thumbnail" | "original") =>

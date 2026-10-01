@@ -108,6 +108,12 @@ pub enum ProviderEvent {
     Completed,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StreamTiming {
+    FirstToken { ttft_ms: i64 },
+    Completed { generation_ms: Option<i64> },
+}
+
 pub(crate) fn token_count(value: &Value) -> Option<i64> {
     value.as_u64().and_then(|value| i64::try_from(value).ok())
 }
@@ -223,6 +229,14 @@ fn thinking_event(text: String) -> Option<ProviderEvent> {
 
 fn text_event(text: String) -> Option<ProviderEvent> {
     (!text.is_empty()).then_some(ProviderEvent::TextDelta(text))
+}
+
+fn is_token_event(event: &ProviderEvent) -> bool {
+    matches!(
+        event,
+        ProviderEvent::ThinkingDelta(text) | ProviderEvent::TextDelta(text)
+            if !text.is_empty()
+    )
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -377,6 +391,7 @@ pub async fn stream_text(
     client: &Client,
     request: &ProviderRequest,
     mut on_event: impl FnMut(ProviderEvent),
+    mut on_timing: impl FnMut(StreamTiming),
 ) -> Result<String, AppError> {
     use eventsource_stream::Eventsource;
 
@@ -393,6 +408,7 @@ pub async fn stream_text(
         headers.insert(name, value);
     }
     builder = builder.headers(headers);
+    let request_started = std::time::Instant::now();
     let response = builder.send().await.map_err(map_reqwest_error)?;
     if response.status().is_redirection() {
         return Err(AppError::provider(
@@ -409,6 +425,7 @@ pub async fn stream_text(
 
     let mut output = String::new();
     let mut tag_parser = ThinkTagParser::default();
+    let mut first_token_at = None;
     let mut stream = response.bytes_stream().eventsource();
     while let Some(event) = stream.next().await {
         let event = event.map_err(|error| match error {
@@ -431,6 +448,12 @@ pub async fn stream_text(
                 event => vec![event],
             };
             for event in events {
+                if is_token_event(&event) && first_token_at.is_none() {
+                    first_token_at = Some(std::time::Instant::now());
+                    on_timing(StreamTiming::FirstToken {
+                        ttft_ms: request_started.elapsed().as_millis() as i64,
+                    });
+                }
                 if let ProviderEvent::TextDelta(delta) = &event {
                     output.push_str(delta);
                 }
@@ -439,6 +462,12 @@ pub async fn stream_text(
         }
     }
     for event in tag_parser.flush() {
+        if is_token_event(&event) && first_token_at.is_none() {
+            first_token_at = Some(std::time::Instant::now());
+            on_timing(StreamTiming::FirstToken {
+                ttft_ms: request_started.elapsed().as_millis() as i64,
+            });
+        }
         if let ProviderEvent::TextDelta(delta) = &event {
             output.push_str(delta);
         }
@@ -451,12 +480,15 @@ pub async fn stream_text(
             true,
         ));
     }
+    on_timing(StreamTiming::Completed {
+        generation_ms: first_token_at.map(|started| started.elapsed().as_millis() as i64),
+    });
     Ok(output)
 }
 
 pub async fn test_connection(client: &Client, request: ProviderRequest) -> ConnectionTestResult {
     let started = std::time::Instant::now();
-    match stream_text(client, &request, |_| {}).await {
+    match stream_text(client, &request, |_| {}, |_| {}).await {
         Ok(_) => ConnectionTestResult {
             passed: true,
             latency_ms: started.elapsed().as_millis(),
@@ -721,6 +753,7 @@ mod tests {
             &streaming_client().unwrap(),
             &delayed_request(base_url),
             |_| {},
+            |_| {},
         )
         .await
         .unwrap();
@@ -735,6 +768,7 @@ mod tests {
         let error = stream_text(
             &build_client(Some(Duration::from_millis(10))).unwrap(),
             &delayed_request(base_url),
+            |_| {},
             |_| {},
         )
         .await

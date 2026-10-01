@@ -34,6 +34,7 @@ const snapshot = (overrides: Partial<ResultSnapshot> = {}): ResultSnapshot => ({
   outputTokens: null,
   savedToHistory: false,
   error: null,
+  metrics: { ttftMs: null, generationMs: null, tps: null },
   ...overrides,
 });
 
@@ -317,13 +318,19 @@ describe("Result", () => {
   it("shows token usage below the always-on-top control and formats missing values", () => {
     const { rerender } = renderResult(
       <Result
-        snapshot={snapshot({ inputTokens: 1024, outputTokens: 256 })}
+        snapshot={snapshot({
+          inputTokens: 1024,
+          outputTokens: 256,
+          metrics: { ttftMs: 125, generationMs: 800, tps: 21.25 },
+        })}
         alwaysOnTop
       />,
     );
 
     expect(screen.getByText("输入 token：1,024")).toBeInTheDocument();
     expect(screen.getByText("输出 token：256")).toBeInTheDocument();
+    expect(screen.getByText("首 token TTFT：125 ms")).toBeInTheDocument();
+    expect(screen.getByText("TPS：21.3 token/s")).toBeInTheDocument();
     const actions = document.querySelector(".result-view__header-actions");
     expect(actions?.firstElementChild).toBe(
       screen.getByRole("checkbox", { name: "窗口置顶" }).parentElement,
@@ -337,6 +344,8 @@ describe("Result", () => {
     );
     expect(screen.getByText("输入 token：—")).toBeInTheDocument();
     expect(screen.getByText("输出 token：—")).toBeInTheDocument();
+    expect(screen.getByText("首 token TTFT：—")).toBeInTheDocument();
+    expect(screen.getByText("TPS：—")).toBeInTheDocument();
   });
 
   it("omits configuration metadata until the analysis attaches", () => {

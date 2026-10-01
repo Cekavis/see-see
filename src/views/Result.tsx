@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "../components/Button";
 import { ModelRetryDialog } from "../components/ModelRetryDialog";
 import { useNotifications } from "../components/Notifications";
+import { PerformanceMetrics } from "../components/PerformanceMetrics";
 import { TokenUsage } from "../components/TokenUsage";
 import {
   getErrorMessage,
   type AppError,
   type ModelConfigSummary,
+  type PerformanceMetrics as PerformanceMetricsValue,
 } from "../ipc";
 
 export type ResultSnapshot = {
@@ -20,6 +22,7 @@ export type ResultSnapshot = {
   outputTokens: number | null;
   savedToHistory: boolean;
   error: AppError | null;
+  metrics: PerformanceMetricsValue;
 };
 
 type Props = {
@@ -187,6 +190,7 @@ export function Result({
             />
             窗口置顶
           </label>
+          <PerformanceMetrics metrics={snapshot.metrics} />
           <TokenUsage
             inputTokens={snapshot.inputTokens}
             outputTokens={snapshot.outputTokens}

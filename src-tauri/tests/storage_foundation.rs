@@ -24,7 +24,7 @@ fn database_defaults_and_pragmas_match_the_plan() {
     assert_eq!(snapshot.prompt_count, 2);
     assert_eq!(db.pragma_i64("foreign_keys").unwrap(), 1);
     assert_eq!(db.pragma_i64("secure_delete").unwrap(), 1);
-    assert_eq!(db.pragma_i64("user_version").unwrap(), 12);
+    assert_eq!(db.pragma_i64("user_version").unwrap(), 13);
     assert_eq!(load_result_window_size(&db).unwrap(), None);
 }
 
@@ -70,6 +70,8 @@ fn history_save_is_atomic_and_respects_the_setting() {
         model_id: "vision-model".into(),
         input_tokens: Some(12),
         output_tokens: Some(4),
+        ttft_ms: Some(120),
+        generation_ms: Some(800),
         started_at: "2026-07-23T00:00:00Z".into(),
         completed_at: "2026-07-23T00:00:01Z".into(),
     };
@@ -102,6 +104,8 @@ fn invalid_success_history_rolls_back() {
         model_id: "vision-model".into(),
         input_tokens: None,
         output_tokens: None,
+        ttft_ms: None,
+        generation_ms: None,
         started_at: "2026-07-23T00:00:00Z".into(),
         completed_at: "2026-07-23T00:00:01Z".into(),
     };

@@ -6,6 +6,7 @@ pub mod credentials;
 pub mod database;
 pub mod error;
 pub mod history;
+pub mod performance;
 pub mod providers;
 pub mod settings;
 pub mod state;
@@ -230,6 +231,7 @@ pub fn run() {
             commands::delete_prompt_preset,
             commands::set_prompt_shortcut,
             commands::query_history,
+            commands::query_performance,
             commands::get_history_entry,
             commands::get_history_image,
             commands::resubmit_history,

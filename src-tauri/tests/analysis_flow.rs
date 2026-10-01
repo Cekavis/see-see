@@ -1,12 +1,16 @@
 use secrecy::{ExposeSecret, SecretString};
 use see_see_lib::{
-    analysis::{ActiveAnalysis, AnalysisEvent, AnalysisInput, AnalysisRun, AnalysisSnapshot},
+    analysis::{
+        ActiveAnalysis, AnalysisEvent, AnalysisInput, AnalysisRun, AnalysisSnapshot,
+        PerformanceMetrics,
+    },
     error::ErrorCode,
-    providers::{ProviderProtocol, ReasoningEffort},
+    providers::{ProviderProtocol, ReasoningEffort, StreamTiming},
     settings::{ModelSnapshot, PromptSnapshot},
     state::AnalysisState,
 };
 use std::sync::Arc;
+use tauri::ipc::Channel;
 
 #[test]
 fn analysis_run_has_one_terminal_event() {
@@ -60,13 +64,112 @@ fn analysis_run_has_one_terminal_event() {
             text: "你好".into(),
             input_tokens: Some(123),
             output_tokens: Some(45),
-            saved_to_history: false
+            saved_to_history: false,
+            metrics: PerformanceMetrics::default(),
         }
     );
     assert_eq!(run.snapshot().thinking, "先判断");
     assert_eq!(run.snapshot().text, "你好");
     assert_eq!(run.snapshot().state, AnalysisState::Completed);
     assert_eq!(run.cancel().unwrap_err().code, ErrorCode::AlreadyRunning);
+}
+
+#[test]
+fn performance_metrics_accept_late_usage_without_estimating_missing_or_zero_duration() {
+    let mut run = AnalysisRun::new("run-metrics", "模型配置", "提示词配置");
+    run.push_timing(StreamTiming::FirstToken { ttft_ms: 17 })
+        .unwrap();
+    run.push_timing(StreamTiming::Completed {
+        generation_ms: Some(250),
+    })
+    .unwrap();
+    assert_eq!(run.snapshot().metrics.tps, None);
+
+    run.push_usage(None, Some(50)).unwrap();
+    assert_eq!(run.snapshot().metrics.tps, Some(200.0));
+    let completed = run.complete(false).unwrap();
+    assert!(matches!(
+        completed,
+        AnalysisEvent::Completed {
+            metrics: PerformanceMetrics {
+                ttft_ms: Some(17),
+                generation_ms: Some(250),
+                tps: Some(value),
+            },
+            ..
+        } if (value - 200.0).abs() < f64::EPSILON
+    ));
+
+    let mut missing_usage = AnalysisRun::new("run-missing-usage", "模型配置", "提示词配置");
+    missing_usage
+        .push_timing(StreamTiming::Completed {
+            generation_ms: Some(250),
+        })
+        .unwrap();
+    missing_usage.complete(false).unwrap();
+    assert_eq!(missing_usage.snapshot().metrics.tps, None);
+
+    let mut zero_duration = AnalysisRun::new("run-zero-duration", "模型配置", "提示词配置");
+    zero_duration.push_usage(None, Some(50)).unwrap();
+    zero_duration
+        .push_timing(StreamTiming::Completed {
+            generation_ms: Some(0),
+        })
+        .unwrap();
+    zero_duration.complete(false).unwrap();
+    assert_eq!(zero_duration.snapshot().metrics.tps, None);
+}
+
+#[test]
+fn failed_analysis_preserves_ttft_and_retry_clears_all_metrics() {
+    let active = ActiveAnalysis::new("run-failed-metrics", vec![], "模型配置", "提示词配置");
+    active
+        .push_timing(StreamTiming::FirstToken { ttft_ms: 23 })
+        .unwrap();
+    active
+        .fail(
+            see_see_lib::error::AppError::provider(ErrorCode::Timeout, "超时", true),
+            false,
+        )
+        .unwrap();
+    assert_eq!(
+        active.snapshot().unwrap().metrics,
+        PerformanceMetrics {
+            ttft_ms: Some(23),
+            generation_ms: None,
+            tps: None,
+        }
+    );
+
+    active
+        .reset_for_retry("重试模型配置", "重试提示词配置")
+        .unwrap();
+    assert_eq!(
+        active.snapshot().unwrap().metrics,
+        PerformanceMetrics::default()
+    );
+}
+
+#[test]
+fn late_subscriber_receives_the_terminal_snapshot_with_metrics() {
+    let active = ActiveAnalysis::new("run-late-subscribe", vec![], "模型配置", "提示词配置");
+    active
+        .push_timing(StreamTiming::FirstToken { ttft_ms: 11 })
+        .unwrap();
+    active.push_usage(None, Some(8)).unwrap();
+    active
+        .push_timing(StreamTiming::Completed {
+            generation_ms: Some(400),
+        })
+        .unwrap();
+    active.complete(false).unwrap();
+
+    let channel = Channel::<AnalysisEvent>::new(|_| Ok(()));
+    let snapshot = active.subscribe(channel).unwrap();
+    assert_eq!(snapshot.state, AnalysisState::Completed);
+    assert_eq!(snapshot.metrics.ttft_ms, Some(11));
+    assert_eq!(snapshot.metrics.generation_ms, Some(400));
+    assert_eq!(snapshot.metrics.tps, Some(20.0));
 }
 
 #[test]
@@ -87,6 +190,8 @@ fn concurrent_analyses_keep_run_ids_and_streams_independent() {
 #[test]
 fn cancellation_is_terminal_and_never_claims_history_persistence() {
     let mut run = AnalysisRun::new("run-2", "模型配置", "提示词配置");
+    run.push_timing(StreamTiming::FirstToken { ttft_ms: 19 })
+        .unwrap();
     assert_eq!(
         run.cancel().unwrap(),
         AnalysisEvent::Cancelled {
@@ -96,6 +201,7 @@ fn cancellation_is_terminal_and_never_claims_history_persistence() {
     let snapshot = run.snapshot();
     assert_eq!(snapshot.state, AnalysisState::Cancelled);
     assert!(!snapshot.saved_to_history);
+    assert_eq!(snapshot.metrics, PerformanceMetrics::default());
     assert!(
         run.fail(see_see_lib::error::AppError::invalid("late"), true)
             .is_err()

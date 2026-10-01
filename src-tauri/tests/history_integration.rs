@@ -52,6 +52,8 @@ fn insert(db: &Database, id: &str, result: &str, prompt: &str, status: HistorySt
             model_id: "vision".into(),
             input_tokens: Some(123),
             output_tokens: Some(45),
+            ttft_ms: Some(120),
+            generation_ms: Some(800),
             started_at: format!("2026-07-23T00:00:0{id}Z"),
             completed_at: format!("2026-07-23T00:00:1{id}Z"),
         },
@@ -223,6 +225,8 @@ fn history_setting_persists_and_disables_new_writes() {
         model_id: "vision".into(),
         input_tokens: None,
         output_tokens: None,
+        ttft_ms: None,
+        generation_ms: None,
         started_at: "2026-07-23T00:00:00Z".into(),
         completed_at: "2026-07-23T00:00:01Z".into(),
     };

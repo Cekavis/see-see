@@ -5,6 +5,7 @@ use crate::{
     capture::{self, CaptureSessionSummary, PhysicalRect, compose_selection},
     error::{AppError, ErrorCode},
     history::{self, HistoryEntryDetail, HistoryImageVariant, HistoryPage, HistoryQuery},
+    performance::{self, PerformanceQuery, PerformanceReport},
     providers::{self, ProviderProtocol, ProviderRequest, ReasoningEffort, RemoteModel},
     settings::{
         self, ConfigSyncResult, ModelConfigInput, ModelConfigSummary, PromptPreset,
@@ -642,6 +643,14 @@ pub fn query_history(app: AppHandle, query: HistoryQuery) -> Result<HistoryPage,
 }
 
 #[tauri::command]
+pub fn query_performance(
+    app: AppHandle,
+    query: PerformanceQuery,
+) -> Result<PerformanceReport, AppError> {
+    performance::query_performance(&app.state::<AppState>().database, query)
+}
+
+#[tauri::command]
 pub fn get_history_entry(app: AppHandle, id: String) -> Result<HistoryEntryDetail, AppError> {
     history::get_history_detail(&app.state::<AppState>().database, &id)
 }
@@ -692,14 +701,18 @@ pub async fn resubmit_history(
 
 #[tauri::command]
 pub fn delete_history_entry(app: AppHandle, id: String) -> Result<(), AppError> {
-    history::delete_history_entry(&app.state::<AppState>().database, &id)
+    history::delete_history_entry(&app.state::<AppState>().database, &id)?;
+    app.emit("history-updated", ())
+        .map_err(|_| AppError::invalid("无法同步历史更新"))?;
+    Ok(())
 }
 
 #[tauri::command]
 pub fn clear_history(app: AppHandle) -> Result<ClearHistoryResult, AppError> {
-    Ok(ClearHistoryResult {
-        deleted_count: history::clear_history(&app.state::<AppState>().database)?,
-    })
+    let deleted_count = history::clear_history(&app.state::<AppState>().database)?;
+    app.emit("history-updated", ())
+        .map_err(|_| AppError::invalid("无法同步历史更新"))?;
+    Ok(ClearHistoryResult { deleted_count })
 }
 
 #[tauri::command]

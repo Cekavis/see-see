@@ -6,6 +6,7 @@ export type IconName =
   | "models"
   | "prompts"
   | "history"
+  | "performance"
   | "about"
   | "capture"
   | "error"
@@ -48,6 +49,13 @@ const icons: Record<IconName, ReactNode> = {
     <>
       <path d="M4.9 6.7A9 9 0 1 1 3 12" />
       <path d="M3 5v4h4M12 7v5l3 2" />
+    </>
+  ),
+  performance: (
+    <>
+      <path d="M4 18V6m0 12h16" />
+      <path d="m7 15 3-4 3 2 4-6" />
+      <path d="M17 7h2v2" />
     </>
   ),
   about: (

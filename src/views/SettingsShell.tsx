@@ -15,11 +15,12 @@ import { DesktopSettings } from "./DesktopSettings";
 import { History } from "./History";
 import { Onboarding } from "./Onboarding";
 import { Prompts } from "./Prompts";
+import { Performance } from "./Performance";
 import { Settings } from "./Settings";
 import { WebdavSettings } from "./WebdavSettings";
 
 export type SettingsSection =
-  "general" | "models" | "prompts" | "history" | "about";
+  "general" | "models" | "prompts" | "history" | "performance" | "about";
 
 const sections: Array<{
   id: SettingsSection;
@@ -30,6 +31,7 @@ const sections: Array<{
   { id: "models", label: "模型", icon: "models" },
   { id: "prompts", label: "提示词", icon: "prompts" },
   { id: "history", label: "历史", icon: "history" },
+  { id: "performance", label: "性能", icon: "performance" },
   { id: "about", label: "关于", icon: "about" },
 ];
 
@@ -248,6 +250,7 @@ export function SettingsShell() {
         {section === "models" && <Settings />}
         {section === "prompts" && <Prompts />}
         {section === "history" && <History />}
+        {section === "performance" && <Performance />}
         {section === "about" && <About />}
       </div>
     </main>

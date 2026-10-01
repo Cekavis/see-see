@@ -1,7 +1,8 @@
 use secrecy::SecretString;
 use see_see_lib::providers::{
-    ProviderEvent, ProviderProtocol, ProviderRequest, ReasoningEffort, build_http_request,
-    connection_test_png, parse_model_list, parse_stream_event, stream_text, test_connection,
+    ProviderEvent, ProviderProtocol, ProviderRequest, ReasoningEffort, StreamTiming,
+    build_http_request, connection_test_png, parse_model_list, parse_stream_event, stream_text,
+    test_connection,
 };
 use wiremock::{
     Mock, MockServer, ResponseTemplate,
@@ -310,6 +311,7 @@ async fn leading_think_tags_are_split_across_stream_chunks() {
         .await;
 
     let mut events = Vec::new();
+    let mut timings = Vec::new();
     let answer = stream_text(
         &see_see_lib::providers::client().unwrap(),
         &ProviderRequest {
@@ -323,6 +325,7 @@ async fn leading_think_tags_are_split_across_stream_chunks() {
             stream: true,
         },
         |event| events.push(event),
+        |timing| timings.push(timing),
     )
     .await
     .unwrap();
@@ -336,6 +339,132 @@ async fn leading_think_tags_are_split_across_stream_chunks() {
             ProviderEvent::Completed,
         ]
     );
+    assert_eq!(timings.len(), 2);
+    assert!(matches!(
+        timings[0],
+        StreamTiming::FirstToken { ttft_ms } if ttft_ms >= 0
+    ));
+    assert!(matches!(
+        timings[1],
+        StreamTiming::Completed {
+            generation_ms: Some(generation_ms)
+        } if generation_ms >= 0
+    ));
+}
+
+#[tokio::test]
+async fn empty_and_metadata_events_do_not_start_ttft_before_answer() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(concat!(
+                    "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":12,\"completion_tokens\":0}}\n\n",
+                    "data: {\"choices\":[{\"delta\":{}}]}\n\n",
+                    "data: {\"choices\":[{\"delta\":{\"content\":\"\"}}]}\n\n",
+                    "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"\"}}]}\n\n",
+                    "data: {\"choices\":[{\"delta\":{\"content\":\"答案\"}}]}\n\n",
+                    "data: {\"choices\":[],\"usage\":{\"completion_tokens\":4}}\n\n",
+                    "data: [DONE]\n\n",
+                )),
+        )
+        .mount(&server)
+        .await;
+
+    let mut events = Vec::new();
+    let mut timings = Vec::new();
+    let answer = stream_text(
+        &see_see_lib::providers::client().unwrap(),
+        &ProviderRequest {
+            protocol: ProviderProtocol::OpenAi,
+            base_url: format!("{}/v1", server.uri()),
+            model_id: "vision-model".into(),
+            reasoning_effort: Some(ReasoningEffort::Low),
+            api_key: None,
+            prompt: "OK".into(),
+            image_png: connection_test_png(),
+            stream: true,
+        },
+        |event| events.push(event),
+        |timing| timings.push(timing),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(answer, "答案");
+    assert_eq!(
+        events,
+        vec![
+            ProviderEvent::Usage {
+                input_tokens: Some(12),
+                output_tokens: Some(0),
+            },
+            ProviderEvent::TextDelta("答案".into()),
+            ProviderEvent::Usage {
+                input_tokens: None,
+                output_tokens: Some(4),
+            },
+            ProviderEvent::Completed,
+        ]
+    );
+    assert_eq!(timings.len(), 2);
+    assert!(matches!(
+        timings[0],
+        StreamTiming::FirstToken { ttft_ms } if ttft_ms >= 0
+    ));
+    assert!(matches!(
+        timings[1],
+        StreamTiming::Completed {
+            generation_ms: Some(generation_ms)
+        } if generation_ms >= 0
+    ));
+}
+
+#[tokio::test]
+async fn stream_failure_after_first_token_keeps_ttft_without_completion_timing() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(concat!(
+                    "data: {\"choices\":[{\"delta\":{\"content\":\"部分结果\"}}]}\n\n",
+                    "data: 不是 JSON\n\n",
+                )),
+        )
+        .mount(&server)
+        .await;
+
+    let mut events = Vec::new();
+    let mut timings = Vec::new();
+    let error = stream_text(
+        &see_see_lib::providers::client().unwrap(),
+        &ProviderRequest {
+            protocol: ProviderProtocol::OpenAi,
+            base_url: format!("{}/v1", server.uri()),
+            model_id: "vision-model".into(),
+            reasoning_effort: Some(ReasoningEffort::Low),
+            api_key: None,
+            prompt: "OK".into(),
+            image_png: connection_test_png(),
+            stream: true,
+        },
+        |event| events.push(event),
+        |timing| timings.push(timing),
+    )
+    .await
+    .unwrap_err();
+
+    assert_eq!(error.code.as_str(), "provider_error");
+    assert_eq!(events, vec![ProviderEvent::TextDelta("部分结果".into())]);
+    assert_eq!(timings.len(), 1);
+    assert!(matches!(
+        timings[0],
+        StreamTiming::FirstToken { ttft_ms } if ttft_ms >= 0
+    ));
 }
 
 #[tokio::test]
@@ -372,6 +501,7 @@ async fn responses_stream_separates_summary_answer_and_usage() {
             stream: true,
         },
         |event| events.push(event),
+        |_| {},
     )
     .await
     .unwrap();
@@ -420,6 +550,7 @@ async fn truncated_stream_keeps_partial_text_without_inventing_usage() {
             stream: true,
         },
         |event| events.push(event),
+        |_| {},
     )
     .await
     .unwrap();
