@@ -26,7 +26,9 @@ function api(overrides: Partial<SettingsApi> = {}): SettingsApi {
       baseUrl: input.baseUrl,
       modelId: input.modelId,
       reasoningEffort:
-        input.protocol === "openai" || input.protocol === "openai-responses"
+        input.protocol === "openai" ||
+        input.protocol === "openai-responses" ||
+        input.protocol === "anthropic"
           ? (input.reasoningEffort ?? "low")
           : null,
       hasApiKey: Boolean(input.apiKey),
@@ -167,6 +169,38 @@ describe("model settings", () => {
     );
   });
 
+  it("supports Anthropic Messages with its official effort options", async () => {
+    const service = api();
+    renderSettings(service);
+    openNewEditor();
+    fillRequiredFields();
+
+    fireEvent.change(screen.getByLabelText("协议"), {
+      target: { value: "anthropic" },
+    });
+
+    const effort = screen.getByLabelText("思考强度") as HTMLSelectElement;
+    expect(effort).toHaveValue("low");
+    expect(Array.from(effort.options).map((option) => option.value)).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+    ]);
+    fireEvent.change(effort, { target: { value: "xhigh" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存配置" }));
+
+    await waitFor(() =>
+      expect(service.saveModelConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          protocol: "anthropic",
+          reasoningEffort: "xhigh",
+        }),
+      ),
+    );
+  });
+
   it("tests the draft directly without saving or activating it", async () => {
     const service = api();
     renderSettings(service);
@@ -226,13 +260,13 @@ describe("model settings", () => {
     expect(screen.queryByLabelText("配置名称")).not.toBeInTheDocument();
   });
 
-  it("hides and omits reasoning effort for non-OpenAI protocols", async () => {
+  it("hides and omits reasoning effort for Gemini", async () => {
     const service = api();
     renderSettings(service);
     openNewEditor();
     fillRequiredFields();
     fireEvent.change(screen.getByLabelText("协议"), {
-      target: { value: "anthropic" },
+      target: { value: "gemini" },
     });
 
     expect(screen.queryByLabelText("思考强度")).not.toBeInTheDocument();
@@ -241,7 +275,7 @@ describe("model settings", () => {
     await waitFor(() =>
       expect(service.saveModelConfig).toHaveBeenCalledWith(
         expect.objectContaining({
-          protocol: "anthropic",
+          protocol: "gemini",
           reasoningEffort: undefined,
         }),
       ),

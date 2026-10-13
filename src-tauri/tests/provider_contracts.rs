@@ -71,10 +71,12 @@ fn provider_requests_match_contracts_without_exposing_keys_in_json() {
         responses.body["input"][0]["content"][1]["type"],
         "input_text"
     );
+    let anthropic = build_http_request(&request(ProviderProtocol::Anthropic)).unwrap();
+    assert_eq!(anthropic.body["output_config"]["effort"], "low");
 }
 
 #[test]
-fn reasoning_effort_is_supported_by_both_openai_protocols_and_ignored_elsewhere() {
+fn reasoning_effort_uses_protocol_specific_request_fields() {
     for (effort, expected) in [
         (ReasoningEffort::None, "none"),
         (ReasoningEffort::Minimal, "minimal"),
@@ -95,6 +97,19 @@ fn reasoning_effort_is_supported_by_both_openai_protocols_and_ignored_elsewhere(
         assert_eq!(prepared.body["reasoning"]["effort"], expected);
     }
 
+    for (effort, expected) in [
+        (ReasoningEffort::Low, "low"),
+        (ReasoningEffort::Medium, "medium"),
+        (ReasoningEffort::High, "high"),
+        (ReasoningEffort::XHigh, "xhigh"),
+        (ReasoningEffort::Max, "max"),
+    ] {
+        let mut anthropic_request = request(ProviderProtocol::Anthropic);
+        anthropic_request.reasoning_effort = Some(effort);
+        let prepared = build_http_request(&anthropic_request).unwrap();
+        assert_eq!(prepared.body["output_config"]["effort"], expected);
+    }
+
     let mut openai = request(ProviderProtocol::OpenAi);
     openai.reasoning_effort = None;
     assert!(
@@ -111,10 +126,14 @@ fn reasoning_effort_is_supported_by_both_openai_protocols_and_ignored_elsewhere(
     assert!(responses.body["reasoning"].get("effort").is_none());
     assert_eq!(responses.body["reasoning"]["summary"], "auto");
 
-    let anthropic = build_http_request(&request(ProviderProtocol::Anthropic)).unwrap();
-    assert!(anthropic.body.get("reasoning_effort").is_none());
     let gemini = build_http_request(&request(ProviderProtocol::Gemini)).unwrap();
     assert!(gemini.body.get("reasoning_effort").is_none());
+
+    for effort in [ReasoningEffort::None, ReasoningEffort::Minimal] {
+        let mut anthropic_request = request(ProviderProtocol::Anthropic);
+        anthropic_request.reasoning_effort = Some(effort);
+        assert!(build_http_request(&anthropic_request).is_err());
+    }
 }
 
 #[test]

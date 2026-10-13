@@ -111,12 +111,13 @@ fn duplicate_preserves_connection_values_and_current_selection() {
 }
 
 #[test]
-fn reasoning_effort_defaults_for_openai_protocols_and_is_ignored_for_other_protocols() {
+fn reasoning_effort_defaults_for_reasoning_protocols_and_is_ignored_for_gemini() {
     let db = Database::open_in_memory().unwrap();
 
     for (protocol, name) in [
         (ProviderProtocol::OpenAi, "默认 Chat 强度"),
         (ProviderProtocol::OpenAiResponses, "默认 Responses 强度"),
+        (ProviderProtocol::Anthropic, "默认 Anthropic 强度"),
     ] {
         let mut default_input = input(name, None);
         default_input.protocol = protocol;
@@ -147,16 +148,29 @@ fn reasoning_effort_defaults_for_openai_protocols_and_is_ignored_for_other_proto
 
     let mut anthropic_input = input("Anthropic 配置", None);
     anthropic_input.protocol = ProviderProtocol::Anthropic;
-    anthropic_input.reasoning_effort = Some(ReasoningEffort::High);
+    anthropic_input.reasoning_effort = Some(ReasoningEffort::XHigh);
     let anthropic = save_model_config(&db, anthropic_input).unwrap();
-    assert_eq!(anthropic.reasoning_effort, None);
+    assert_eq!(anthropic.reasoning_effort, Some(ReasoningEffort::XHigh));
     assert_eq!(
         load_model(&db, &anthropic.id)
             .unwrap()
             .unwrap()
             .reasoning_effort,
-        None
+        Some(ReasoningEffort::XHigh)
     );
+
+    let mut gemini_input = input("Gemini 配置", None);
+    gemini_input.protocol = ProviderProtocol::Gemini;
+    gemini_input.reasoning_effort = Some(ReasoningEffort::High);
+    let gemini = save_model_config(&db, gemini_input).unwrap();
+    assert_eq!(gemini.reasoning_effort, None);
+
+    for effort in [ReasoningEffort::None, ReasoningEffort::Minimal] {
+        let mut invalid_anthropic = input("无效 Anthropic 强度", None);
+        invalid_anthropic.protocol = ProviderProtocol::Anthropic;
+        invalid_anthropic.reasoning_effort = Some(effort);
+        assert!(save_model_config(&db, invalid_anthropic).is_err());
+    }
 }
 
 #[test]

@@ -75,7 +75,22 @@ impl ProviderProtocol {
     }
 
     pub fn supports_reasoning(self) -> bool {
-        matches!(self, Self::OpenAi | Self::OpenAiResponses)
+        matches!(self, Self::OpenAi | Self::OpenAiResponses | Self::Anthropic)
+    }
+
+    pub fn supports_reasoning_effort(self, effort: ReasoningEffort) -> bool {
+        match self {
+            Self::Anthropic => matches!(
+                effort,
+                ReasoningEffort::Low
+                    | ReasoningEffort::Medium
+                    | ReasoningEffort::High
+                    | ReasoningEffort::XHigh
+                    | ReasoningEffort::Max
+            ),
+            Self::OpenAi | Self::OpenAiResponses => true,
+            Self::Gemini => false,
+        }
     }
 }
 

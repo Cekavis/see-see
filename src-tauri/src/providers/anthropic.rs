@@ -1,6 +1,6 @@
 use super::{
-    PreparedRequest, ProviderEvent, ProviderRequest, endpoint, image_data, secret_header,
-    token_count, usage_event,
+    PreparedRequest, ProviderEvent, ProviderProtocol, ProviderRequest, endpoint, image_data,
+    secret_header, token_count, usage_event,
 };
 use crate::error::{AppError, ErrorCode};
 use reqwest::Method;
@@ -14,22 +14,29 @@ pub fn prepare(request: &ProviderRequest) -> Result<PreparedRequest, AppError> {
     if let Some(key) = secret_header(request) {
         headers.insert("x-api-key".into(), key);
     }
+    let mut body = json!({
+        "model": request.model_id,
+        "max_tokens": 8192,
+        "stream": request.stream,
+        "messages": [{
+            "role": "user",
+            "content": [
+                {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": image_data(request)}},
+                {"type": "text", "text": request.prompt}
+            ]
+        }]
+    });
+    if let Some(effort) = request.reasoning_effort {
+        if !ProviderProtocol::Anthropic.supports_reasoning_effort(effort) {
+            return Err(AppError::invalid("Anthropic Messages 不支持该思考强度"));
+        }
+        body["output_config"] = json!({"effort": effort.as_str()});
+    }
     Ok(PreparedRequest {
         method: Method::POST,
         url: endpoint(&request.base_url, "messages")?,
         headers,
-        body: json!({
-            "model": request.model_id,
-            "max_tokens": 8192,
-            "stream": request.stream,
-            "messages": [{
-                "role": "user",
-                "content": [
-                    {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": image_data(request)}},
-                    {"type": "text", "text": request.prompt}
-                ]
-            }]
-        }),
+        body,
     })
 }
 

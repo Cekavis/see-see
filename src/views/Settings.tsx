@@ -42,8 +42,34 @@ const protocolLabels: Record<ModelProtocol, string> = {
   gemini: "Gemini GenerateContent",
 };
 
+const reasoningEffortOptions: Record<
+  ModelProtocol,
+  readonly ReasoningEffort[]
+> = {
+  openai: ["none", "minimal", "low", "medium", "high", "xhigh", "max"],
+  "openai-responses": [
+    "none",
+    "minimal",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max",
+  ],
+  anthropic: ["low", "medium", "high", "xhigh", "max"],
+  gemini: [],
+};
+
 function supportsReasoning(protocol: ModelProtocol) {
-  return protocol === "openai" || protocol === "openai-responses";
+  return reasoningEffortOptions[protocol].length > 0;
+}
+
+function normalizedReasoningEffort(
+  protocol: ModelProtocol,
+  value: ReasoningEffort | undefined,
+) {
+  const options = reasoningEffortOptions[protocol];
+  return options.includes(value as ReasoningEffort) ? value : options[0];
 }
 
 const emptyForm = (): ModelConfigInput => ({
@@ -97,7 +123,7 @@ export function Settings({ api = ipc }: { api?: SettingsApi }) {
           baseUrl: form.baseUrl,
           modelId: form.modelId,
           reasoningEffort: supportsReasoning(form.protocol)
-            ? (form.reasoningEffort ?? "low")
+            ? normalizedReasoningEffort(form.protocol, form.reasoningEffort)
             : undefined,
           apiKey: form.apiKey || undefined,
         }
@@ -168,7 +194,10 @@ export function Settings({ api = ipc }: { api?: SettingsApi }) {
                         protocol: config.protocol,
                         baseUrl: config.baseUrl,
                         modelId: config.modelId,
-                        reasoningEffort: config.reasoningEffort ?? undefined,
+                        reasoningEffort: normalizedReasoningEffort(
+                          config.protocol,
+                          config.reasoningEffort ?? undefined,
+                        ),
                         apiKey: "",
                         clearApiKey: false,
                       });
@@ -261,9 +290,10 @@ export function Settings({ api = ipc }: { api?: SettingsApi }) {
                           ...current,
                           protocol,
                           baseUrl: endpoints[protocol],
-                          reasoningEffort: supportsReasoning(protocol)
-                            ? (current.reasoningEffort ?? "low")
-                            : undefined,
+                          reasoningEffort: normalizedReasoningEffort(
+                            protocol,
+                            current.reasoningEffort,
+                          ),
                         }
                       : current,
                   );
@@ -313,11 +343,16 @@ export function Settings({ api = ipc }: { api?: SettingsApi }) {
               <Field
                 label="思考强度"
                 htmlFor="model-reasoning-effort"
-                hint="仅 OpenAI 协议生效；具体模型或端点不支持所选档位时请求会失败。"
+                hint="具体模型或端点不支持所选档位时请求会失败。"
               >
                 <select
                   id="model-reasoning-effort"
-                  value={form.reasoningEffort ?? "low"}
+                  value={
+                    normalizedReasoningEffort(
+                      form.protocol,
+                      form.reasoningEffort,
+                    ) ?? "low"
+                  }
                   onChange={(event) =>
                     update(
                       "reasoningEffort",
@@ -325,13 +360,11 @@ export function Settings({ api = ipc }: { api?: SettingsApi }) {
                     )
                   }
                 >
-                  <option value="none">none</option>
-                  <option value="minimal">minimal</option>
-                  <option value="low">low</option>
-                  <option value="medium">medium</option>
-                  <option value="high">high</option>
-                  <option value="xhigh">xhigh</option>
-                  <option value="max">max</option>
+                  {reasoningEffortOptions[form.protocol].map((effort) => (
+                    <option key={effort} value={effort}>
+                      {effort}
+                    </option>
+                  ))}
                 </select>
               </Field>
             )}

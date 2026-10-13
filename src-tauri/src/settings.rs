@@ -187,7 +187,11 @@ fn model_reasoning_effort(
     if !protocol.supports_reasoning() {
         return Ok(None);
     }
-    Ok(parse_reasoning_effort(value.as_deref())?.or(Some(ReasoningEffort::Low)))
+    let effort = parse_reasoning_effort(value.as_deref())?.unwrap_or_default();
+    if !protocol.supports_reasoning_effort(effort) {
+        return Err(AppError::storage("模型配置中的思考强度不适用于当前协议"));
+    }
+    Ok(Some(effort))
 }
 
 pub fn load_app_snapshot(database: &Database) -> Result<AppSnapshot, AppError> {
@@ -1301,10 +1305,15 @@ fn validate_model_input(input: &mut ModelConfigInput) -> Result<(), AppError> {
     input.name = input.name.trim().to_owned();
     input.base_url = input.base_url.trim().trim_end_matches('/').to_owned();
     input.model_id = input.model_id.trim().to_owned();
-    input.reasoning_effort = input
-        .protocol
-        .supports_reasoning()
-        .then_some(input.reasoning_effort.unwrap_or_default());
+    input.reasoning_effort = if input.protocol.supports_reasoning() {
+        let effort = input.reasoning_effort.unwrap_or_default();
+        if !input.protocol.supports_reasoning_effort(effort) {
+            return Err(AppError::invalid("当前协议不支持该思考强度"));
+        }
+        Some(effort)
+    } else {
+        None
+    };
     if input.api_key.is_some() && input.clear_api_key {
         return Err(AppError::invalid("API Key 与清除选项不能同时提交"));
     }
