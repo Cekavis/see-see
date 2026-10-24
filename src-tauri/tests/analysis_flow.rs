@@ -292,6 +292,8 @@ fn retry_uses_the_original_request_snapshot_after_configuration_changes() {
             protocol: ProviderProtocol::Anthropic,
             base_url: "https://original.example/v1".into(),
             model_id: "vision-original".into(),
+            project_id: None,
+            location: None,
             reasoning_effort: None,
         },
         api_key: Some(SecretString::from("original-secret")),
@@ -339,6 +341,8 @@ fn model_retry_source_input(save_history: bool) -> AnalysisInput {
             protocol: ProviderProtocol::Anthropic,
             base_url: "https://original.example/v1".into(),
             model_id: "vision-original".into(),
+            project_id: None,
+            location: None,
             reasoning_effort: None,
         },
         api_key: Some(SecretString::from("source-test-key")),
@@ -354,6 +358,8 @@ fn selected_retry_model() -> ModelSnapshot {
         protocol: ProviderProtocol::OpenAiResponses,
         base_url: "https://selected.example/v1".into(),
         model_id: "vision-selected".into(),
+        project_id: None,
+        location: None,
         reasoning_effort: Some(ReasoningEffort::High),
     }
 }

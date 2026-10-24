@@ -2,7 +2,7 @@ use crate::{
     credentials::CredentialStore,
     database::Database,
     error::{AppError, ErrorCode},
-    providers::{ProviderProtocol, ReasoningEffort, validate_endpoint},
+    providers::{self, ProviderProtocol, ReasoningEffort, validate_endpoint},
     state::ResultWindowDimensions,
 };
 use rusqlite::OptionalExtension;
@@ -78,11 +78,19 @@ pub struct SyncModelConfig {
     pub protocol: ProviderProtocol,
     pub base_url: String,
     pub model_id: String,
+    #[serde(default)]
+    pub project_id: Option<String>,
+    #[serde(default = "default_vertex_location")]
+    pub location: Option<String>,
     pub reasoning_effort: Option<ReasoningEffort>,
     // Missing API keys must not silently retain or clear another device's credentials.
     // An explicit JSON null clears the local key; a string replaces it verbatim.
     #[serde(deserialize_with = "deserialize_required_api_key")]
     pub api_key: Option<String>,
+}
+
+fn default_vertex_location() -> Option<String> {
+    Some("global".into())
 }
 
 fn deserialize_required_api_key<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
@@ -126,6 +134,8 @@ pub struct ModelSnapshot {
     pub protocol: ProviderProtocol,
     pub base_url: String,
     pub model_id: String,
+    pub project_id: Option<String>,
+    pub location: Option<String>,
     pub reasoning_effort: Option<ReasoningEffort>,
 }
 
@@ -137,6 +147,10 @@ pub struct ModelConfigInput {
     pub protocol: ProviderProtocol,
     pub base_url: String,
     pub model_id: String,
+    #[serde(default)]
+    pub project_id: Option<String>,
+    #[serde(default = "default_vertex_location")]
+    pub location: Option<String>,
     pub api_key: Option<String>,
     #[serde(default)]
     pub reasoning_effort: Option<ReasoningEffort>,
@@ -152,6 +166,8 @@ pub struct ModelConfigSummary {
     pub protocol: ProviderProtocol,
     pub base_url: String,
     pub model_id: String,
+    pub project_id: Option<String>,
+    pub location: Option<String>,
     pub reasoning_effort: Option<ReasoningEffort>,
     pub has_api_key: bool,
     pub is_active: bool,
@@ -162,6 +178,8 @@ struct StoredModel {
     protocol: String,
     base_url: String,
     model_id: String,
+    project_id: Option<String>,
+    location: Option<String>,
     reasoning_effort: Option<ReasoningEffort>,
     api_key: Option<String>,
 }
@@ -323,7 +341,8 @@ pub fn export_configuration_snapshot(database: &Database) -> Result<ConfigSyncSn
             |row| row.get::<_, Option<String>>(0),
         )?;
         let mut models = connection.prepare(
-            "SELECT id, name, protocol, base_url, model_id, reasoning_effort, api_key
+            "SELECT id, name, protocol, base_url, model_id, project_id, location,
+                    reasoning_effort, api_key
              FROM model_configs ORDER BY name COLLATE NOCASE, id",
         )?;
         let model_rows = models
@@ -336,6 +355,8 @@ pub fn export_configuration_snapshot(database: &Database) -> Result<ConfigSyncSn
                     row.get::<_, String>(4)?,
                     row.get::<_, Option<String>>(5)?,
                     row.get::<_, Option<String>>(6)?,
+                    row.get::<_, Option<String>>(7)?,
+                    row.get::<_, Option<String>>(8)?,
                 ))
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -357,14 +378,36 @@ pub fn export_configuration_snapshot(database: &Database) -> Result<ConfigSyncSn
     let models = model_rows
         .into_iter()
         .map(
-            |(id, name, raw_protocol, base_url, model_id, raw_reasoning_effort, api_key)| {
+            |(
+                id,
+                name,
+                raw_protocol,
+                base_url,
+                model_id,
+                project_id,
+                location,
+                raw_reasoning_effort,
+                api_key,
+            )| {
                 let protocol = ProviderProtocol::try_from(raw_protocol.as_str())?;
+                let base_url = protocol
+                    .default_base_url()
+                    .unwrap_or(base_url.as_str())
+                    .to_owned();
+                let project_id = (protocol == ProviderProtocol::VertexAi)
+                    .then_some(project_id)
+                    .flatten();
+                let location = (protocol == ProviderProtocol::VertexAi)
+                    .then_some(location)
+                    .flatten();
                 Ok(SyncModelConfig {
                     id,
                     name,
                     protocol,
                     base_url,
                     model_id,
+                    project_id,
+                    location,
                     reasoning_effort: model_reasoning_effort(protocol, raw_reasoning_effort)?,
                     api_key,
                 })
@@ -411,11 +454,27 @@ pub fn validate_configuration_snapshot(snapshot: &ConfigSyncSnapshot) -> Result<
         {
             return Err(AppError::invalid("WebDAV 配置文件中的模型 ID 无效"));
         }
-        if model.base_url.trim() != model.base_url || model.base_url.len() > 2_000 {
-            return Err(AppError::invalid("WebDAV 配置文件中的模型端点无效"));
+        if model.protocol.default_base_url().is_none() {
+            if model.base_url.trim() != model.base_url || model.base_url.len() > 2_000 {
+                return Err(AppError::invalid("WebDAV 配置文件中的模型端点无效"));
+            }
+            validate_endpoint(&model.base_url)?;
         }
-        validate_endpoint(&model.base_url)?;
-        if !model.protocol.supports_reasoning() && model.reasoning_effort.is_some() {
+        if model.protocol == ProviderProtocol::VertexAi {
+            providers::vertex_ai::validate_model_id(&model.model_id)?;
+            providers::vertex_ai::validate_project_id(
+                model.project_id.as_deref().unwrap_or_default(),
+            )?;
+            providers::vertex_ai::validate_location(model.location.as_deref().unwrap_or("global"))?;
+            let effort = model
+                .reasoning_effort
+                .ok_or_else(|| AppError::invalid("WebDAV 配置文件中的 Vertex AI 思考强度无效"))?;
+            if !model.protocol.supports_reasoning_effort(effort) {
+                return Err(AppError::invalid(
+                    "WebDAV 配置文件中的 Vertex AI 思考强度无效",
+                ));
+            }
+        } else if !model.protocol.supports_reasoning() && model.reasoning_effort.is_some() {
             return Err(AppError::invalid("WebDAV 配置文件中的思考强度无效"));
         }
         if model
@@ -585,16 +644,29 @@ pub fn apply_configuration_snapshot(
         }
 
         for (model, target) in snapshot.models.iter().zip(&model_targets) {
+            let project_id = (model.protocol == ProviderProtocol::VertexAi)
+                .then_some(model.project_id.clone())
+                .flatten();
+            let location = (model.protocol == ProviderProtocol::VertexAi)
+                .then_some(model.location.clone())
+                .flatten();
+            let base_url = model
+                .protocol
+                .default_base_url()
+                .unwrap_or(model.base_url.as_str());
             transaction.execute(
                 "INSERT INTO model_configs (
-                    id, name, protocol, base_url, model_id, reasoning_effort, api_key,
+                    id, name, protocol, base_url, model_id, project_id, location,
+                    reasoning_effort, api_key,
                     credential_ref, test_status, tested_at, test_error_code, created_at, updated_at
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, 'untested', NULL, NULL, ?8, ?8)
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, NULL, 'untested', NULL, NULL, ?10, ?10)
                  ON CONFLICT(id) DO UPDATE SET
                     name = excluded.name,
                     protocol = excluded.protocol,
                     base_url = excluded.base_url,
                     model_id = excluded.model_id,
+                    project_id = excluded.project_id,
+                    location = excluded.location,
                     reasoning_effort = excluded.reasoning_effort,
                     api_key = excluded.api_key,
                     credential_ref = NULL,
@@ -604,8 +676,10 @@ pub fn apply_configuration_snapshot(
                     target.id,
                     model.name,
                     model.protocol.as_str(),
-                    model.base_url,
+                    base_url,
                     model.model_id,
+                    project_id,
+                    location,
                     model.reasoning_effort.map(|value| value.as_str()),
                     model.api_key,
                     now,
@@ -940,7 +1014,8 @@ pub fn load_active_model(database: &Database) -> Result<Option<ModelSnapshot>, A
     let row = database.read(|connection| {
         connection
             .query_row(
-                "SELECT m.id, m.name, m.protocol, m.base_url, m.model_id, m.reasoning_effort
+                "SELECT m.id, m.name, m.protocol, m.base_url, m.model_id,
+                        m.project_id, m.location, m.reasoning_effort
                  FROM app_settings s JOIN model_configs m ON m.id = s.active_model_config_id
                  WHERE s.id = 1",
                 [],
@@ -952,20 +1027,28 @@ pub fn load_active_model(database: &Database) -> Result<Option<ModelSnapshot>, A
                         row.get::<_, String>(3)?,
                         row.get::<_, String>(4)?,
                         row.get::<_, Option<String>>(5)?,
+                        row.get::<_, Option<String>>(6)?,
+                        row.get::<_, Option<String>>(7)?,
                     ))
                 },
             )
             .optional()
     })?;
     row.map(
-        |(id, name, protocol, base_url, model_id, reasoning_effort)| {
+        |(id, name, protocol, base_url, model_id, project_id, location, reasoning_effort)| {
             let protocol = ProviderProtocol::try_from(protocol.as_str())?;
+            let base_url = protocol
+                .default_base_url()
+                .unwrap_or(base_url.as_str())
+                .to_owned();
             Ok(ModelSnapshot {
                 id,
                 name,
                 protocol,
                 base_url,
                 model_id,
+                project_id,
+                location,
                 reasoning_effort: model_reasoning_effort(protocol, reasoning_effort)?,
             })
         },
@@ -981,7 +1064,8 @@ pub fn list_model_configs(database: &Database) -> Result<Vec<ModelConfigSummary>
             |row| row.get(0),
         )?;
         let mut statement = connection.prepare(
-            "SELECT id, name, protocol, base_url, model_id, reasoning_effort, api_key IS NOT NULL
+            "SELECT id, name, protocol, base_url, model_id, project_id, location,
+                    reasoning_effort, api_key IS NOT NULL
              FROM model_configs ORDER BY name COLLATE NOCASE, id",
         )?;
         let rows = statement.query_map([], |row| {
@@ -992,7 +1076,9 @@ pub fn list_model_configs(database: &Database) -> Result<Vec<ModelConfigSummary>
                 row.get::<_, String>(3)?,
                 row.get::<_, String>(4)?,
                 row.get::<_, Option<String>>(5)?,
-                row.get::<_, bool>(6)?,
+                row.get::<_, Option<String>>(6)?,
+                row.get::<_, Option<String>>(7)?,
+                row.get::<_, bool>(8)?,
             ))
         })?;
         rows.collect::<Result<Vec<_>, _>>()
@@ -1000,8 +1086,22 @@ pub fn list_model_configs(database: &Database) -> Result<Vec<ModelConfigSummary>
     })?;
     rows.into_iter()
         .map(
-            |(id, name, protocol, base_url, model_id, raw_reasoning_effort, has_api_key)| {
+            |(
+                id,
+                name,
+                protocol,
+                base_url,
+                model_id,
+                project_id,
+                location,
+                raw_reasoning_effort,
+                has_api_key,
+            )| {
                 let protocol = ProviderProtocol::try_from(protocol.as_str())?;
+                let base_url = protocol
+                    .default_base_url()
+                    .unwrap_or(base_url.as_str())
+                    .to_owned();
                 Ok(ModelConfigSummary {
                     is_active: active.as_deref() == Some(id.as_str()),
                     id,
@@ -1009,6 +1109,8 @@ pub fn list_model_configs(database: &Database) -> Result<Vec<ModelConfigSummary>
                     protocol,
                     base_url,
                     model_id,
+                    project_id,
+                    location,
                     reasoning_effort: model_reasoning_effort(protocol, raw_reasoning_effort)?,
                     has_api_key,
                 })
@@ -1050,14 +1152,17 @@ pub fn save_model_config(
     database.transaction(|transaction| {
         transaction.execute(
             "INSERT INTO model_configs (
-                id, name, protocol, base_url, model_id, reasoning_effort, api_key, credential_ref,
-                test_status, tested_at, test_error_code, created_at, updated_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, 'untested', NULL, NULL, ?8, ?8)
+                id, name, protocol, base_url, model_id, project_id, location,
+                reasoning_effort, api_key, credential_ref, test_status, tested_at,
+                test_error_code, created_at, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, NULL, 'untested', NULL, NULL, ?10, ?10)
              ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 protocol = excluded.protocol,
                 base_url = excluded.base_url,
                 model_id = excluded.model_id,
+                project_id = excluded.project_id,
+                location = excluded.location,
                 reasoning_effort = excluded.reasoning_effort,
                 api_key = excluded.api_key,
                 credential_ref = NULL,
@@ -1071,6 +1176,8 @@ pub fn save_model_config(
                 input.protocol.as_str(),
                 input.base_url,
                 input.model_id,
+                input.project_id,
+                input.location,
                 input.reasoning_effort.map(|effort| effort.as_str()),
                 api_key,
                 now,
@@ -1145,6 +1252,8 @@ pub fn duplicate_model_config(
                 protocol: ProviderProtocol::try_from(original.protocol.as_str())?,
                 base_url: original.base_url,
                 model_id: original.model_id,
+                project_id: original.project_id,
+                location: original.location,
                 api_key: original.api_key,
                 reasoning_effort: original.reasoning_effort,
                 clear_api_key: false,
@@ -1218,7 +1327,8 @@ fn load_stored_model(database: &Database, id: &str) -> Result<Option<StoredModel
     let row = database.read(|connection| {
         connection
             .query_row(
-                "SELECT name, protocol, base_url, model_id, reasoning_effort, api_key
+                "SELECT name, protocol, base_url, model_id, project_id, location,
+                        reasoning_effort, api_key
                  FROM model_configs WHERE id = ?1",
                 [id],
                 |row| {
@@ -1229,19 +1339,36 @@ fn load_stored_model(database: &Database, id: &str) -> Result<Option<StoredModel
                         row.get::<_, String>(3)?,
                         row.get::<_, Option<String>>(4)?,
                         row.get::<_, Option<String>>(5)?,
+                        row.get::<_, Option<String>>(6)?,
+                        row.get::<_, Option<String>>(7)?,
                     ))
                 },
             )
             .optional()
     })?;
     row.map(
-        |(name, protocol, base_url, model_id, raw_reasoning_effort, api_key)| {
+        |(
+            name,
+            protocol,
+            base_url,
+            model_id,
+            project_id,
+            location,
+            raw_reasoning_effort,
+            api_key,
+        )| {
             let parsed_protocol = ProviderProtocol::try_from(protocol.as_str())?;
+            let base_url = parsed_protocol
+                .default_base_url()
+                .unwrap_or(base_url.as_str())
+                .to_owned();
             Ok(StoredModel {
                 name,
                 protocol,
                 base_url,
                 model_id,
+                project_id,
+                location,
                 reasoning_effort: model_reasoning_effort(parsed_protocol, raw_reasoning_effort)?,
                 api_key,
             })
@@ -1254,7 +1381,8 @@ pub fn load_model(database: &Database, id: &str) -> Result<Option<ModelSnapshot>
     let row = database.read(|connection| {
         connection
             .query_row(
-                "SELECT id, name, protocol, base_url, model_id, reasoning_effort
+                "SELECT id, name, protocol, base_url, model_id, project_id, location,
+                        reasoning_effort
                  FROM model_configs WHERE id = ?1",
                 [id],
                 |row| {
@@ -1265,20 +1393,28 @@ pub fn load_model(database: &Database, id: &str) -> Result<Option<ModelSnapshot>
                         row.get::<_, String>(3)?,
                         row.get::<_, String>(4)?,
                         row.get::<_, Option<String>>(5)?,
+                        row.get::<_, Option<String>>(6)?,
+                        row.get::<_, Option<String>>(7)?,
                     ))
                 },
             )
             .optional()
     })?;
     row.map(
-        |(id, name, protocol, base_url, model_id, raw_reasoning_effort)| {
+        |(id, name, protocol, base_url, model_id, project_id, location, raw_reasoning_effort)| {
             let protocol = ProviderProtocol::try_from(protocol.as_str())?;
+            let base_url = protocol
+                .default_base_url()
+                .unwrap_or(base_url.as_str())
+                .to_owned();
             Ok(ModelSnapshot {
                 id,
                 name,
                 protocol,
                 base_url,
                 model_id,
+                project_id,
+                location,
                 reasoning_effort: model_reasoning_effort(protocol, raw_reasoning_effort)?,
             })
         },
@@ -1305,6 +1441,19 @@ fn validate_model_input(input: &mut ModelConfigInput) -> Result<(), AppError> {
     input.name = input.name.trim().to_owned();
     input.base_url = input.base_url.trim().trim_end_matches('/').to_owned();
     input.model_id = input.model_id.trim().to_owned();
+    input.project_id = input
+        .project_id
+        .take()
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty());
+    input.location = input
+        .location
+        .take()
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty());
+    if let Some(base_url) = input.protocol.default_base_url() {
+        input.base_url = base_url.to_owned();
+    }
     input.reasoning_effort = if input.protocol.supports_reasoning() {
         let effort = input.reasoning_effort.unwrap_or_default();
         if !input.protocol.supports_reasoning_effort(effort) {
@@ -1323,6 +1472,16 @@ fn validate_model_input(input: &mut ModelConfigInput) -> Result<(), AppError> {
     if !(1..=200).contains(&input.model_id.chars().count()) {
         return Err(AppError::invalid("模型 ID 需为 1 到 200 个字符"));
     }
-    validate_endpoint(&input.base_url)?;
+    if input.protocol == ProviderProtocol::VertexAi {
+        providers::vertex_ai::validate_model_id(&input.model_id)?;
+        providers::vertex_ai::validate_project_id(input.project_id.as_deref().unwrap_or_default())?;
+        let location = input.location.as_deref().unwrap_or("global");
+        providers::vertex_ai::validate_location(location)?;
+        input.location = Some(location.to_owned());
+    } else {
+        input.project_id = None;
+        input.location = None;
+        validate_endpoint(&input.base_url)?;
+    }
     Ok(())
 }

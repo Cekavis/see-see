@@ -27,6 +27,7 @@ fn provider_protocol_json_matches_the_ipc_contract() {
         (ProviderProtocol::OpenAiResponses, "\"openai-responses\""),
         (ProviderProtocol::Anthropic, "\"anthropic\""),
         (ProviderProtocol::Gemini, "\"gemini\""),
+        (ProviderProtocol::VertexAi, "\"vertex-ai\""),
     ] {
         assert_eq!(serde_json::to_string(&protocol).unwrap(), json);
         assert_eq!(

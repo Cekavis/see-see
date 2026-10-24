@@ -116,7 +116,7 @@ export type AnalysisEvent =
   | { type: "cancelled"; runId: string };
 
 export type ModelProtocol =
-  "openai" | "openai-responses" | "anthropic" | "gemini";
+  "openai" | "openai-responses" | "anthropic" | "gemini" | "vertex-ai";
 export type ReasoningEffort =
   "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
@@ -126,6 +126,8 @@ export type ModelConfigInput = {
   protocol: ModelProtocol;
   baseUrl: string;
   modelId: string;
+  projectId?: string;
+  location?: string;
   reasoningEffort?: ReasoningEffort;
   apiKey?: string;
   clearApiKey?: boolean;
@@ -137,6 +139,8 @@ export type ModelConfigSummary = {
   protocol: ModelProtocol;
   baseUrl: string;
   modelId: string;
+  projectId?: string | null;
+  location?: string | null;
   reasoningEffort: ReasoningEffort | null;
   hasApiKey: boolean;
   isActive: boolean;
@@ -147,6 +151,8 @@ export type ModelConnectionInput = {
   protocol: ModelProtocol;
   baseUrl: string;
   modelId: string;
+  projectId?: string;
+  location?: string;
   reasoningEffort?: ReasoningEffort;
   apiKey?: string;
 };

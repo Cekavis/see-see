@@ -17,9 +17,17 @@ fn request(protocol: ProviderProtocol) -> ProviderRequest {
             ProviderProtocol::OpenAiResponses => "https://api.openai.com/v1",
             ProviderProtocol::Anthropic => "https://api.anthropic.com/v1",
             ProviderProtocol::Gemini => "https://generativelanguage.googleapis.com/v1beta",
+            ProviderProtocol::VertexAi => "https://aiplatform.googleapis.com/v1",
         }
         .into(),
-        model_id: "vision-model".into(),
+        model_id: if protocol == ProviderProtocol::VertexAi {
+            "gemini-3-flash-preview"
+        } else {
+            "vision-model"
+        }
+        .into(),
+        project_id: (protocol == ProviderProtocol::VertexAi).then(|| "test-project".into()),
+        location: (protocol == ProviderProtocol::VertexAi).then(|| "global".into()),
         reasoning_effort: Some(ReasoningEffort::Low),
         api_key: Some(SecretString::from("test-key")),
         prompt: "解释图片".into(),
@@ -35,10 +43,16 @@ fn provider_requests_match_contracts_without_exposing_keys_in_json() {
         ProviderProtocol::OpenAiResponses,
         ProviderProtocol::Anthropic,
         ProviderProtocol::Gemini,
+        ProviderProtocol::VertexAi,
     ] {
         let prepared = build_http_request(&request(protocol)).unwrap();
         let body = prepared.body.to_string();
-        assert!(body.contains("vision-model") || prepared.url.contains("vision-model"));
+        assert!(
+            body.contains("vision-model")
+                || body.contains("gemini-3-flash-preview")
+                || prepared.url.contains("vision-model")
+                || prepared.url.contains("gemini-3-flash-preview")
+        );
         assert!(body.contains("解释图片"));
         assert!(!body.contains("test-key"));
         assert!(
@@ -54,6 +68,25 @@ fn provider_requests_match_contracts_without_exposing_keys_in_json() {
         gemini.body["generationConfig"]["thinkingConfig"]["includeThoughts"],
         true
     );
+    let vertex = build_http_request(&request(ProviderProtocol::VertexAi)).unwrap();
+    assert_eq!(
+        vertex.url,
+        "https://aiplatform.googleapis.com/v1/projects/test-project/locations/global/publishers/google/models/gemini-3-flash-preview:streamGenerateContent?alt=sse"
+    );
+    assert_eq!(
+        vertex.body["generationConfig"]["thinkingConfig"]["thinkingLevel"],
+        "LOW"
+    );
+    assert_eq!(
+        vertex.headers.get("x-goog-api-key").map(String::as_str),
+        Some("test-key")
+    );
+    assert_eq!(
+        vertex.body["contents"][0]["parts"][0]["inlineData"]["mimeType"],
+        "image/png"
+    );
+    assert_eq!(vertex.body["contents"][0]["parts"][1]["text"], "解释图片");
+    assert!(!vertex.body.to_string().contains("test-key"));
     let openai = build_http_request(&request(ProviderProtocol::OpenAi)).unwrap();
     assert_eq!(openai.body["stream_options"]["include_usage"], true);
     assert_eq!(openai.body["reasoning_effort"], "low");
@@ -129,11 +162,83 @@ fn reasoning_effort_uses_protocol_specific_request_fields() {
     let gemini = build_http_request(&request(ProviderProtocol::Gemini)).unwrap();
     assert!(gemini.body.get("reasoning_effort").is_none());
 
+    for (effort, expected) in [
+        (ReasoningEffort::Low, "LOW"),
+        (ReasoningEffort::Medium, "MEDIUM"),
+        (ReasoningEffort::High, "HIGH"),
+    ] {
+        let mut vertex_request = request(ProviderProtocol::VertexAi);
+        vertex_request.reasoning_effort = Some(effort);
+        let prepared = build_http_request(&vertex_request).unwrap();
+        assert_eq!(
+            prepared.body["generationConfig"]["thinkingConfig"]["thinkingLevel"],
+            expected
+        );
+    }
+    for effort in [
+        ReasoningEffort::None,
+        ReasoningEffort::Minimal,
+        ReasoningEffort::XHigh,
+        ReasoningEffort::Max,
+    ] {
+        let mut vertex_request = request(ProviderProtocol::VertexAi);
+        vertex_request.reasoning_effort = Some(effort);
+        assert!(build_http_request(&vertex_request).is_err());
+    }
+    let mut vertex_without_effort = request(ProviderProtocol::VertexAi);
+    vertex_without_effort.reasoning_effort = None;
+    assert!(build_http_request(&vertex_without_effort).is_err());
+
+    let mut vertex_with_old_model = request(ProviderProtocol::VertexAi);
+    vertex_with_old_model.model_id = "gemini-2.5-flash".into();
+    assert!(build_http_request(&vertex_with_old_model).is_err());
+    let mut vertex_with_path_model = request(ProviderProtocol::VertexAi);
+    vertex_with_path_model.model_id = "gemini-3/evil".into();
+    assert!(build_http_request(&vertex_with_path_model).is_err());
+    let mut vertex_with_custom_endpoint = request(ProviderProtocol::VertexAi);
+    vertex_with_custom_endpoint.base_url = "https://example.com/v1".into();
+    assert!(build_http_request(&vertex_with_custom_endpoint).is_err());
+
     for effort in [ReasoningEffort::None, ReasoningEffort::Minimal] {
         let mut anthropic_request = request(ProviderProtocol::Anthropic);
         anthropic_request.reasoning_effort = Some(effort);
         assert!(build_http_request(&anthropic_request).is_err());
     }
+}
+
+#[test]
+fn vertex_standard_requests_require_valid_project_and_location() {
+    let mut missing_project = request(ProviderProtocol::VertexAi);
+    missing_project.project_id = None;
+    assert!(build_http_request(&missing_project).is_err());
+
+    let mut missing_location = request(ProviderProtocol::VertexAi);
+    missing_location.location = None;
+    assert!(build_http_request(&missing_location).is_err());
+
+    let mut invalid_project = request(ProviderProtocol::VertexAi);
+    invalid_project.project_id = Some("project/with-slash".into());
+    assert!(build_http_request(&invalid_project).is_err());
+
+    let mut invalid_location = request(ProviderProtocol::VertexAi);
+    invalid_location.location = Some("us/central1".into());
+    assert!(build_http_request(&invalid_location).is_err());
+
+    let mut non_streaming = request(ProviderProtocol::VertexAi);
+    non_streaming.stream = false;
+    let prepared = build_http_request(&non_streaming).unwrap();
+    assert_eq!(
+        prepared.url,
+        "https://aiplatform.googleapis.com/v1/projects/test-project/locations/global/publishers/google/models/gemini-3-flash-preview:generateContent"
+    );
+
+    let mut regional_request = request(ProviderProtocol::VertexAi);
+    regional_request.location = Some("us-central1".into());
+    let regional = build_http_request(&regional_request).unwrap();
+    assert_eq!(
+        regional.url,
+        "https://us-central1-aiplatform.googleapis.com/v1/projects/test-project/locations/us-central1/publishers/google/models/gemini-3-flash-preview:streamGenerateContent?alt=sse"
+    );
 }
 
 #[test]
@@ -169,6 +274,14 @@ fn stream_events_are_normalized_to_text_deltas() {
     )
     .unwrap();
     assert_eq!(gemini, vec![ProviderEvent::TextDelta("旅行".into())]);
+
+    let vertex = parse_stream_event(
+        ProviderProtocol::VertexAi,
+        None,
+        r#"{"candidates":[{"content":{"parts":[{"text":"旅行"}]}}]}"#,
+    )
+    .unwrap();
+    assert_eq!(vertex, vec![ProviderEvent::TextDelta("旅行".into())]);
 }
 
 #[test]
@@ -212,6 +325,20 @@ fn provider_thinking_events_are_normalized_separately() {
     .unwrap();
     assert_eq!(
         gemini,
+        vec![
+            ProviderEvent::ThinkingDelta("分析".into()),
+            ProviderEvent::TextDelta("答案".into()),
+        ]
+    );
+
+    let vertex = parse_stream_event(
+        ProviderProtocol::VertexAi,
+        None,
+        r#"{"candidates":[{"content":{"parts":[{"thought":true,"text":"分析"},{"text":"答案"}]}}]}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        vertex,
         vec![
             ProviderEvent::ThinkingDelta("分析".into()),
             ProviderEvent::TextDelta("答案".into()),
@@ -308,6 +435,20 @@ fn provider_usage_events_are_normalized_separately() {
             output_tokens: Some(30),
         }]
     );
+
+    let vertex = parse_stream_event(
+        ProviderProtocol::VertexAi,
+        None,
+        r#"{"usageMetadata":{"promptTokenCount":11,"candidatesTokenCount":20,"thoughtsTokenCount":10}}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        vertex,
+        vec![ProviderEvent::Usage {
+            input_tokens: Some(11),
+            output_tokens: Some(30),
+        }]
+    );
 }
 
 #[tokio::test]
@@ -337,6 +478,8 @@ async fn leading_think_tags_are_split_across_stream_chunks() {
             protocol: ProviderProtocol::OpenAi,
             base_url: format!("{}/v1", server.uri()),
             model_id: "vision-model".into(),
+            project_id: None,
+            location: None,
             reasoning_effort: Some(ReasoningEffort::Low),
             api_key: None,
             prompt: "OK".into(),
@@ -400,6 +543,8 @@ async fn empty_and_metadata_events_do_not_start_ttft_before_answer() {
             protocol: ProviderProtocol::OpenAi,
             base_url: format!("{}/v1", server.uri()),
             model_id: "vision-model".into(),
+            project_id: None,
+            location: None,
             reasoning_effort: Some(ReasoningEffort::Low),
             api_key: None,
             prompt: "OK".into(),
@@ -465,6 +610,8 @@ async fn stream_failure_after_first_token_keeps_ttft_without_completion_timing()
             protocol: ProviderProtocol::OpenAi,
             base_url: format!("{}/v1", server.uri()),
             model_id: "vision-model".into(),
+            project_id: None,
+            location: None,
             reasoning_effort: Some(ReasoningEffort::Low),
             api_key: None,
             prompt: "OK".into(),
@@ -513,6 +660,8 @@ async fn responses_stream_separates_summary_answer_and_usage() {
             protocol: ProviderProtocol::OpenAiResponses,
             base_url: format!("{}/v1", server.uri()),
             model_id: "vision-model".into(),
+            project_id: None,
+            location: None,
             reasoning_effort: Some(ReasoningEffort::Medium),
             api_key: None,
             prompt: "OK".into(),
@@ -562,6 +711,8 @@ async fn truncated_stream_keeps_partial_text_without_inventing_usage() {
             protocol: ProviderProtocol::OpenAi,
             base_url: format!("{}/v1", server.uri()),
             model_id: "vision-model".into(),
+            project_id: None,
+            location: None,
             reasoning_effort: Some(ReasoningEffort::Low),
             api_key: None,
             prompt: "OK".into(),
@@ -633,6 +784,8 @@ async fn connection_errors_are_classified_without_automatic_retry() {
             protocol: ProviderProtocol::OpenAi,
             base_url: format!("{}/v1", server.uri()),
             model_id: "vision-model".into(),
+            project_id: None,
+            location: None,
             reasoning_effort: Some(ReasoningEffort::Low),
             api_key: Some(SecretString::from("wrong")),
             prompt: "OK".into(),
@@ -661,6 +814,8 @@ async fn image_capability_errors_have_a_stable_code() {
             protocol: ProviderProtocol::OpenAi,
             base_url: format!("{}/v1", server.uri()),
             model_id: "text-only".into(),
+            project_id: None,
+            location: None,
             reasoning_effort: Some(ReasoningEffort::Low),
             api_key: None,
             prompt: "OK".into(),
@@ -698,6 +853,8 @@ async fn provider_response_details_are_bounded_and_redact_sensitive_json() {
             protocol: ProviderProtocol::OpenAi,
             base_url: format!("{}/v1", server.uri()),
             model_id: "vision-model".into(),
+            project_id: None,
+            location: None,
             reasoning_effort: Some(ReasoningEffort::Low),
             api_key: None,
             prompt: "OK".into(),

@@ -33,6 +33,7 @@ const endpoints: Record<ModelProtocol, string> = {
   "openai-responses": "https://api.openai.com/v1",
   anthropic: "https://api.anthropic.com/v1",
   gemini: "https://generativelanguage.googleapis.com/v1beta",
+  "vertex-ai": "https://aiplatform.googleapis.com/v1",
 };
 
 const protocolLabels: Record<ModelProtocol, string> = {
@@ -40,6 +41,7 @@ const protocolLabels: Record<ModelProtocol, string> = {
   "openai-responses": "OpenAI Responses API",
   anthropic: "Anthropic Messages",
   gemini: "Gemini GenerateContent",
+  "vertex-ai": "Vertex AI",
 };
 
 const reasoningEffortOptions: Record<
@@ -58,6 +60,7 @@ const reasoningEffortOptions: Record<
   ],
   anthropic: ["low", "medium", "high", "xhigh", "max"],
   gemini: [],
+  "vertex-ai": ["low", "medium", "high"],
 };
 
 function supportsReasoning(protocol: ModelProtocol) {
@@ -77,6 +80,8 @@ const emptyForm = (): ModelConfigInput => ({
   protocol: "openai",
   baseUrl: endpoints.openai,
   modelId: "",
+  projectId: "",
+  location: "global",
   reasoningEffort: "low",
   apiKey: "",
   clearApiKey: false,
@@ -122,6 +127,12 @@ export function Settings({ api = ipc }: { api?: SettingsApi }) {
           protocol: form.protocol,
           baseUrl: form.baseUrl,
           modelId: form.modelId,
+          ...(form.protocol === "vertex-ai"
+            ? {
+                projectId: form.projectId || undefined,
+                location: form.location || "global",
+              }
+            : {}),
           reasoningEffort: supportsReasoning(form.protocol)
             ? normalizedReasoningEffort(form.protocol, form.reasoningEffort)
             : undefined,
@@ -179,7 +190,11 @@ export function Settings({ api = ipc }: { api?: SettingsApi }) {
                       ? ` · 思考 ${config.reasoningEffort}`
                       : ""}
                   </p>
-                  <p className="config-card__endpoint">{config.baseUrl}</p>
+                  <p className="config-card__endpoint">
+                    {config.protocol === "vertex-ai"
+                      ? `Vertex AI 标准模式（${config.projectId || "未设置项目"}/${config.location || "global"}）`
+                      : config.baseUrl}
+                  </p>
                   <p>{config.hasApiKey ? "已保存 Key" : "无 Key"}</p>
                 </div>
                 <div className="button-row">
@@ -194,6 +209,8 @@ export function Settings({ api = ipc }: { api?: SettingsApi }) {
                         protocol: config.protocol,
                         baseUrl: config.baseUrl,
                         modelId: config.modelId,
+                        projectId: config.projectId ?? "",
+                        location: config.location ?? "global",
                         reasoningEffort: normalizedReasoningEffort(
                           config.protocol,
                           config.reasoningEffort ?? undefined,
@@ -307,22 +324,58 @@ export function Settings({ api = ipc }: { api?: SettingsApi }) {
                 ))}
               </select>
             </Field>
-            <Field
-              label="API 端点"
-              htmlFor="model-endpoint"
-              hint="远程地址必须使用 HTTPS；localhost 与回环地址可使用 HTTP。"
-            >
-              <input
-                id="model-endpoint"
-                type="url"
-                value={form.baseUrl}
-                onChange={(event) => update("baseUrl", event.target.value)}
-              />
-            </Field>
+            {form.protocol !== "vertex-ai" && (
+              <Field
+                label="API 端点"
+                htmlFor="model-endpoint"
+                hint="远程地址必须使用 HTTPS；localhost 与回环地址可使用 HTTP。"
+              >
+                <input
+                  id="model-endpoint"
+                  type="url"
+                  value={form.baseUrl}
+                  onChange={(event) => update("baseUrl", event.target.value)}
+                />
+              </Field>
+            )}
+            {form.protocol === "vertex-ai" && (
+              <>
+                <Field
+                  label="项目 ID"
+                  htmlFor="model-project-id"
+                  hint="填写 Google Cloud 项目 ID。"
+                >
+                  <input
+                    id="model-project-id"
+                    value={form.projectId ?? ""}
+                    maxLength={128}
+                    onChange={(event) =>
+                      update("projectId", event.target.value)
+                    }
+                  />
+                </Field>
+                <Field
+                  label="区域"
+                  htmlFor="model-location"
+                  hint="例如 global、us、eu 或 us-central1；必须支持所选模型。"
+                >
+                  <input
+                    id="model-location"
+                    value={form.location ?? "global"}
+                    maxLength={128}
+                    onChange={(event) => update("location", event.target.value)}
+                  />
+                </Field>
+              </>
+            )}
             <Field
               label="模型 ID"
               htmlFor="model-id"
-              hint="模型列表不可用时仍可手动输入。"
+              hint={
+                form.protocol === "vertex-ai"
+                  ? "请填写 Gemini 3+ 模型 ID，并确认它在所选项目和区域可用。"
+                  : "模型列表不可用时仍可手动输入。"
+              }
             >
               <input
                 id="model-id"
@@ -401,32 +454,34 @@ export function Settings({ api = ipc }: { api?: SettingsApi }) {
               连接测试会发送一张极小图片，可能产生少量调用费用；测试结果不会保存。
             </p>
             <div className="button-row">
-              <Button
-                type="button"
-                disabled={isBusy}
-                onClick={() => {
-                  const draft = connectionDraft();
-                  if (!draft) return;
-                  setBusy("list");
-                  notifications.clear();
-                  void api
-                    .listRemoteModels(draft)
-                    .then((items) => {
-                      setModels(items);
-                      notifications.success(
-                        items.length
-                          ? `已获取 ${items.length} 个模型`
-                          : "端点未返回可用模型，可继续手动输入",
-                      );
-                    })
-                    .catch((value: unknown) =>
-                      notifications.error(getErrorMessage(value)),
-                    )
-                    .finally(() => setBusy(undefined));
-                }}
-              >
-                获取模型列表
-              </Button>
+              {form.protocol !== "vertex-ai" && (
+                <Button
+                  type="button"
+                  disabled={isBusy}
+                  onClick={() => {
+                    const draft = connectionDraft();
+                    if (!draft) return;
+                    setBusy("list");
+                    notifications.clear();
+                    void api
+                      .listRemoteModels(draft)
+                      .then((items) => {
+                        setModels(items);
+                        notifications.success(
+                          items.length
+                            ? `已获取 ${items.length} 个模型`
+                            : "端点未返回可用模型，可继续手动输入",
+                        );
+                      })
+                      .catch((value: unknown) =>
+                        notifications.error(getErrorMessage(value)),
+                      )
+                      .finally(() => setBusy(undefined));
+                  }}
+                >
+                  获取模型列表
+                </Button>
+              )}
               <Button
                 type="button"
                 disabled={isBusy}

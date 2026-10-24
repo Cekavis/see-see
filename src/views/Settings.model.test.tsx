@@ -10,6 +10,8 @@ const savedConfig: ModelConfigSummary = {
   protocol: "openai",
   baseUrl: "https://api.example.com/v1",
   modelId: "vision",
+  projectId: null,
+  location: null,
   reasoningEffort: "low",
   hasApiKey: true,
   isActive: false,
@@ -25,10 +27,13 @@ function api(overrides: Partial<SettingsApi> = {}): SettingsApi {
       protocol: input.protocol,
       baseUrl: input.baseUrl,
       modelId: input.modelId,
+      projectId: input.projectId ?? null,
+      location: input.location ?? null,
       reasoningEffort:
         input.protocol === "openai" ||
         input.protocol === "openai-responses" ||
-        input.protocol === "anthropic"
+        input.protocol === "anthropic" ||
+        input.protocol === "vertex-ai"
           ? (input.reasoningEffort ?? "low")
           : null,
       hasApiKey: Boolean(input.apiKey),
@@ -277,6 +282,69 @@ describe("model settings", () => {
         expect.objectContaining({
           protocol: "gemini",
           reasoningEffort: undefined,
+        }),
+      ),
+    );
+  });
+
+  it("uses the standard Vertex AI path and exposes project, region, and thinking settings", async () => {
+    const service = api();
+    renderSettings(service);
+    openNewEditor();
+    fillRequiredFields();
+    fireEvent.change(screen.getByLabelText("协议"), {
+      target: { value: "vertex-ai" },
+    });
+    fireEvent.change(screen.getByLabelText("模型 ID"), {
+      target: { value: "gemini-4-argon" },
+    });
+    fireEvent.change(screen.getByLabelText("项目 ID"), {
+      target: { value: "test-project" },
+    });
+    fireEvent.change(screen.getByLabelText("区域"), {
+      target: { value: "global" },
+    });
+    fireEvent.change(screen.getByLabelText("API Key"), {
+      target: { value: "vertex-secret" },
+    });
+
+    expect(screen.queryByLabelText("API 端点")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "获取模型列表" }),
+    ).not.toBeInTheDocument();
+    expect(
+      Array.from(
+        (screen.getByLabelText("思考强度") as HTMLSelectElement).options,
+      ).map((option) => option.value),
+    ).toEqual(["low", "medium", "high"]);
+
+    fireEvent.change(screen.getByLabelText("思考强度"), {
+      target: { value: "high" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "测试连接" }));
+    await waitFor(() =>
+      expect(service.testModelConfig).toHaveBeenCalledWith({
+        protocol: "vertex-ai",
+        baseUrl: "https://aiplatform.googleapis.com/v1",
+        modelId: "gemini-4-argon",
+        projectId: "test-project",
+        location: "global",
+        reasoningEffort: "high",
+        apiKey: "vertex-secret",
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "保存配置" }));
+    await waitFor(() =>
+      expect(service.saveModelConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          protocol: "vertex-ai",
+          baseUrl: "https://aiplatform.googleapis.com/v1",
+          modelId: "gemini-4-argon",
+          projectId: "test-project",
+          location: "global",
+          reasoningEffort: "high",
+          apiKey: "vertex-secret",
         }),
       ),
     );

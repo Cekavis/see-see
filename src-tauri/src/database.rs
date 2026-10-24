@@ -17,6 +17,10 @@ const RESULT_WINDOW_SIZE_MIGRATION: &str =
 const WEBDAV_SETTINGS_MIGRATION: &str = include_str!("../migrations/0010_webdav_settings.sql");
 const HISTORY_PERFORMANCE_MIGRATION: &str =
     include_str!("../migrations/0011_history_performance.sql");
+const VERTEX_AI_PROTOCOL_MIGRATION: &str =
+    include_str!("../migrations/0012_vertex_ai_protocol.sql");
+const VERTEX_AI_STANDARD_CONFIG_MIGRATION: &str =
+    include_str!("../migrations/0013_vertex_ai_standard_config.sql");
 const LEGACY_DEFAULT_CAPTURE_SHORTCUT: &str = "Alt+Shift+A";
 pub const WINDOWS_DEFAULT_CAPTURE_SHORTCUT: &str = "Ctrl+Shift+X";
 pub const MACOS_DEFAULT_CAPTURE_SHORTCUT: &str = "Command+Shift+X";
@@ -256,6 +260,33 @@ impl Database {
                 return Err(AppError::storage("模型配置迁移破坏了本地数据关联"));
             }
         }
+        if previous_version < 14 {
+            let model_config_ids_before = model_config_ids(&connection)
+                .map_err(|_| AppError::storage("无法校验 Vertex AI 迁移前的数据"))?;
+            connection
+                .execute_batch(VERTEX_AI_PROTOCOL_MIGRATION)
+                .map_err(|_| AppError::storage("无法升级 Vertex AI 配置"))?;
+            let model_config_ids_after = model_config_ids(&connection)
+                .map_err(|_| AppError::storage("无法校验 Vertex AI 迁移后的数据"))?;
+            if model_config_ids_before.len() != model_config_ids_after.len()
+                || model_config_ids_before != model_config_ids_after
+            {
+                return Err(AppError::storage("Vertex AI 迁移丢失了配置行或 ID"));
+            }
+            let foreign_key_violations = connection
+                .query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .map_err(|_| AppError::storage("无法校验 Vertex AI 迁移"))?;
+            if foreign_key_violations != 0 {
+                return Err(AppError::storage("Vertex AI 迁移破坏了本地数据关联"));
+            }
+        }
+        if previous_version < 15 {
+            connection
+                .execute_batch(VERTEX_AI_STANDARD_CONFIG_MIGRATION)
+                .map_err(|_| AppError::storage("无法升级标准 Vertex AI 配置"))?;
+        }
         let has_input_tokens = history_columns
             .iter()
             .any(|column| column == "input_tokens");
@@ -335,7 +366,7 @@ impl Database {
                 .map_err(|_| AppError::storage("无法升级提示词快捷键"))?;
         }
         connection
-            .pragma_update(None, "user_version", 13)
+            .pragma_update(None, "user_version", 15)
             .map_err(|_| AppError::storage("无法记录数据库版本"))?;
         Ok(Self {
             connection: Mutex::new(connection),
@@ -465,7 +496,7 @@ mod tests {
                 .iter()
                 .any(|column| column == "result_window_height")
         );
-        assert_eq!(database.pragma_i64("user_version").unwrap(), 13);
+        assert_eq!(database.pragma_i64("user_version").unwrap(), 15);
     }
 
     #[test]
@@ -482,7 +513,7 @@ mod tests {
             .unwrap();
 
         assert!(has_thinking);
-        assert_eq!(database.pragma_i64("user_version").unwrap(), 13);
+        assert_eq!(database.pragma_i64("user_version").unwrap(), 15);
     }
 
     #[test]
@@ -536,7 +567,7 @@ mod tests {
 
         assert_eq!(values.0.as_deref(), Some("low"));
         assert_eq!(values.1, None);
-        assert_eq!(database.pragma_i64("user_version").unwrap(), 13);
+        assert_eq!(database.pragma_i64("user_version").unwrap(), 15);
     }
 
     #[test]
@@ -623,7 +654,7 @@ mod tests {
         );
         assert_eq!(values.1, "migration-model");
         assert_eq!(values.2, Some("migration-model".into()));
-        assert_eq!(database.pragma_i64("user_version").unwrap(), 13);
+        assert_eq!(database.pragma_i64("user_version").unwrap(), 15);
     }
 
     #[test]

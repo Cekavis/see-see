@@ -18,6 +18,8 @@ fn input(name: &str, key: Option<&str>) -> ModelConfigInput {
         protocol: ProviderProtocol::OpenAi,
         base_url: "https://api.example.com/v1".into(),
         model_id: "vision-model".into(),
+        project_id: Some("test-project".into()),
+        location: Some("global".into()),
         reasoning_effort: Some(ReasoningEffort::Low),
         api_key: key.map(str::to_owned),
         clear_api_key: false,
@@ -170,6 +172,53 @@ fn reasoning_effort_defaults_for_reasoning_protocols_and_is_ignored_for_gemini()
         invalid_anthropic.protocol = ProviderProtocol::Anthropic;
         invalid_anthropic.reasoning_effort = Some(effort);
         assert!(save_model_config(&db, invalid_anthropic).is_err());
+    }
+
+    for (effort, name) in [
+        (ReasoningEffort::Low, "Vertex 低"),
+        (ReasoningEffort::Medium, "Vertex 中"),
+        (ReasoningEffort::High, "Vertex 高"),
+    ] {
+        let mut vertex_input = input(name, Some("vertex-secret"));
+        vertex_input.protocol = ProviderProtocol::VertexAi;
+        vertex_input.base_url = "https://custom.example/v1".into();
+        vertex_input.model_id = "gemini-3-flash-preview".into();
+        vertex_input.reasoning_effort = Some(effort);
+        let vertex = save_model_config(&db, vertex_input).unwrap();
+        assert_eq!(vertex.base_url, "https://aiplatform.googleapis.com/v1");
+        assert_eq!(vertex.project_id.as_deref(), Some("test-project"));
+        assert_eq!(vertex.location.as_deref(), Some("global"));
+        assert_eq!(vertex.reasoning_effort, Some(effort));
+    }
+
+    let mut invalid_model = input("Vertex 2.x", None);
+    invalid_model.protocol = ProviderProtocol::VertexAi;
+    invalid_model.model_id = "gemini-2.5-flash".into();
+    assert!(save_model_config(&db, invalid_model).is_err());
+
+    let mut invalid_project = input("Vertex 无效项目", None);
+    invalid_project.protocol = ProviderProtocol::VertexAi;
+    invalid_project.project_id = Some("project/with-slash".into());
+    invalid_project.model_id = "gemini-3-flash-preview".into();
+    assert!(save_model_config(&db, invalid_project).is_err());
+
+    let mut invalid_location = input("Vertex 无效区域", None);
+    invalid_location.protocol = ProviderProtocol::VertexAi;
+    invalid_location.location = Some("us/central1".into());
+    invalid_location.model_id = "gemini-3-flash-preview".into();
+    assert!(save_model_config(&db, invalid_location).is_err());
+
+    for effort in [
+        ReasoningEffort::None,
+        ReasoningEffort::Minimal,
+        ReasoningEffort::XHigh,
+        ReasoningEffort::Max,
+    ] {
+        let mut invalid_vertex = input("无效 Vertex 强度", None);
+        invalid_vertex.protocol = ProviderProtocol::VertexAi;
+        invalid_vertex.model_id = "gemini-3-flash-preview".into();
+        invalid_vertex.reasoning_effort = Some(effort);
+        assert!(save_model_config(&db, invalid_vertex).is_err());
     }
 }
 

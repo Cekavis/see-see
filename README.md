@@ -5,8 +5,8 @@ See See 是一个本地优先的 Windows/macOS 截图翻译桌面应用。它不
 ## 功能
 
 - 全局快捷键区域截图，支持物理像素坐标、负坐标和跨显示器选区；macOS 可直接覆盖当前普通或系统全屏 Space，结果紧凑显示在同一 Space。
-- OpenAI Chat Completions、Anthropic Messages、Gemini GenerateContent 三类 API 协议。
-- 预设端点和自定义端点；远程地址只允许 HTTPS，本机回环可使用 HTTP。
+- OpenAI Chat Completions、Anthropic Messages、Gemini GenerateContent 和标准 Vertex AI 四类 API 协议。
+- 预设端点和自定义端点；标准 Vertex AI 隐藏端点输入，并根据区域使用内置 Vertex AI 主机，需要填写 Google Cloud 项目 ID、区域、Gemini 3+ 模型 ID、API Key 和低/中/高思考强度。
 - 多模型配置、系统凭据存储、连接测试和手动模型 ID。
 - 两个内置提示词以及提示词新增、编辑、复制、删除和切换。
 - 完整本地历史：截图、缩略图、结果、失败状态、搜索、筛选、复制、再次提交、单条删除和全部清空。

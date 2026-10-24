@@ -55,6 +55,10 @@ pub struct ModelConnectionInput {
     pub base_url: String,
     pub model_id: String,
     #[serde(default)]
+    pub project_id: Option<String>,
+    #[serde(default)]
+    pub location: Option<String>,
+    #[serde(default)]
     pub reasoning_effort: Option<ReasoningEffort>,
     pub api_key: Option<String>,
 }
@@ -572,6 +576,11 @@ pub async fn list_remote_models(
     app: AppHandle,
     draft: ModelConnectionInput,
 ) -> Result<Vec<RemoteModel>, AppError> {
+    if draft.protocol == ProviderProtocol::VertexAi {
+        return Err(AppError::invalid(
+            "Vertex AI 标准模式不支持获取模型列表，请手动填写 Gemini 3+ 模型 ID",
+        ));
+    }
     let state = app.state::<AppState>();
     let key = connection_key(&state, &draft)?;
     let http = http_client(&state)?;
@@ -583,7 +592,12 @@ pub async fn test_model_config(
     app: AppHandle,
     draft: ModelConnectionInput,
 ) -> Result<providers::ConnectionTestResult, AppError> {
-    providers::validate_endpoint(&draft.base_url)?;
+    let base_url = draft
+        .protocol
+        .default_base_url()
+        .unwrap_or(draft.base_url.as_str())
+        .to_owned();
+    providers::validate_endpoint(&base_url)?;
     if draft.model_id.trim().is_empty() {
         return Err(AppError::invalid("模型 ID 不能为空"));
     }
@@ -594,8 +608,10 @@ pub async fn test_model_config(
         &http,
         ProviderRequest {
             protocol: draft.protocol,
-            base_url: draft.base_url,
+            base_url,
             model_id: draft.model_id,
+            project_id: draft.project_id,
+            location: draft.location,
             reasoning_effort: draft.reasoning_effort,
             api_key: key,
             prompt: "请只回复 OK。".into(),

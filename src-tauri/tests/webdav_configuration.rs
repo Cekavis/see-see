@@ -17,6 +17,8 @@ fn model_input(name: &str, api_key: Option<&str>) -> ModelConfigInput {
         protocol: ProviderProtocol::OpenAiResponses,
         base_url: "https://models.example.test/v1".into(),
         model_id: "vision-test".into(),
+        project_id: None,
+        location: None,
         reasoning_effort: Some(ReasoningEffort::High),
         api_key: api_key.map(str::to_owned),
         clear_api_key: false,
@@ -30,6 +32,8 @@ fn sync_model(id: &str, name: &str, api_key: Option<&str>) -> SyncModelConfig {
         protocol: ProviderProtocol::OpenAiResponses,
         base_url: "https://remote-models.example.test/v1".into(),
         model_id: "remote-vision-test".into(),
+        project_id: None,
+        location: None,
         reasoning_effort: Some(ReasoningEffort::XHigh),
         api_key: api_key.map(str::to_owned),
     }
@@ -144,6 +148,42 @@ fn exported_model_keys_round_trip_with_metadata_and_active_selection() {
             .unwrap()
             .active_model_config_id,
         Some(keyed.id)
+    );
+}
+
+#[test]
+fn vertex_ai_sync_uses_the_built_in_endpoint() {
+    let source = Database::open_in_memory().unwrap();
+    let mut input = model_input("Vertex 模型", Some("vertex-key"));
+    input.protocol = ProviderProtocol::VertexAi;
+    input.base_url = "https://custom.example.test/v1".into();
+    input.model_id = "gemini-3-flash-preview".into();
+    input.project_id = Some("test-project".into());
+    input.location = Some("global".into());
+    input.reasoning_effort = Some(ReasoningEffort::Medium);
+    let created = settings::save_model_config(&source, input).unwrap();
+    assert_eq!(created.base_url, "https://aiplatform.googleapis.com/v1");
+
+    let mut snapshot = settings::export_configuration_snapshot(&source).unwrap();
+    assert_eq!(
+        snapshot.models[0].base_url,
+        "https://aiplatform.googleapis.com/v1"
+    );
+    snapshot.models[0].base_url = "http://attacker.invalid/v1".into();
+
+    let destination = Database::open_in_memory().unwrap();
+    settings::apply_configuration_snapshot(&destination, &snapshot).unwrap();
+    let imported = settings::load_model(&destination, &created.id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(imported.protocol, ProviderProtocol::VertexAi);
+    assert_eq!(imported.base_url, "https://aiplatform.googleapis.com/v1");
+    assert_eq!(imported.project_id.as_deref(), Some("test-project"));
+    assert_eq!(imported.location.as_deref(), Some("global"));
+    assert_eq!(imported.reasoning_effort, Some(ReasoningEffort::Medium));
+    assert_eq!(
+        stored_key(&destination, &created.id).as_deref(),
+        Some("vertex-key")
     );
 }
 

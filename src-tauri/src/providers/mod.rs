@@ -2,6 +2,7 @@ pub mod anthropic;
 pub mod gemini;
 pub mod openai;
 pub mod openai_responses;
+pub mod vertex_ai;
 
 use crate::error::{AppError, ErrorCode};
 use base64::{Engine, engine::general_purpose::STANDARD};
@@ -21,6 +22,8 @@ pub enum ProviderProtocol {
     OpenAiResponses,
     Anthropic,
     Gemini,
+    #[serde(rename = "vertex-ai")]
+    VertexAi,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -59,6 +62,7 @@ impl TryFrom<&str> for ProviderProtocol {
             "openai-responses" => Ok(Self::OpenAiResponses),
             "anthropic" => Ok(Self::Anthropic),
             "gemini" => Ok(Self::Gemini),
+            "vertex-ai" => Ok(Self::VertexAi),
             _ => Err(AppError::invalid("未知模型协议")),
         }
     }
@@ -71,11 +75,15 @@ impl ProviderProtocol {
             Self::OpenAiResponses => "openai-responses",
             Self::Anthropic => "anthropic",
             Self::Gemini => "gemini",
+            Self::VertexAi => "vertex-ai",
         }
     }
 
     pub fn supports_reasoning(self) -> bool {
-        matches!(self, Self::OpenAi | Self::OpenAiResponses | Self::Anthropic)
+        matches!(
+            self,
+            Self::OpenAi | Self::OpenAiResponses | Self::Anthropic | Self::VertexAi
+        )
     }
 
     pub fn supports_reasoning_effort(self, effort: ReasoningEffort) -> bool {
@@ -90,6 +98,17 @@ impl ProviderProtocol {
             ),
             Self::OpenAi | Self::OpenAiResponses => true,
             Self::Gemini => false,
+            Self::VertexAi => matches!(
+                effort,
+                ReasoningEffort::Low | ReasoningEffort::Medium | ReasoningEffort::High
+            ),
+        }
+    }
+
+    pub fn default_base_url(self) -> Option<&'static str> {
+        match self {
+            Self::VertexAi => Some(vertex_ai::BASE_URL),
+            _ => None,
         }
     }
 }
@@ -98,6 +117,8 @@ pub struct ProviderRequest {
     pub protocol: ProviderProtocol,
     pub base_url: String,
     pub model_id: String,
+    pub project_id: Option<String>,
+    pub location: Option<String>,
     pub reasoning_effort: Option<ReasoningEffort>,
     pub api_key: Option<SecretString>,
     pub prompt: String,
@@ -305,6 +326,7 @@ pub fn build_http_request(request: &ProviderRequest) -> Result<PreparedRequest, 
         ProviderProtocol::OpenAiResponses => openai_responses::prepare(request),
         ProviderProtocol::Anthropic => anthropic::prepare(request),
         ProviderProtocol::Gemini => gemini::prepare(request),
+        ProviderProtocol::VertexAi => vertex_ai::prepare(request),
     }
 }
 
@@ -318,6 +340,7 @@ pub fn parse_stream_event(
         ProviderProtocol::OpenAiResponses => openai_responses::parse(event_name, data),
         ProviderProtocol::Anthropic => anthropic::parse(event_name, data),
         ProviderProtocol::Gemini => gemini::parse(event_name, data),
+        ProviderProtocol::VertexAi => vertex_ai::parse(event_name, data),
     }
 }
 
@@ -330,6 +353,7 @@ pub fn parse_model_list(
         ProviderProtocol::OpenAiResponses => openai_responses::parse_models(data),
         ProviderProtocol::Anthropic => anthropic::parse_models(data),
         ProviderProtocol::Gemini => gemini::parse_models(data),
+        ProviderProtocol::VertexAi => vertex_ai::parse_models(data),
     }
 }
 
@@ -339,10 +363,17 @@ pub async fn list_models(
     base_url: &str,
     api_key: Option<&SecretString>,
 ) -> Result<Vec<RemoteModel>, AppError> {
+    if protocol == ProviderProtocol::VertexAi {
+        return Err(AppError::invalid(
+            "Vertex AI 标准模式不支持获取模型列表，请手动填写 Gemini 3+ 模型 ID",
+        ));
+    }
     let request = ProviderRequest {
         protocol,
         base_url: base_url.to_owned(),
         model_id: String::new(),
+        project_id: None,
+        location: None,
         reasoning_effort: None,
         api_key: api_key.cloned(),
         prompt: String::new(),
@@ -367,6 +398,7 @@ pub async fn list_models(
                 builder = builder.header("x-goog-api-key", key);
             }
         }
+        ProviderProtocol::VertexAi => unreachable!("Vertex AI model listing is handled above"),
     }
     let response = builder.send().await.map_err(map_reqwest_error)?;
     if !response.status().is_success() {
@@ -753,6 +785,8 @@ mod tests {
             protocol: ProviderProtocol::OpenAi,
             base_url,
             model_id: "vision-model".into(),
+            project_id: None,
+            location: None,
             reasoning_effort: Some(ReasoningEffort::Low),
             api_key: None,
             prompt: "OK".into(),
